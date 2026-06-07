@@ -1,13 +1,13 @@
 {
-  "name": "Sistema GW",
-  "short_name": "GW",
-  "start_url": "/gw/index.html",
-  "scope": "/",
+  "name": "Sistema GW (Redesign)",
+  "short_name": "GW Redesign",
+  "start_url": "/gw-redesign/index.html",
+  "scope": "/gw-redesign/",
   "display": "fullscreen",
   "background_color": "#0a1a0f",
   "theme_color": "#0a1a0f",
   "icons": [
-    { "src": "/gw/Logo-gw.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/gw/Logo-gw.png", "sizes": "512x512", "type": "image/png" }
+    { "src": "/gw-redesign/Logo-gw.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/gw-redesign/Logo-gw.png", "sizes": "512x512", "type": "image/png" }
   ]
 }
