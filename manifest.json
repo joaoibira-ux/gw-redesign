@@ -1,6 +1,6 @@
 {
-  "name": "Sistema GW (Redesign)",
-  "short_name": "GW Redesign",
+  "name": "GW",
+  "short_name": "GW",
   "start_url": "/gw-redesign/index.html",
   "scope": "/",
   "display": "fullscreen",
