@@ -162,6 +162,16 @@
       border-radius: 14px;
       box-shadow: 0 4px 24px rgba(0,0,0,0.5);
     }
+    .aviso-card img.aviso-logo {
+      width: 50%; margin: 28px auto;
+      border-radius: 0; box-shadow: none;
+      animation: aviso-logo-fade 1.1s ease-in-out;
+    }
+    @keyframes aviso-logo-fade {
+      0%   { opacity: 0; transform: scale(.9); }
+      35%  { opacity: 1; transform: scale(1); }
+      100% { opacity: 1; transform: scale(1); }
+    }
 
   </style>
 </head>
@@ -333,10 +343,19 @@
       const isIOS     = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
       const isAndroid = /Android/.test(navigator.userAgent);
       const img = document.getElementById('aviso-img');
-      if (isIOS)     img.src = './Aviso iPhone.png';
-      else if (isAndroid) img.src = './Aviso Adroide.png';
-      else           img.src = './instrucoes_sistema_gw.png';
+      let destino;
+      if (isIOS)          destino = './Aviso iPhone.png';
+      else if (isAndroid) destino = './Aviso Adroide.png';
+      else                destino = './instrucoes_sistema_gw.png';
+
+      img.src = './Logo-gw.png';
+      img.classList.add('aviso-logo');
       document.getElementById('aviso-instalacao').style.display = 'flex';
+
+      setTimeout(() => {
+        img.classList.remove('aviso-logo');
+        img.src = destino;
+      }, 1200);
     }
 
     function renderApps() {
