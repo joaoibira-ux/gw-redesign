@@ -1,5 +1,5 @@
-const VERSION = "gw-redesign-v5";
-const ASSETS = ["./index.html", "./instalar.html", "./Logo-gw.png", "./manifest.json", "./instrucoes_sistema_gw.png", "./Aviso iPhone.png", "./Aviso Adroide.png", "./bg-pin.jpg", "./bg-home.jpg", "./bg-aviso.jpg", "./bg-instalar.jpg"];
+const VERSION = "gw-redesign-v6";
+const ASSETS = ["./index.html", "./instalar.html", "./Logo-gw.png", "./manifest.json", "./instrucoes_sistema_gw.png", "./Aviso iPhone.png", "./Aviso Adroide.png", "./bg-pin.jpg", "./bg-instalar.jpg"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
