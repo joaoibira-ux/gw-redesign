@@ -2,7 +2,7 @@
   "name": "Sistema GW (Redesign)",
   "short_name": "GW Redesign",
   "start_url": "/gw-redesign/index.html",
-  "scope": "/gw-redesign/",
+  "scope": "/",
   "display": "fullscreen",
   "background_color": "#0a1a0f",
   "theme_color": "#0a1a0f",
