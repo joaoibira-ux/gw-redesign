@@ -235,6 +235,9 @@
   </div>
 
   <script>
+    // iOS Safari restaura do bfcache sem redesenhar os backgrounds (ficam em branco) — força reload
+    window.addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
+
     const PIN_COMPLETO  = '2248'; // todos os apps
     const PIN_PARCIAL   = '4512'; // todos visíveis, só 4 acessíveis
     const PIN_RESTRITO  = '3733'; // sem Caixa e sem Relatório
