@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Instalar Sistema GW</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      min-height: 100%; min-height: 100dvh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background:
+        linear-gradient(180deg, rgba(8,20,12,0.6) 0%, rgba(8,20,12,0.8) 55%, rgba(6,16,10,0.95) 100%),
+        url('./bg-instalar.jpg') center/cover no-repeat fixed;
+      color: #e8f5e9;
+    }
+
+    .glass {
+      background: rgba(255,255,255,0.08);
+      backdrop-filter: blur(20px) saturate(150%);
+      -webkit-backdrop-filter: blur(20px) saturate(150%);
+      border: 1px solid rgba(255,255,255,0.16);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+    }
+
+    .wrap {
+      max-width: 420px; margin: 0 auto;
+      padding: 40px 24px calc(40px + env(safe-area-inset-bottom, 0px));
+      display: flex; flex-direction: column; align-items: center; gap: 0;
+    }
+
+    /* ── Header ── */
+    .logo { width: 72px; height: 72px; object-fit: contain; margin-bottom: 12px; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.4)); }
+    .title { font-size: 1.3rem; font-weight: 800; letter-spacing: 3px; color: #f1f8f2; text-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+    .sub   { font-size: 0.62rem; letter-spacing: 2px; color: #c8e6c9; font-weight: 600; margin-bottom: 28px; }
+
+    /* ── Intro card ── */
+    .intro-card {
+      width: 100%;
+      border-radius: 18px;
+      padding: 16px 20px;
+      display: flex; align-items: center; gap: 14px;
+      margin-bottom: 32px;
+    }
+    .intro-icon { font-size: 2rem; flex-shrink: 0; }
+    .intro-text { font-size: 0.88rem; line-height: 1.5; color: #e8f5e9; }
+    .intro-text strong { color: #ffffff; }
+
+    /* ── OS tabs ── */
+    .tabs {
+      display: flex; width: 100%; gap: 8px; margin-bottom: 28px;
+    }
+    .tab-btn {
+      flex: 1; padding: 10px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.06); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      color: #cfe8d1;
+      font-size: 0.82rem; font-weight: 600; cursor: pointer;
+      transition: all .2s;
+    }
+    .tab-btn.active { background: rgba(105,240,174,0.22); border-color: rgba(105,240,174,0.4); color: #ffffff; }
+
+    /* ── Steps ── */
+    .steps { width: 100%; display: flex; flex-direction: column; gap: 16px; margin-bottom: 36px; }
+
+    .step {
+      border-radius: 18px;
+      padding: 18px 18px 18px 16px;
+      display: flex; gap: 16px; align-items: flex-start;
+    }
+
+    .step-num {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: rgba(105,240,174,0.2); border: 1.5px solid rgba(105,240,174,0.4);
+      color: #69f0ae; font-weight: 800; font-size: 0.9rem;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; margin-top: 2px;
+    }
+
+    .step-body {}
+    .step-label { font-size: 0.72rem; letter-spacing: 1px; color: #b8d8bb; font-weight: 700; margin-bottom: 4px; text-transform: uppercase; }
+    .step-title { font-size: 0.95rem; font-weight: 700; color: #ffffff; margin-bottom: 4px; }
+    .step-desc  { font-size: 0.78rem; color: #cfe8d1; line-height: 1.5; }
+
+    .step-visual {
+      margin-top: 12px;
+      background: rgba(0,0,0,0.28); border-radius: 12px;
+      padding: 12px 14px;
+      display: flex; align-items: center; gap: 10px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .step-icon { font-size: 1.4rem; }
+    .step-visual-text { font-size: 0.78rem; color: #a5d6a7; font-weight: 600; }
+
+    /* Seta animada */
+    @keyframes bounce-up   { 0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)} }
+    @keyframes bounce-down { 0%,100%{transform:translateY(0)}50%{transform:translateY(6px)} }
+    @keyframes bounce-right{ 0%,100%{transform:translateX(0)}50%{transform:translateX(6px)} }
+    .arrow-up    { display:inline-block; animation: bounce-up    1.2s ease-in-out infinite; color:#69f0ae; font-size:1.2rem; }
+    .arrow-down  { display:inline-block; animation: bounce-down  1.2s ease-in-out infinite; color:#69f0ae; font-size:1.2rem; }
+    .arrow-right { display:inline-block; animation: bounce-right 1.2s ease-in-out infinite; color:#69f0ae; font-size:1.2rem; }
+
+    /* ── Botão abrir ── */
+    .btn-open {
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(135deg, rgba(76,175,80,0.5), rgba(27,94,32,0.6));
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,255,255,0.2); border-radius: 16px;
+      color: #ffffff; font-size: 1rem; font-weight: 800;
+      cursor: pointer; letter-spacing: 0.5px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+      text-decoration: none; display: block; text-align: center;
+      transition: opacity .2s;
+    }
+    .btn-open:active { opacity: 0.8; }
+
+    .hint { font-size: 0.65rem; color: #b8d8bb; margin-top: 16px; text-align: center; line-height: 1.6; }
+
+    /* ── Desktop message ── */
+    .desktop-msg {
+      text-align: center; padding: 32px 24px;
+      border-radius: 18px;
+      display: none;
+    }
+    .desktop-msg .qr-icon { font-size: 4rem; margin-bottom: 12px; }
+    .desktop-msg p { color: #cfe8d1; font-size: 0.9rem; line-height: 1.6; }
+    .desktop-msg strong { color: #ffffff; font-size: 1rem; display: block; margin-bottom: 8px; }
+    .desktop-url {
+      margin-top: 16px; background: rgba(0,0,0,0.3);
+      border-radius: 10px; padding: 12px 16px;
+      font-size: 0.82rem; color: #69f0ae; word-break: break-all;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <img class="logo" src="./Logo-gw.png" alt="GW" />
+  <div class="title">GREEN WALL</div>
+  <div class="sub">SISTEMA DE GESTÃO</div>
+
+  <div class="intro-card glass">
+    <div class="intro-icon">📲</div>
+    <div class="intro-text">
+      Siga os passos abaixo para instalar o <strong>Sistema GW</strong> diretamente na sua tela inicial — abre como um app, sem barra do navegador.
+    </div>
+  </div>
+
+  <!-- Desktop -->
+  <div class="desktop-msg glass" id="desktop-msg">
+    <div class="qr-icon">📱</div>
+    <strong>Abra este link no seu celular</strong>
+    <p>A instalação só funciona no iPhone (Safari) ou Android (Chrome).</p>
+    <div class="desktop-url">https://joaoibira-ux.github.io/gw/instalar.html</div>
+  </div>
+
+  <!-- OS Tabs -->
+  <div class="tabs" id="tabs">
+    <button class="tab-btn glass active" id="tab-ios" onclick="showOS('ios')"> Apple iPhone</button>
+    <button class="tab-btn glass" id="tab-and" onclick="showOS('android')">🤖 Android</button>
+  </div>
+
+  <!-- iOS Steps -->
+  <div class="steps" id="steps-ios">
+    <div class="step glass">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <div class="step-label">Passo 1</div>
+        <div class="step-title">Abra no Safari</div>
+        <div class="step-desc">Este link deve ser aberto no <strong>Safari</strong>. Se estiver em outro app, copie e cole no Safari.</div>
+      </div>
+    </div>
+
+    <div class="step glass">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <div class="step-label">Passo 2</div>
+        <div class="step-title">Toque em Compartilhar</div>
+        <div class="step-desc">Na barra inferior do Safari, toque no ícone de compartilhar.</div>
+        <div class="step-visual">
+          <div class="step-icon">⬆️</div>
+          <div class="step-visual-text">Botão Compartilhar na barra inferior <span class="arrow-down">↓</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step glass">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <div class="step-label">Passo 3</div>
+        <div class="step-title">Adicionar à Tela de Início</div>
+        <div class="step-desc">Role o menu para baixo e toque em <strong>"Adicionar à Tela de Início"</strong>.</div>
+        <div class="step-visual">
+          <div class="step-icon">🏠</div>
+          <div class="step-visual-text">Adicionar à Tela de Início <span class="arrow-right">→</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step glass">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <div class="step-label">Passo 4</div>
+        <div class="step-title">Toque em "Adicionar"</div>
+        <div class="step-desc">No canto superior direito toque em <strong>"Adicionar"</strong> para confirmar.</div>
+        <div class="step-visual">
+          <div class="step-icon">✅</div>
+          <div class="step-visual-text">Adicionar <span class="arrow-up">↑</span> canto superior direito</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Android Steps -->
+  <div class="steps" id="steps-android" style="display:none">
+    <div class="step glass">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <div class="step-label">Passo 1</div>
+        <div class="step-title">Abra no Chrome</div>
+        <div class="step-desc">Este link deve ser aberto no <strong>Google Chrome</strong>. Se estiver em outro navegador, copie e cole no Chrome.</div>
+      </div>
+    </div>
+
+    <div class="step glass">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <div class="step-label">Passo 2</div>
+        <div class="step-title">Toque no menu ⋮</div>
+        <div class="step-desc">No canto superior direito do Chrome, toque nos três pontos.</div>
+        <div class="step-visual">
+          <div class="step-icon">⋮</div>
+          <div class="step-visual-text">Menu no canto superior direito <span class="arrow-up">↑</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step glass">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <div class="step-label">Passo 3</div>
+        <div class="step-title">Adicionar à tela inicial</div>
+        <div class="step-desc">Toque em <strong>"Adicionar à tela inicial"</strong> no menu.</div>
+        <div class="step-visual">
+          <div class="step-icon">🏠</div>
+          <div class="step-visual-text">Adicionar à tela inicial <span class="arrow-right">→</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step glass">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <div class="step-label">Passo 4</div>
+        <div class="step-title">Confirme a instalação</div>
+        <div class="step-desc">Toque em <strong>"Adicionar"</strong> para confirmar. O ícone GW aparecerá na sua tela inicial.</div>
+        <div class="step-visual">
+          <div class="step-icon">✅</div>
+          <div class="step-visual-text">Instalar / Adicionar</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <a class="btn-open" href="./index.html">▶ Abrir Sistema GW</a>
+
+  <p class="hint" id="hint-text">
+    Após instalar, abra sempre pelo ícone na tela inicial<br>para usar sem a barra do navegador.
+  </p>
+
+</div>
+
+<script>
+  const isIOS     = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isAndroid = /Android/.test(navigator.userAgent);
+  const isMobile  = isIOS || isAndroid;
+
+  if (!isMobile) {
+    document.getElementById('tabs').style.display = 'none';
+    document.getElementById('steps-ios').style.display = 'none';
+    document.getElementById('desktop-msg').style.display = 'block';
+    document.querySelector('.intro-card').style.display = 'none';
+  } else if (isAndroid) {
+    showOS('android');
+  }
+
+  // Detecta se já está instalado como PWA
+  if (window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches) {
+    document.querySelector('.hint').textContent = '✓ Você já está usando o app instalado!';
+    document.querySelector('.intro-card .intro-text').innerHTML = '✅ O <strong>Sistema GW</strong> já está instalado no seu dispositivo. Tudo certo!';
+  }
+
+  function showOS(os) {
+    document.getElementById('tab-ios').classList.toggle('active', os === 'ios');
+    document.getElementById('tab-and').classList.toggle('active', os === 'android');
+    document.getElementById('steps-ios').style.display     = os === 'ios'     ? 'flex' : 'none';
+    document.getElementById('steps-android').style.display = os === 'android' ? 'flex' : 'none';
+  }
+</script>
+</body>
+</html>

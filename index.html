@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="GW" />
+  <title>Sistema GW</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="apple-touch-icon" href="./Logo-gw.png" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; height: 100dvh; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a1a0f; color: #e8f5e9; overflow: hidden; }
+
+    /* ── Glass utility ── */
+    .glass {
+      background: rgba(255,255,255,0.08);
+      backdrop-filter: blur(20px) saturate(150%);
+      -webkit-backdrop-filter: blur(20px) saturate(150%);
+      border: 1px solid rgba(255,255,255,0.16);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+    }
+
+    /* ── PIN SCREEN ── */
+    #pin-screen {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+      background:
+        linear-gradient(180deg, rgba(8,20,12,0.55) 0%, rgba(8,20,12,0.72) 55%, rgba(6,16,10,0.92) 100%),
+        url('./bg-pin.jpg') center/cover no-repeat fixed;
+      padding: env(safe-area-inset-top, 20px) 0 env(safe-area-inset-bottom, 20px);
+      transition: opacity .35s ease;
+    }
+
+    .pin-header {
+      display: flex; flex-direction: column; align-items: center; gap: 10px;
+      padding: 22px 36px;
+      margin-top: 28px;
+      border-radius: 26px;
+    }
+    .pin-logo { width: 72px; height: 72px; object-fit: contain; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.4)); }
+    .pin-title { font-size: 1.3rem; font-weight: 800; letter-spacing: 3px; color: #e8f5e9; text-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+    .pin-sub   { font-size: 0.65rem; letter-spacing: 2px; color: #b8d8bb; font-weight: 600; }
+
+    .pin-dots-wrap {
+      display: flex; flex-direction: column; align-items: center; gap: 18px;
+      padding: 18px 32px;
+      border-radius: 22px;
+    }
+    .pin-dots {
+      display: flex; gap: 16px; align-items: center; justify-content: center;
+      margin: 0;
+    }
+    .pin-dot {
+      width: 14px; height: 14px; border-radius: 50%;
+      border: 2px solid rgba(232,245,233,0.45);
+      background: transparent;
+      transition: background .15s, transform .15s;
+    }
+    .pin-dot.filled { background: #69f0ae; border-color: #69f0ae; transform: scale(1.15); box-shadow: 0 0 12px rgba(105,240,174,0.6); }
+
+    @keyframes shake {
+      0%,100%{transform:translateX(0)}
+      20%{transform:translateX(-10px)}
+      40%{transform:translateX(10px)}
+      60%{transform:translateX(-8px)}
+      80%{transform:translateX(8px)}
+    }
+    .pin-dots.shake { animation: shake .45s ease; }
+
+    .pin-error { font-size: 0.75rem; color: #ff8a80; min-height: 1em; transition: opacity .2s; }
+    .pin-version {
+      font-size: 0.85rem; color: #c8e6c9; align-self: flex-end;
+      margin: 0 20px 8px 0; padding: 4px 14px;
+      border-radius: 999px;
+    }
+
+    /* Numpad */
+    .numpad {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 14px; padding: 18px 32px; width: 100%; max-width: 340px;
+      border-radius: 28px;
+    }
+    .num-key {
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.10);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.16);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      font-size: 1.5rem; font-weight: 300; color: #e8f5e9;
+      cursor: pointer; user-select: none;
+      transition: background .1s, transform .1s;
+      position: relative;
+    }
+    .num-key:active { background: rgba(105,240,174,0.3); transform: scale(0.93); }
+    .num-key.empty  { background: transparent; border-color: transparent; pointer-events: none; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
+    .num-key.del    { font-size: 1.2rem; color: #c8e6c9; }
+    .num-key sub    { font-size: 0.45rem; letter-spacing: 1px; color: #b8d8bb; line-height: 1; }
+
+    /* ── HOME SCREEN ── */
+    #home-screen {
+      position: fixed; inset: 0;
+      display: none; flex-direction: column;
+      background:
+        linear-gradient(180deg, rgba(8,20,12,0.6) 0%, rgba(8,20,12,0.78) 50%, rgba(6,16,10,0.94) 100%),
+        url('./bg-home.jpg') center/cover no-repeat fixed;
+      opacity: 0; transition: opacity .35s ease;
+    }
+    #home-screen.visible { opacity: 1; }
+
+    .home-header {
+      display: flex; align-items: center; gap: 12px;
+      margin: calc(env(safe-area-inset-top, 0px) + 14px) 16px 14px;
+      padding: 14px 18px;
+      border-radius: 20px;
+      flex-shrink: 0;
+    }
+    .home-logo { width: 44px; height: 44px; object-fit: contain; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.4)); }
+    .home-title-block { flex: 1; }
+    .home-title { font-size: 1rem; font-weight: 800; letter-spacing: 2px; color: #f1f8f2; text-shadow: 0 1px 6px rgba(0,0,0,0.4); }
+    .home-sub   { font-size: 0.6rem; letter-spacing: 1.5px; color: #c8e6c9; font-weight: 600; }
+
+    .apps-grid {
+      flex: 1; overflow-y: auto;
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 12px; padding: 4px 16px 16px;
+      padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+      align-content: start;
+    }
+
+    .app-card {
+      border-radius: 18px;
+      padding: 18px 14px 16px;
+      display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+      cursor: pointer; user-select: none;
+      text-decoration: none; color: inherit;
+      transition: transform .15s, background .15s, box-shadow .15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .app-card:active { transform: scale(0.95); background: rgba(105,240,174,0.16); }
+    .app-card.wide { grid-column: span 2; flex-direction: row; align-items: center; gap: 14px; }
+
+    .app-icon { font-size: 1.8rem; line-height: 1; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.35)); }
+    .app-name { font-size: 0.82rem; font-weight: 700; color: #f1f8f2; line-height: 1.2; text-shadow: 0 1px 4px rgba(0,0,0,0.35); }
+    .app-desc { font-size: 0.65rem; color: #cfe8d1; font-weight: 500; }
+    .app-arrow { margin-left: auto; color: #c8e6c9; font-size: 0.8rem; }
+
+    /* ── AVISO DE INSTALAÇÃO ── */
+    #aviso-instalacao {
+      background:
+        linear-gradient(180deg, rgba(8,20,12,0.6) 0%, rgba(8,20,12,0.85) 100%),
+        url('./bg-aviso.jpg') center/cover no-repeat fixed;
+    }
+    .aviso-card {
+      width: 100%; max-width: 420px;
+      padding: 16px;
+      border-radius: 22px;
+    }
+    .aviso-card img {
+      width: 100%; display: block;
+      border-radius: 14px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+    }
+
+  </style>
+</head>
+<body>
+
+  <!-- ── PIN Screen ── -->
+  <div id="pin-screen">
+    <div class="pin-header glass">
+      <img class="pin-logo" src="./Logo-gw.png" alt="GW" />
+      <div class="pin-title">GREEN WALL</div>
+      <div class="pin-sub">SISTEMA DE GESTÃO</div>
+    </div>
+
+    <div class="pin-dots-wrap glass">
+      <div class="pin-dots" id="pin-dots">
+        <div class="pin-dot"></div>
+        <div class="pin-dot"></div>
+        <div class="pin-dot"></div>
+        <div class="pin-dot"></div>
+      </div>
+      <div class="pin-error" id="pin-error"></div>
+    </div>
+
+    <div class="numpad glass">
+      <div class="num-key" onclick="addDigit('1')">1<sub>   </sub></div>
+      <div class="num-key" onclick="addDigit('2')">2<sub>ABC</sub></div>
+      <div class="num-key" onclick="addDigit('3')">3<sub>DEF</sub></div>
+      <div class="num-key" onclick="addDigit('4')">4<sub>GHI</sub></div>
+      <div class="num-key" onclick="addDigit('5')">5<sub>JKL</sub></div>
+      <div class="num-key" onclick="addDigit('6')">6<sub>MNO</sub></div>
+      <div class="num-key" onclick="addDigit('7')">7<sub>PQRS</sub></div>
+      <div class="num-key" onclick="addDigit('8')">8<sub>TUV</sub></div>
+      <div class="num-key" onclick="addDigit('9')">9<sub>WXYZ</sub></div>
+      <div class="num-key empty"></div>
+      <div class="num-key" onclick="addDigit('0')">0</div>
+      <div class="num-key del" onclick="deleteDigit()">⌫</div>
+    </div>
+
+    <div class="pin-version glass">v3.20</div>
+  </div>
+
+  <!-- ── Home Screen ── -->
+  <div id="home-screen">
+    <div class="home-header glass">
+      <img class="home-logo" src="./Logo-gw.png" alt="GW" />
+      <div class="home-title-block">
+        <div class="home-title">GREEN WALL</div>
+        <div class="home-sub">SISTEMA DE GESTÃO</div>
+      </div>
+    </div>
+    <div class="apps-grid" id="apps-grid"></div>
+  </div>
+
+  <!-- Aviso de instalação -->
+  <div id="aviso-instalacao" style="display:none;position:fixed;inset:0;z-index:800;flex-direction:column;align-items:center;justify-content:center;padding:24px;gap:16px;overflow-y:auto;">
+    <div class="aviso-card glass">
+      <img id="aviso-img" src="" alt="Instruções" />
+    </div>
+  </div>
+
+  <script>
+    const PIN_COMPLETO  = '2248'; // todos os apps
+    const PIN_PARCIAL   = '4512'; // todos visíveis, só 4 acessíveis
+    const PIN_RESTRITO  = '3733'; // sem Caixa e sem Relatório
+    const VERSAO = '1.0';
+    let digitado = '';
+    let modo = 'parcial'; // 'completo' | 'parcial' | 'restrito'
+
+    const APPS_PARCIAL_ACESSO = ['Caixa', 'Relatório', 'Mapa', 'Rel. Folha'];
+
+    const APPS = [
+      { icon: '💰', name: 'Caixa',              desc: 'Lançamentos financeiros',   url: 'https://joaoibira-ux.github.io/caixa' },
+      { icon: '📊', name: 'Relatório',           desc: 'Financeiro',                url: 'https://joaoibira-ux.github.io/caixa/relatorio.html' },
+      { icon: '📋', name: 'Folha',               desc: 'Pagamento da produção',     url: 'https://joaoibira-ux.github.io/folha' },
+      { icon: '📄', name: 'Rel. Folha',          desc: 'Previsão de pagamento',     url: 'https://joaoibira-ux.github.io/folha/#relatorio' },
+      { icon: '🗺️', name: 'Mapa',               desc: 'Serviços da obra',          url: 'https://joaoibira-ux.github.io/mapa' },
+      { icon: '👷', name: 'Funcionários',        desc: 'Cadastro e fichas',         url: 'https://joaoibira-ux.github.io/funcionarios' },
+      { icon: '🏪', name: 'Almoxarifado',        desc: 'EPI e Ferramentas',         url: 'https://joaoibira-ux.github.io/almoxarifado' },
+      { icon: '🏢', name: 'Locais',              desc: 'Cadastro de locais',        url: 'https://joaoibira-ux.github.io/locais' },
+      { icon: '🔧', name: 'Serviços',            desc: 'Cadastro de serviços',      url: 'https://joaoibira-ux.github.io/servicos' },
+    ];
+
+    // Já autenticado nesta sessão?
+    const _sessao = sessionStorage.getItem('gw_auth');
+    if (_sessao === 'completo')  { modo = 'completo';  mostrarHome(false); }
+    else if (_sessao === 'parcial')   { modo = 'parcial';   mostrarHome(false); }
+    else if (_sessao === 'restrito')  { modo = 'restrito';  mostrarHome(false); }
+
+    function addDigit(d) {
+      if (digitado.length >= 4) return;
+      digitado += d;
+      atualizarDots();
+      if (digitado.length === 4) setTimeout(verificarPin, 180);
+    }
+
+    function deleteDigit() {
+      digitado = digitado.slice(0, -1);
+      atualizarDots();
+      document.getElementById('pin-error').textContent = '';
+    }
+
+    function atualizarDots() {
+      document.querySelectorAll('.pin-dot').forEach((dot, i) => {
+        dot.classList.toggle('filled', i < digitado.length);
+      });
+    }
+
+    function entrarFullscreen() {
+      const el = document.documentElement;
+      try {
+        if (el.requestFullscreen)            el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      } catch(e) {}
+    }
+
+    // Mantém fullscreen ao tocar na tela (Android sai ao tocar)
+    document.addEventListener('touchstart', () => {
+      if (!document.fullscreenElement && !document.webkitFullscreenElement) entrarFullscreen();
+    }, { passive: true });
+
+    function verificarPin() {
+      const pins = { [PIN_COMPLETO]: 'completo', [PIN_PARCIAL]: 'parcial', [PIN_RESTRITO]: 'restrito' };
+      if (pins[digitado]) {
+        modo = pins[digitado];
+        sessionStorage.setItem('gw_auth', modo);
+        entrarFullscreen();
+        document.getElementById('pin-screen').style.opacity = '0';
+        setTimeout(() => mostrarHome(true), 320);
+      } else {
+        const dots = document.getElementById('pin-dots');
+        dots.classList.add('shake');
+        document.getElementById('pin-error').textContent = 'PIN incorreto';
+        setTimeout(() => {
+          dots.classList.remove('shake');
+          digitado = '';
+          atualizarDots();
+          document.getElementById('pin-error').textContent = '';
+        }, 480);
+      }
+    }
+
+    function estaComoApp() {
+      return window.navigator.standalone === true
+          || window.matchMedia('(display-mode: standalone)').matches
+          || window.matchMedia('(display-mode: fullscreen)').matches;
+    }
+
+    function ehMobile() {
+      return /iPad|iPhone|iPod|Android/.test(navigator.userAgent) && !window.MSStream;
+    }
+
+    function mostrarHome(animar) {
+      const pin  = document.getElementById('pin-screen');
+      const home = document.getElementById('home-screen');
+      pin.style.display = 'none';
+
+      if (!estaComoApp() && ehMobile()) {
+        mostrarAvisoInstalacao();
+        return;
+      }
+
+      home.style.display = 'flex';
+      renderApps();
+      if (animar) requestAnimationFrame(() => requestAnimationFrame(() => home.classList.add('visible')));
+      else home.classList.add('visible');
+    }
+
+    function mostrarAvisoInstalacao() {
+      const isIOS     = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+      const isAndroid = /Android/.test(navigator.userAgent);
+      const img = document.getElementById('aviso-img');
+      if (isIOS)     img.src = './Aviso iPhone.png';
+      else if (isAndroid) img.src = './Aviso Adroide.png';
+      else           img.src = './instrucoes_sistema_gw.png';
+      document.getElementById('aviso-instalacao').style.display = 'flex';
+    }
+
+    function renderApps() {
+      const grid = document.getElementById('apps-grid');
+      let lista = APPS;
+      if (modo === 'restrito') lista = APPS.filter(a => !['Caixa','Relatório'].includes(a.name));
+
+      grid.innerHTML = lista.map((app, i) => {
+        const wide    = (lista.length % 2 !== 0 && i === lista.length - 1) ? ' wide' : '';
+        const bloq    = modo === 'parcial' && !APPS_PARCIAL_ACESSO.includes(app.name);
+        const href    = bloq ? '' : `href="${app.url}"`;
+        const opacity = bloq ? 'opacity:0.35;cursor:default;pointer-events:none;' : '';
+        return `
+          <a class="app-card glass${wide}" ${href} style="${opacity}">
+            <div class="app-icon">${app.icon}</div>
+            <div>
+              <div class="app-name">${app.name}</div>
+              <div class="app-desc">${app.desc}</div>
+            </div>
+            ${wide ? '<div class="app-arrow">→</div>' : ''}
+          </a>`;
+      }).join('');
+    }
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    }
+  </script>
+</body>
+</html>
