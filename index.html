@@ -104,12 +104,27 @@
     #home-screen {
       position: fixed; inset: 0;
       display: none; flex-direction: column;
-      background:
-        linear-gradient(180deg, rgba(8,20,12,0.6) 0%, rgba(8,20,12,0.78) 50%, rgba(6,16,10,0.94) 100%),
-        url('./bg-pin.jpg') center/cover no-repeat scroll;
+      background: #0a1a0f;
       opacity: 0; transition: opacity .35s ease;
+      overflow: hidden;
     }
     #home-screen.visible { opacity: 1; }
+    #home-screen .home-bg {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      z-index: 0;
+    }
+    #home-screen .home-bg-tint {
+      position: absolute; inset: 0;
+      background: linear-gradient(180deg, rgba(8,20,12,0.6) 0%, rgba(8,20,12,0.78) 50%, rgba(6,16,10,0.94) 100%);
+      z-index: 1;
+    }
+    #home-screen > .home-header,
+    #home-screen > .apps-grid {
+      position: relative;
+      z-index: 2;
+    }
 
     .home-header {
       display: flex; align-items: center; gap: 12px;
@@ -228,6 +243,8 @@
 
   <!-- ── Home Screen ── -->
   <div id="home-screen">
+    <img class="home-bg" src="./bg-pin.jpg" alt="" />
+    <div class="home-bg-tint"></div>
     <div class="home-header glass">
       <img class="home-logo" src="./Logo-gw.png" alt="GW" />
       <div class="home-title-block">
