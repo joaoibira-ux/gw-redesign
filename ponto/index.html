@@ -476,7 +476,7 @@ const FIREBASE_CONFIG = {
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 const MATCH_THRESHOLD = 0.55;
 const SENHA_ADMIN     = '2248';
-const VERSAO          = '1.7';
+const VERSAO          = '1.8';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let db;
@@ -492,7 +492,6 @@ let pendingPonto       = null;      // { funcionarioId, funcionarioNome, tipo, .
 let selectedFunc       = null;      // { id, nome } for face registration
 let holdTimer          = null;
 let lastRecognizeAt    = 0;
-let lastPontoAt        = 0;
 let adminStep          = 'pin';
 
 // ── INIT ───────────────────────────────────────────────────────────────────
@@ -622,27 +621,13 @@ function iniciarDeteccao() {
         setCamStatus('Rosto detectado');
         setCamHint('Aguarde o reconhecimento...');
         const now = Date.now();
-        const cooldownMs = 8000;
-        const inCooldown = now - lastPontoAt < cooldownMs;
-        if (inCooldown) {
-          const secs = Math.ceil((cooldownMs - (now - lastPontoAt)) / 1000);
-          setCamStatus('Ponto registrado ✓');
-          setCamHint(`Próximo registro em ${secs}s`);
-        } else {
-          setCamStatus('Rosto detectado');
-          setCamHint('Aguarde o reconhecimento...');
-          if (now - lastRecognizeAt > 2200) {
-            lastRecognizeAt = now;
-            reconhecerFace(video);
-          }
+        if (now - lastRecognizeAt > 2200) {
+          lastRecognizeAt = now;
+          reconhecerFace(video);
         }
       } else {
-        const now2 = Date.now();
-        const inCooldown2 = now2 - lastPontoAt < 8000;
-        setCamStatus(inCooldown2 ? 'Ponto registrado ✓' : 'Aguardando rosto...');
-        setCamHint(inCooldown2
-          ? `Próximo registro em ${Math.ceil((8000 - (now2 - lastPontoAt)) / 1000)}s`
-          : 'Posicione seu rosto no centro');
+        setCamStatus('Aguardando rosto...');
+        setCamHint('Posicione seu rosto no centro');
       }
     }
     detectionLoop = requestAnimationFrame(tick);
@@ -743,12 +728,11 @@ async function confirmarPonto() {
 }
 
 function mostrarSucesso(ponto) {
-  lastPontoAt = Date.now();
   document.getElementById('suc-tipo').textContent = ponto.tipo === 'entrada' ? '● ENTRADA' : '● SAÍDA';
   document.getElementById('suc-nome').textContent = ponto.funcionarioNome || '';
   document.getElementById('suc-hora').textContent = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   showScreen('s-success');
-  setTimeout(() => { voltarCamera(); }, 3500);
+  setTimeout(() => { fecharApp(); }, 3500);
 }
 
 function mostrarNaoEncontrado() {
