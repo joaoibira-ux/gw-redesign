@@ -71,9 +71,8 @@
 
     .pin-error { font-size: 0.75rem; color: #ff8a80; min-height: 1em; transition: opacity .2s; }
     .pin-version {
-      font-size: 0.85rem; color: #c8e6c9; align-self: flex-end;
-      margin: 0 20px 8px 0; padding: 4px 14px;
-      border-radius: 999px;
+      font-size: 0.55rem; color: #a5d6a7; letter-spacing: 1px;
+      align-self: flex-end; margin-top: 3px;
     }
 
     /* Numpad */
@@ -211,6 +210,7 @@
       <img class="pin-logo" src="./Logo-gw.png" alt="GW" />
       <div class="pin-title">GREEN WALL</div>
       <div class="pin-sub">SISTEMA DE GESTÃO</div>
+      <div class="pin-version" id="pin-version-display"></div>
     </div>
 
     <div class="pin-dots-wrap glass">
@@ -238,7 +238,6 @@
       <div class="num-key del" onclick="deleteDigit()">⌫</div>
     </div>
 
-    <div class="pin-version glass">v3.20</div>
   </div>
 
   <!-- ── Home Screen ── -->
@@ -275,6 +274,7 @@
     const PIN_PARCIAL   = '4512'; // todos visíveis, só 4 acessíveis
     const PIN_RESTRITO  = '3733'; // sem Caixa e sem Relatório
     const VERSAO = '1.0';
+    document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
     let modo = 'parcial'; // 'completo' | 'parcial' | 'restrito'
 
