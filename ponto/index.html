@@ -476,7 +476,7 @@ const FIREBASE_CONFIG = {
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 const MATCH_THRESHOLD = 0.55;
 const SENHA_ADMIN     = '2248';
-const VERSAO          = '1.8';
+const VERSAO          = '1.9';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let db;
@@ -654,8 +654,8 @@ async function reconhecerFace(video) {
   const func = getFuncById(match.label);
   if (!func) { paused = false; return; }
 
-  const tipo = await determinarTipo(func.id);
-  mostrarConfirmacao(func, tipo);
+  const { tipo, docId } = await determinarTipo(func.id);
+  mostrarConfirmacao(func, tipo, docId);
 }
 
 async function determinarTipo(funcId) {
@@ -665,16 +665,20 @@ async function determinarTipo(funcId) {
     const snap = await db.collection('pontos')
       .where('funcionarioId', '==', funcId)
       .where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(inicio))
-      .orderBy('timestamp', 'desc')
-      .limit(1)
+      .orderBy('timestamp', 'asc')
       .get();
-    if (snap.empty) return 'entrada';
-    return snap.docs[0].data().tipo === 'entrada' ? 'saida' : 'entrada';
-  } catch { return 'entrada'; }
+    if (snap.empty) return { tipo: 'entrada', docId: null };
+    const temEntrada = snap.docs.some(d => d.data().tipo === 'entrada');
+    const saidaDoc   = snap.docs.find(d => d.data().tipo === 'saida');
+    if (!temEntrada) return { tipo: 'entrada', docId: null };
+    if (!saidaDoc)   return { tipo: 'saida',   docId: null };
+    // já tem entrada + saída: atualiza a saída existente
+    return { tipo: 'saida', docId: saidaDoc.id };
+  } catch { return { tipo: 'entrada', docId: null }; }
 }
 
 // ── CONFIRMATION ───────────────────────────────────────────────────────────
-function mostrarConfirmacao(func, tipo) {
+function mostrarConfirmacao(func, tipo, docId = null) {
   const now = new Date();
 
   const photoEl = document.getElementById('emp-photo');
@@ -694,7 +698,7 @@ function mostrarConfirmacao(func, tipo) {
   document.getElementById('emp-hora').textContent = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   document.getElementById('emp-data').textContent = now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
 
-  pendingPonto = { funcionarioId: func.id, funcionarioNome: func.nome, tipo };
+  pendingPonto = { funcionarioId: func.id, funcionarioNome: func.nome, tipo, docId };
 
   showScreen('s-camera');
   document.getElementById('panel-confirm').classList.add('active');
@@ -714,11 +718,19 @@ async function confirmarPonto() {
   try { localizacao = await getPosicao(); } catch {}
 
   try {
-    await db.collection('pontos').add({
-      ...pendingPonto,
-      timestamp:   firebase.firestore.FieldValue.serverTimestamp(),
-      localizacao
-    });
+    const { docId, ...dadosPonto } = pendingPonto;
+    if (docId) {
+      await db.collection('pontos').doc(docId).update({
+        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+        localizacao
+      });
+    } else {
+      await db.collection('pontos').add({
+        ...dadosPonto,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+        localizacao
+      });
+    }
     mostrarSucesso(pendingPonto);
   } catch (e) {
     alert('Erro ao salvar ponto. Verifique a conexão.');
