@@ -474,9 +474,9 @@ const FIREBASE_CONFIG = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
-const MATCH_THRESHOLD = 0.46;
+const MATCH_THRESHOLD = 0.55;
 const SENHA_ADMIN     = '2248';
-const VERSAO          = '1.4';
+const VERSAO          = '1.5';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let db;
@@ -636,7 +636,7 @@ function iniciarDeteccao() {
 }
 
 async function reconhecerFace(video) {
-  if (labeledDescriptors.length === 0) { mostrarNaoEncontrado(); return; }
+  if (labeledDescriptors.length === 0) { return; }
 
   const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.5 });
   const det  = await faceapi.detectSingleFace(video, opts)
@@ -794,7 +794,6 @@ function verificarSetupOk() {
 }
 
 async function finalizarSetup() {
-  await carregarFuncionarios();
   await iniciarCameraMain();
   showScreen('s-camera');
   iniciarDeteccao();
@@ -906,7 +905,12 @@ async function iniciarRegistroFace(id, nome) {
 
 function cancelarRegistro() {
   pararRegStream();
-  showScreen('s-camera');
+  if (inSetupMode) {
+    inSetupMode = false;
+    showScreen('s-setup');
+  } else {
+    showScreen('s-camera');
+  }
 }
 
 function pararRegStream() {
