@@ -132,7 +132,7 @@
       border-radius: 20px;
       flex-shrink: 0;
     }
-    .home-logo { width: 44px; height: 44px; object-fit: contain; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.4)); }
+    .home-logo { width: 44px; height: 44px; object-fit: contain; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.4)); -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
     .home-title-block { flex: 1; }
     .home-title { font-size: 1rem; font-weight: 800; letter-spacing: 2px; color: #f1f8f2; text-shadow: 0 1px 6px rgba(0,0,0,0.4); }
     .home-sub   { font-size: 0.6rem; letter-spacing: 1.5px; color: #c8e6c9; font-weight: 600; }
@@ -245,7 +245,7 @@
     <img class="home-bg" src="./bg-pin.jpg" alt="" />
     <div class="home-bg-tint"></div>
     <div class="home-header glass">
-      <img class="home-logo" src="./Logo-gw.png" alt="GW" />
+      <img class="home-logo" src="./Logo-gw.png" alt="GW" draggable="false" />
       <div class="home-title-block">
         <div class="home-title">GREEN WALL</div>
         <div class="home-sub">SISTEMA DE GESTÃO</div>
@@ -273,7 +273,7 @@
     const PIN_COMPLETO  = '2248'; // todos os apps
     const PIN_PARCIAL   = '4512'; // todos visíveis, só 4 acessíveis
     const PIN_RESTRITO  = '3733'; // sem Caixa e sem Relatório
-    const VERSAO = '1.1';
+    const VERSAO = '1.2';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
     let modo = 'parcial'; // 'completo' | 'parcial' | 'restrito'

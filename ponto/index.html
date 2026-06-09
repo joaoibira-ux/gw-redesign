@@ -98,8 +98,10 @@
     .cam-logo {
       width: 34px; height: 34px; object-fit: contain;
       filter: drop-shadow(0 1px 4px rgba(0,0,0,.5));
-      cursor: pointer; /* long-press for admin */
+      cursor: pointer;
       -webkit-user-select: none; user-select: none;
+      -webkit-touch-callout: none;
+      pointer-events: auto;
     }
     .cam-title-block { flex: 1; }
     .cam-title  { font-size: .88rem; font-weight: 800; letter-spacing: 2px; color: #f1f8f2; text-shadow: 0 1px 4px rgba(0,0,0,.5); }
@@ -310,7 +312,7 @@
   <div class="face-oval" id="face-oval"></div>
 
   <div class="cam-top glass">
-    <img class="cam-logo" id="cam-logo" src="../Logo-gw.png" alt="GW" />
+    <img class="cam-logo" id="cam-logo" src="../Logo-gw.png" alt="GW" draggable="false" />
     <div class="cam-title-block">
       <div class="cam-title">PONTO</div>
       <div class="cam-status" id="cam-status">Aguardando rosto...</div>
@@ -667,9 +669,10 @@ function voltarCamera() {
 // ── ADMIN MODE (long-press camera logo = 3s) ───────────────────────────────
 function setupAdminHold() {
   const logo = document.getElementById('cam-logo');
-  logo.addEventListener('touchstart', () => {
+  logo.addEventListener('touchstart', e => {
+    e.preventDefault();   // bloqueia menu nativo do iOS em imagens
     holdTimer = setTimeout(abrirAdminModal, 3000);
-  }, { passive: true });
+  }, { passive: false });
   ['touchend','touchcancel','touchmove'].forEach(ev =>
     logo.addEventListener(ev, () => clearTimeout(holdTimer), { passive: true })
   );
