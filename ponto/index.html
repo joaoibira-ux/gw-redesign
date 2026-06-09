@@ -476,7 +476,7 @@ const FIREBASE_CONFIG = {
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 const MATCH_THRESHOLD = 0.55;
 const SENHA_ADMIN     = '2248';
-const VERSAO          = '1.9';
+const VERSAO          = '2.0';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let db;
@@ -665,16 +665,15 @@ async function determinarTipo(funcId) {
     const snap = await db.collection('pontos')
       .where('funcionarioId', '==', funcId)
       .where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(inicio))
-      .orderBy('timestamp', 'asc')
+      .orderBy('timestamp', 'desc')
       .get();
     if (snap.empty) return { tipo: 'entrada', docId: null };
     const temEntrada = snap.docs.some(d => d.data().tipo === 'entrada');
     const saidaDoc   = snap.docs.find(d => d.data().tipo === 'saida');
     if (!temEntrada) return { tipo: 'entrada', docId: null };
     if (!saidaDoc)   return { tipo: 'saida',   docId: null };
-    // já tem entrada + saída: atualiza a saída existente
     return { tipo: 'saida', docId: saidaDoc.id };
-  } catch { return { tipo: 'entrada', docId: null }; }
+  } catch(e) { console.error('determinarTipo:', e); return { tipo: 'entrada', docId: null }; }
 }
 
 // ── CONFIRMATION ───────────────────────────────────────────────────────────
