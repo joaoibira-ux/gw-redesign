@@ -476,7 +476,7 @@ const FIREBASE_CONFIG = {
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 const MATCH_THRESHOLD = 0.55;
 const SENHA_ADMIN     = '2248';
-const VERSAO          = '1.6';
+const VERSAO          = '1.7';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let db;
@@ -622,13 +622,27 @@ function iniciarDeteccao() {
         setCamStatus('Rosto detectado');
         setCamHint('Aguarde o reconhecimento...');
         const now = Date.now();
-        if (now - lastRecognizeAt > 2200 && now - lastPontoAt > 30000) {
-          lastRecognizeAt = now;
-          reconhecerFace(video);
+        const cooldownMs = 8000;
+        const inCooldown = now - lastPontoAt < cooldownMs;
+        if (inCooldown) {
+          const secs = Math.ceil((cooldownMs - (now - lastPontoAt)) / 1000);
+          setCamStatus('Ponto registrado ✓');
+          setCamHint(`Próximo registro em ${secs}s`);
+        } else {
+          setCamStatus('Rosto detectado');
+          setCamHint('Aguarde o reconhecimento...');
+          if (now - lastRecognizeAt > 2200) {
+            lastRecognizeAt = now;
+            reconhecerFace(video);
+          }
         }
       } else {
-        setCamStatus('Aguardando rosto...');
-        setCamHint('Posicione seu rosto no centro');
+        const now2 = Date.now();
+        const inCooldown2 = now2 - lastPontoAt < 8000;
+        setCamStatus(inCooldown2 ? 'Ponto registrado ✓' : 'Aguardando rosto...');
+        setCamHint(inCooldown2
+          ? `Próximo registro em ${Math.ceil((8000 - (now2 - lastPontoAt)) / 1000)}s`
+          : 'Posicione seu rosto no centro');
       }
     }
     detectionLoop = requestAnimationFrame(tick);
