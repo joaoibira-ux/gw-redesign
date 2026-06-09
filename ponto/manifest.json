@@ -1,0 +1,12 @@
+{
+  "name": "PONTO GW",
+  "short_name": "PONTO",
+  "start_url": "./index.html",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#0a1a0f",
+  "theme_color": "#0a1a0f",
+  "icons": [
+    { "src": "../Logo-gw.png", "sizes": "192x192", "type": "image/png" }
+  ]
+}

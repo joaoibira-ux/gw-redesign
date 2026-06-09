@@ -273,7 +273,7 @@
     const PIN_COMPLETO  = '2248'; // todos os apps
     const PIN_PARCIAL   = '4512'; // todos visíveis, só 4 acessíveis
     const PIN_RESTRITO  = '3733'; // sem Caixa e sem Relatório
-    const VERSAO = '1.0';
+    const VERSAO = '1.1';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
     let modo = 'parcial'; // 'completo' | 'parcial' | 'restrito'
@@ -290,6 +290,7 @@
       { icon: '🏪', name: 'Almoxarifado',        desc: 'EPI e Ferramentas',         url: 'https://joaoibira-ux.github.io/almoxarifado' },
       { icon: '🏢', name: 'Locais',              desc: 'Cadastro de locais',        url: 'https://joaoibira-ux.github.io/locais' },
       { icon: '🔧', name: 'Serviços',            desc: 'Cadastro de serviços',      url: 'https://joaoibira-ux.github.io/servicos' },
+      { icon: '🕐', name: 'Ponto',              desc: 'Registro de presença',       url: 'https://joaoibira-ux.github.io/gw-redesign/ponto/' },
     ];
 
     // Já autenticado nesta sessão?

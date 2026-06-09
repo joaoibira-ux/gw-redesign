@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PONTO" />
+  <title>PONTO · GW</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="apple-touch-icon" href="../Logo-gw.png" />
+
+  <!-- Firebase Compat -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      height: 100%; height: 100dvh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0a1a0f; color: #e8f5e9; overflow: hidden;
+    }
+
+    .glass {
+      background: rgba(255,255,255,0.08);
+      backdrop-filter: blur(20px) saturate(150%);
+      -webkit-backdrop-filter: blur(20px) saturate(150%);
+      border: 1px solid rgba(255,255,255,0.16);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+    }
+
+    /* ── SCREENS ── */
+    .screen { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; }
+    .screen.active { display: flex; animation: fadeIn .3s ease; }
+    @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+
+    /* ── LOADING ── */
+    #s-loading {
+      background: linear-gradient(160deg, rgba(15,46,28,.97) 0%, rgba(6,16,10,.99) 100%);
+      gap: 18px; text-align: center;
+      padding: env(safe-area-inset-top,20px) 20px env(safe-area-inset-bottom,20px);
+    }
+    .ld-logo { width: 72px; filter: drop-shadow(0 4px 12px rgba(0,0,0,.4)); }
+    .ld-title { font-size: 1.2rem; font-weight: 800; letter-spacing: 4px; color: #e8f5e9; }
+    .ld-sub   { font-size: .62rem; letter-spacing: 2px; color: #b8d8bb; }
+    .spinner  { width: 38px; height: 38px; border: 3px solid rgba(105,240,174,.2); border-top-color: #69f0ae; border-radius: 50%; animation: spin .9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .ld-status { font-size: .78rem; color: #a5d6a7; letter-spacing: 1px; }
+
+    /* ── INSTALL NOTICE ── */
+    #s-install {
+      background: linear-gradient(160deg, rgba(15,46,28,.97) 0%, rgba(6,16,10,.99) 100%);
+      gap: 18px; text-align: center;
+      padding: env(safe-area-inset-top,20px) 24px env(safe-area-inset-bottom,20px);
+    }
+    .inst-icon  { font-size: 3.5rem; }
+    .inst-title { font-size: 1.1rem; font-weight: 800; color: #f1f8f2; }
+    .inst-msg   { font-size: .82rem; color: #cfe8d1; line-height: 1.6; max-width: 280px; }
+    .btn-instalar {
+      padding: 14px 28px;
+      background: linear-gradient(135deg, rgba(76,175,80,.5), rgba(27,94,32,.6));
+      border: 1px solid rgba(255,255,255,.2); border-radius: 14px;
+      color: #fff; font-size: .9rem; font-weight: 800;
+      cursor: pointer; text-decoration: none; display: inline-block;
+    }
+
+    /* ── LOCATION ERROR ── */
+    #s-loc-error {
+      background: linear-gradient(160deg, rgba(50,10,10,.97) 0%, rgba(20,5,5,.99) 100%);
+      gap: 18px; text-align: center;
+      padding: env(safe-area-inset-top,20px) 24px env(safe-area-inset-bottom,20px);
+    }
+    .err-icon  { font-size: 4rem; }
+    .err-title { font-size: 1rem; font-weight: 800; color: #ff8a80; letter-spacing: 1px; }
+    .err-msg   { font-size: .83rem; color: #ffcdd2; line-height: 1.6; max-width: 280px; }
+    .btn-fechar {
+      padding: 13px 28px;
+      background: rgba(255,100,80,.2); border: 1px solid rgba(255,100,80,.4); border-radius: 13px;
+      color: #ff8a80; font-size: .88rem; font-weight: 700; cursor: pointer;
+    }
+
+    /* ── CAMERA SCREEN ── */
+    #s-camera { padding: 0; background: #000; }
+    #s-camera.active { display: block; position: fixed; inset: 0; }
+
+    #video {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      object-fit: cover; transform: scaleX(-1);
+    }
+
+    /* Semi-transparent top/bottom bars */
+    .cam-top {
+      position: absolute; top: 0; left: 0; right: 0; z-index: 10;
+      padding: calc(env(safe-area-inset-top,0px) + 12px) 14px 12px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .cam-logo {
+      width: 34px; height: 34px; object-fit: contain;
+      filter: drop-shadow(0 1px 4px rgba(0,0,0,.5));
+      cursor: pointer; /* long-press for admin */
+      -webkit-user-select: none; user-select: none;
+    }
+    .cam-title-block { flex: 1; }
+    .cam-title  { font-size: .88rem; font-weight: 800; letter-spacing: 2px; color: #f1f8f2; text-shadow: 0 1px 4px rgba(0,0,0,.5); }
+    .cam-status { font-size: .58rem; letter-spacing: 1.5px; color: #a5d6a7; }
+    .btn-voltar {
+      padding: 7px 13px;
+      background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.18); border-radius: 9px;
+      color: #e8f5e9; font-size: .74rem; font-weight: 600; text-decoration: none;
+    }
+
+    .cam-bot {
+      position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
+      padding: 12px 20px calc(env(safe-area-inset-bottom,0px) + 12px);
+      text-align: center;
+    }
+    .cam-hint {
+      font-size: .78rem; color: #c8e6c9;
+      text-shadow: 0 1px 6px rgba(0,0,0,.8);
+    }
+
+    /* Face guide oval */
+    .face-oval {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -55%);
+      width: min(62vw, 240px); height: min(80vw, 310px);
+      border-radius: 50%;
+      border: 2.5px dashed rgba(105,240,174,.4);
+      box-shadow: 0 0 0 2000px rgba(0,0,0,.38);
+      z-index: 5; pointer-events: none;
+      transition: border-color .3s, border-style .3s;
+    }
+    .face-oval.detected { border-color: #69f0ae; border-style: solid; }
+
+    /* ── CONFIRMATION PANEL (overlaid on camera) ── */
+    #panel-confirm {
+      position: absolute; inset: 0; z-index: 20;
+      display: none; flex-direction: column; align-items: center; justify-content: center;
+      padding: 20px;
+      background: rgba(0,0,0,.72);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    }
+    #panel-confirm.active { display: flex; }
+
+    .emp-card {
+      width: 100%; max-width: 340px;
+      border-radius: 22px; padding: 22px 18px 18px;
+      display: flex; flex-direction: column; align-items: center; gap: 10px;
+      text-align: center;
+    }
+    .emp-photo {
+      width: 76px; height: 76px; border-radius: 50%;
+      background: rgba(105,240,174,.1); border: 2.5px solid rgba(105,240,174,.4);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 2.2rem; overflow: hidden; flex-shrink: 0;
+    }
+    .emp-photo img { width: 100%; height: 100%; object-fit: cover; }
+    .emp-name  { font-size: 1.05rem; font-weight: 800; color: #f1f8f2; line-height: 1.2; }
+    .emp-cargo { font-size: .68rem; color: #a5d6a7; letter-spacing: 1px; font-weight: 600; text-transform: uppercase; }
+
+    .tipo-badge {
+      padding: 5px 18px; border-radius: 20px;
+      font-size: .82rem; font-weight: 800; letter-spacing: 2px; text-transform: uppercase;
+    }
+    .tipo-badge.entrada { background: rgba(105,240,174,.2); border: 1px solid rgba(105,240,174,.4); color: #69f0ae; }
+    .tipo-badge.saida   { background: rgba(255,138,128,.2); border: 1px solid rgba(255,138,128,.4); color: #ff8a80; }
+
+    .emp-hora { font-size: 1.55rem; font-weight: 300; color: #e8f5e9; letter-spacing: 3px; }
+    .emp-data { font-size: .68rem; color: #b8d8bb; }
+
+    .card-btns { display: flex; gap: 10px; width: 100%; margin-top: 4px; }
+    .btn-confirmar {
+      flex: 2; padding: 13px;
+      background: linear-gradient(135deg, rgba(76,175,80,.5), rgba(27,94,32,.6));
+      border: 1px solid rgba(105,240,174,.3); border-radius: 13px;
+      color: #fff; font-size: .88rem; font-weight: 800; cursor: pointer;
+    }
+    .btn-cancelar {
+      flex: 1; padding: 13px;
+      background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.14); border-radius: 13px;
+      color: #aaa; font-size: .88rem; font-weight: 600; cursor: pointer;
+    }
+
+    /* ── SUCCESS ── */
+    #s-success {
+      background: linear-gradient(160deg, rgba(15,46,28,.97) 0%, rgba(6,16,10,.99) 100%);
+      gap: 14px; text-align: center;
+      padding: env(safe-area-inset-top,20px) 24px env(safe-area-inset-bottom,20px);
+    }
+    .suc-icon  { font-size: 5rem; }
+    .suc-title { font-size: 1.2rem; font-weight: 800; color: #69f0ae; letter-spacing: 1px; }
+    .suc-tipo  { font-size: .85rem; color: #c8e6c9; letter-spacing: 1px; }
+    .suc-nome  { font-size: 1rem; font-weight: 700; color: #f1f8f2; }
+    .suc-hora  { font-size: 1.5rem; font-weight: 300; color: #e8f5e9; letter-spacing: 3px; }
+
+    /* ── NOT FOUND ── */
+    #s-not-found {
+      background: linear-gradient(160deg, rgba(30,22,0,.97) 0%, rgba(10,8,0,.99) 100%);
+      gap: 18px; text-align: center;
+      padding: env(safe-area-inset-top,20px) 24px env(safe-area-inset-bottom,20px);
+    }
+    .nf-icon  { font-size: 4rem; }
+    .nf-title { font-size: 1rem; font-weight: 800; color: #ffd54f; }
+    .nf-msg   { font-size: .8rem; color: #fff9c4; line-height: 1.6; max-width: 260px; }
+    .btn-retry {
+      padding: 13px 26px;
+      background: rgba(255,213,79,.18); border: 1px solid rgba(255,213,79,.4); border-radius: 13px;
+      color: #ffd54f; font-size: .88rem; font-weight: 700; cursor: pointer;
+    }
+
+    /* ── ADMIN MODAL ── */
+    #modal-admin {
+      position: fixed; inset: 0; z-index: 100;
+      display: none; align-items: center; justify-content: center;
+      background: rgba(0,0,0,.72); padding: 20px;
+    }
+    #modal-admin.open { display: flex; }
+    .adm-card {
+      width: 100%; max-width: 320px;
+      border-radius: 22px; padding: 22px 18px;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .adm-title { font-size: .88rem; font-weight: 800; letter-spacing: 2px; color: #e8f5e9; text-align: center; }
+    .adm-input {
+      width: 100%; padding: 12px 14px;
+      background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2); border-radius: 11px;
+      color: #e8f5e9; font-size: 1.1rem; letter-spacing: 4px; text-align: center; outline: none;
+      -webkit-appearance: none;
+    }
+    .adm-btn {
+      padding: 11px 14px;
+      background: rgba(105,240,174,.18); border: 1px solid rgba(105,240,174,.3); border-radius: 11px;
+      color: #69f0ae; font-size: .82rem; font-weight: 700; cursor: pointer; text-align: center;
+    }
+    .adm-btn.secondary {
+      background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.14); color: #b0bec5;
+    }
+    .adm-list { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+    .adm-func {
+      padding: 10px 13px;
+      background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-radius: 10px;
+      display: flex; justify-content: space-between; align-items: center; cursor: pointer;
+    }
+    .adm-func:active { background: rgba(105,240,174,.15); }
+    .adm-func-name   { font-size: .82rem; color: #e8f5e9; font-weight: 600; }
+    .adm-func-tag    { font-size: .62rem; color: #69f0ae; }
+    .adm-func-tag.no { color: #ff8a80; }
+
+    /* ── REGISTER FACE SCREEN ── */
+    #s-register { padding: 0; background: #000; }
+    #s-register.active { display: block; position: fixed; inset: 0; }
+    #video-reg {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      object-fit: cover; transform: scaleX(-1);
+    }
+    .reg-top {
+      position: absolute; top: 0; left: 0; right: 0; z-index: 10;
+      padding: calc(env(safe-area-inset-top,0px) + 12px) 14px 12px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .reg-bot {
+      position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
+      padding: 14px 20px calc(env(safe-area-inset-bottom,0px) + 16px);
+      display: flex; flex-direction: column; align-items: center; gap: 12px;
+    }
+    .reg-hint { font-size: .78rem; color: #c8e6c9; text-shadow: 0 1px 6px rgba(0,0,0,.8); }
+    .btn-capture {
+      width: 68px; height: 68px; border-radius: 50%;
+      background: #fff; border: 4px solid rgba(105,240,174,.6);
+      cursor: pointer; box-shadow: 0 4px 18px rgba(0,0,0,.5);
+    }
+    .btn-capture:disabled { opacity: .5; cursor: default; }
+  </style>
+</head>
+<body>
+
+<!-- bfcache fix (iOS) -->
+<script>window.addEventListener('pageshow', e => { if (e.persisted) location.reload(); });</script>
+
+<!-- ── LOADING ── -->
+<div id="s-loading" class="screen active">
+  <img class="ld-logo" src="../Logo-gw.png" alt="GW" />
+  <div class="ld-title">PONTO</div>
+  <div class="ld-sub">SISTEMA GREEN WALL</div>
+  <div class="spinner"></div>
+  <div class="ld-status" id="ld-status">Iniciando...</div>
+</div>
+
+<!-- ── INSTALL NOTICE ── -->
+<div id="s-install" class="screen">
+  <img class="ld-logo" src="../Logo-gw.png" alt="GW" />
+  <div class="inst-icon">📲</div>
+  <div class="inst-title">Instale o Sistema GW</div>
+  <div class="inst-msg">Para usar o registro de ponto, instale o Sistema GW na tela inicial do seu celular e abra por lá.</div>
+  <a class="btn-instalar" href="https://joaoibira-ux.github.io/gw-redesign/instalar.html">Ver instruções de instalação</a>
+</div>
+
+<!-- ── LOCATION ERROR ── -->
+<div id="s-loc-error" class="screen">
+  <div class="err-icon">📍</div>
+  <div class="err-title">LOCALIZAÇÃO NÃO AUTORIZADA</div>
+  <div class="err-msg">Você não está na localização de trabalho. O registro de ponto só está disponível no local da obra.</div>
+  <button class="btn-fechar" onclick="fecharApp()">Fechar</button>
+</div>
+
+<!-- ── CAMERA ── -->
+<div id="s-camera" class="screen">
+  <video id="video" autoplay muted playsinline></video>
+  <div class="face-oval" id="face-oval"></div>
+
+  <div class="cam-top glass">
+    <img class="cam-logo" id="cam-logo" src="../Logo-gw.png" alt="GW" />
+    <div class="cam-title-block">
+      <div class="cam-title">PONTO</div>
+      <div class="cam-status" id="cam-status">Aguardando rosto...</div>
+    </div>
+    <a class="btn-voltar" href="https://joaoibira-ux.github.io/gw-redesign/">← Menu</a>
+  </div>
+
+  <div class="cam-bot glass">
+    <div class="cam-hint" id="cam-hint">Posicione seu rosto no centro</div>
+  </div>
+
+  <!-- Confirmation panel (overlaid on camera) -->
+  <div id="panel-confirm">
+    <div class="emp-card glass">
+      <div class="emp-photo" id="emp-photo">👤</div>
+      <div class="emp-name"  id="emp-name">—</div>
+      <div class="emp-cargo" id="emp-cargo"></div>
+      <div class="tipo-badge entrada" id="tipo-badge">ENTRADA</div>
+      <div class="emp-hora" id="emp-hora">00:00</div>
+      <div class="emp-data" id="emp-data">—</div>
+      <div class="card-btns">
+        <button class="btn-confirmar" onclick="confirmarPonto()">✓ Confirmar</button>
+        <button class="btn-cancelar"  onclick="cancelarConfirmacao()">✗</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── SUCCESS ── -->
+<div id="s-success" class="screen">
+  <div class="suc-icon">✅</div>
+  <div class="suc-title">PONTO REGISTRADO</div>
+  <div class="suc-tipo" id="suc-tipo">ENTRADA</div>
+  <div class="suc-nome" id="suc-nome">—</div>
+  <div class="suc-hora" id="suc-hora">00:00</div>
+</div>
+
+<!-- ── NOT FOUND ── -->
+<div id="s-not-found" class="screen">
+  <div class="nf-icon">⚠️</div>
+  <div class="nf-title">ROSTO NÃO RECONHECIDO</div>
+  <div class="nf-msg">Funcionário não encontrado. Melhore a iluminação, aproxime-se mais ou contate o administrador.</div>
+  <button class="btn-retry" onclick="voltarCamera()">↩ Tentar novamente</button>
+</div>
+
+<!-- ── ADMIN MODAL ── -->
+<div id="modal-admin">
+  <div class="adm-card glass" id="adm-content"></div>
+</div>
+
+<!-- ── REGISTER FACE ── -->
+<div id="s-register" class="screen">
+  <video id="video-reg" autoplay muted playsinline></video>
+  <div class="face-oval" id="face-oval-reg"></div>
+
+  <div class="reg-top glass">
+    <button class="btn-voltar" onclick="cancelarRegistro()">← Voltar</button>
+    <div class="cam-title-block" style="text-align:center">
+      <div class="cam-title">REGISTRAR FACE</div>
+      <div class="cam-status" id="reg-func-name">—</div>
+    </div>
+  </div>
+
+  <div class="reg-bot">
+    <div class="reg-hint" id="reg-hint">Posicione o rosto no oval e capture</div>
+    <button class="btn-capture" id="btn-capture" onclick="capturarFace()"></button>
+  </div>
+</div>
+
+<!-- face-api.js -->
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+
+<script>
+'use strict';
+
+// ── CONSTANTS ──────────────────────────────────────────────────────────────
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBaqROPsywPgtKjQU7cs1ke1WaqDFhWwn0",
+  authDomain: "sistema-gw-36566.firebaseapp.com",
+  projectId: "sistema-gw-36566",
+  storageBucket: "sistema-gw-36566.firebasestorage.app",
+  messagingSenderId: "472820177992",
+  appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
+};
+const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
+const MATCH_THRESHOLD = 0.46;
+const SENHA_ADMIN     = '4512';
+const VERSAO          = '1.0';
+
+// ── STATE ──────────────────────────────────────────────────────────────────
+let db;
+let mainStream    = null;
+let regStream     = null;
+let detectionLoop = null;
+let modelsLoaded  = false;
+let paused        = false;          // pauses detection loop during confirm/not-found
+let labeledDescriptors = [];        // LabeledFaceDescriptors[]
+let funcionariosCache  = [];        // { id, nome, cargo, faceDescriptor?, fotoThumb? }
+let pontoConfig        = null;      // { latitude, longitude, raio }
+let pendingPonto       = null;      // { funcionarioId, funcionarioNome, tipo, ... }
+let selectedFunc       = null;      // { id, nome } for face registration
+let holdTimer          = null;
+let lastRecognizeAt    = 0;
+let adminStep          = 'pin';
+
+// ── INIT ───────────────────────────────────────────────────────────────────
+window.addEventListener('load', async () => {
+  const isMobile     = /iPad|iPhone|iPod|Android/.test(navigator.userAgent) && !window.MSStream;
+  const isStandalone = window.navigator.standalone === true
+    || window.matchMedia('(display-mode: standalone)').matches
+    || window.matchMedia('(display-mode: fullscreen)').matches;
+
+  if (isMobile && !isStandalone) { showScreen('s-install'); return; }
+
+  firebase.initializeApp(FIREBASE_CONFIG);
+  db = firebase.firestore();
+
+  setStatus('Verificando localização...');
+  await verificarLocalizacao();   // may redirect to s-loc-error
+
+  if (document.getElementById('s-loc-error').classList.contains('active')) return;
+
+  setStatus('Carregando reconhecimento facial...');
+  try {
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODELS_URL),
+      faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODELS_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODELS_URL),
+    ]);
+    modelsLoaded = true;
+  } catch (e) {
+    console.warn('Models error:', e);
+  }
+
+  setStatus('Carregando funcionários...');
+  await carregarFuncionarios();
+
+  setStatus('Iniciando câmera...');
+  await iniciarCameraMain();
+
+  showScreen('s-camera');
+  iniciarDeteccao();
+  setupAdminHold();
+});
+
+// ── GEOLOCATION ────────────────────────────────────────────────────────────
+async function verificarLocalizacao() {
+  try {
+    const snap = await db.collection('config').doc('ponto').get();
+    if (!snap.exists) return;         // sem config → sem bloqueio
+    pontoConfig = snap.data();
+
+    const pos  = await getPosicao();
+    const dist = haversine(pos.lat, pos.lng, pontoConfig.latitude, pontoConfig.longitude);
+    if (dist > (pontoConfig.raio || 200)) showScreen('s-loc-error');
+  } catch (e) {
+    console.warn('Geoloc:', e);
+  }
+}
+
+function getPosicao() {
+  return new Promise((res, rej) => {
+    if (!navigator.geolocation) { res({ lat: 0, lng: 0 }); return; }
+    navigator.geolocation.getCurrentPosition(
+      p => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      rej,
+      { timeout: 10000, maximumAge: 60000 }
+    );
+  });
+}
+
+function haversine(lat1, lng1, lat2, lng2) {
+  const R = 6371000, d2r = Math.PI / 180;
+  const dLat = (lat2 - lat1) * d2r, dLng = (lng2 - lng1) * d2r;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*d2r)*Math.cos(lat2*d2r)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function fecharApp() {
+  window.close();
+  location.href = 'https://joaoibira-ux.github.io/gw-redesign/';
+}
+
+// ── EMPLOYEES ──────────────────────────────────────────────────────────────
+async function carregarFuncionarios() {
+  try {
+    const snap = await db.collection('funcionarios').where('ativo', '==', true).get();
+    funcionariosCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    labeledDescriptors = funcionariosCache
+      .filter(f => Array.isArray(f.faceDescriptor) && f.faceDescriptor.length === 128)
+      .map(f => new faceapi.LabeledFaceDescriptors(
+        f.id,
+        [new Float32Array(f.faceDescriptor)]
+      ));
+  } catch (e) { console.error('Employees:', e); }
+}
+
+function getFuncById(id) { return funcionariosCache.find(f => f.id === id) || null; }
+
+// ── CAMERA (main) ──────────────────────────────────────────────────────────
+async function iniciarCameraMain() {
+  const video = document.getElementById('video');
+  mainStream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+    audio: false
+  });
+  video.srcObject = mainStream;
+  await new Promise(r => { video.onloadedmetadata = r; });
+  await video.play();
+}
+
+// ── DETECTION LOOP ─────────────────────────────────────────────────────────
+function iniciarDeteccao() {
+  const video  = document.getElementById('video');
+  const oval   = document.getElementById('face-oval');
+  const opts   = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
+
+  async function tick() {
+    if (!paused && modelsLoaded && !video.paused && video.readyState >= 2) {
+      const detections = await faceapi.detectAllFaces(video, opts);
+      const hasFace = detections.length > 0;
+      oval.classList.toggle('detected', hasFace);
+
+      if (hasFace) {
+        setCamStatus('Rosto detectado');
+        setCamHint('Aguarde o reconhecimento...');
+        const now = Date.now();
+        if (now - lastRecognizeAt > 2200) {
+          lastRecognizeAt = now;
+          reconhecerFace(video);
+        }
+      } else {
+        setCamStatus('Aguardando rosto...');
+        setCamHint('Posicione seu rosto no centro');
+      }
+    }
+    detectionLoop = requestAnimationFrame(tick);
+  }
+  detectionLoop = requestAnimationFrame(tick);
+}
+
+async function reconhecerFace(video) {
+  if (labeledDescriptors.length === 0) { mostrarNaoEncontrado(); return; }
+
+  const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.5 });
+  const det  = await faceapi.detectSingleFace(video, opts)
+    .withFaceLandmarks(true)     // true = use tiny landmark model
+    .withFaceDescriptor();
+
+  if (!det) return;
+
+  const matcher = new faceapi.FaceMatcher(labeledDescriptors, MATCH_THRESHOLD);
+  const match   = matcher.findBestMatch(det.descriptor);
+
+  if (match.label === 'unknown') { mostrarNaoEncontrado(); return; }
+
+  paused = true;
+  const func = getFuncById(match.label);
+  if (!func) { paused = false; return; }
+
+  const tipo = await determinarTipo(func.id);
+  mostrarConfirmacao(func, tipo);
+}
+
+async function determinarTipo(funcId) {
+  try {
+    const hoje = new Date();
+    const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+    const snap = await db.collection('pontos')
+      .where('funcionarioId', '==', funcId)
+      .where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(inicio))
+      .orderBy('timestamp', 'desc')
+      .limit(1)
+      .get();
+    if (snap.empty) return 'entrada';
+    return snap.docs[0].data().tipo === 'entrada' ? 'saida' : 'entrada';
+  } catch { return 'entrada'; }
+}
+
+// ── CONFIRMATION ───────────────────────────────────────────────────────────
+function mostrarConfirmacao(func, tipo) {
+  const now = new Date();
+
+  const photoEl = document.getElementById('emp-photo');
+  if (func.fotoThumb) {
+    photoEl.innerHTML = `<img src="${esc(func.fotoThumb)}" alt="foto">`;
+  } else {
+    photoEl.innerHTML = '👤';
+  }
+
+  document.getElementById('emp-name').textContent  = func.nome  || '—';
+  document.getElementById('emp-cargo').textContent = func.cargo || '';
+
+  const badge = document.getElementById('tipo-badge');
+  badge.textContent = tipo === 'entrada' ? 'ENTRADA' : 'SAÍDA';
+  badge.className   = 'tipo-badge ' + tipo;
+
+  document.getElementById('emp-hora').textContent = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  document.getElementById('emp-data').textContent = now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  pendingPonto = { funcionarioId: func.id, funcionarioNome: func.nome, tipo };
+
+  showScreen('s-camera');
+  document.getElementById('panel-confirm').classList.add('active');
+}
+
+function cancelarConfirmacao() {
+  document.getElementById('panel-confirm').classList.remove('active');
+  pendingPonto = null;
+  paused = false;
+}
+
+async function confirmarPonto() {
+  if (!pendingPonto) return;
+  document.getElementById('panel-confirm').classList.remove('active');
+
+  let localizacao = null;
+  try { localizacao = await getPosicao(); } catch {}
+
+  try {
+    await db.collection('pontos').add({
+      ...pendingPonto,
+      timestamp:   firebase.firestore.FieldValue.serverTimestamp(),
+      localizacao
+    });
+    mostrarSucesso(pendingPonto);
+  } catch (e) {
+    alert('Erro ao salvar ponto. Verifique a conexão.');
+    paused = false;
+  }
+  pendingPonto = null;
+}
+
+function mostrarSucesso(ponto) {
+  document.getElementById('suc-tipo').textContent = ponto.tipo === 'entrada' ? '● ENTRADA' : '● SAÍDA';
+  document.getElementById('suc-nome').textContent = ponto.funcionarioNome || '';
+  document.getElementById('suc-hora').textContent = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  showScreen('s-success');
+  setTimeout(() => { voltarCamera(); }, 3500);
+}
+
+function mostrarNaoEncontrado() {
+  paused = true;
+  showScreen('s-not-found');
+  setTimeout(() => { paused = false; }, 4000);
+}
+
+function voltarCamera() {
+  showScreen('s-camera');
+  paused = false;
+}
+
+// ── ADMIN MODE (long-press camera logo = 3s) ───────────────────────────────
+function setupAdminHold() {
+  const logo = document.getElementById('cam-logo');
+  logo.addEventListener('touchstart', () => {
+    holdTimer = setTimeout(abrirAdminModal, 3000);
+  }, { passive: true });
+  ['touchend','touchcancel','touchmove'].forEach(ev =>
+    logo.addEventListener(ev, () => clearTimeout(holdTimer), { passive: true })
+  );
+}
+
+function abrirAdminModal() {
+  adminStep = 'pin';
+  renderAdmin();
+  document.getElementById('modal-admin').classList.add('open');
+}
+function fecharAdmin() { document.getElementById('modal-admin').classList.remove('open'); }
+
+function renderAdmin() {
+  const el = document.getElementById('adm-content');
+  if (adminStep === 'pin') {
+    el.innerHTML = `
+      <div class="adm-title">ADMINISTRADOR</div>
+      <input class="adm-input" type="password" inputmode="numeric" id="adm-pin" maxlength="4" placeholder="••••" />
+      <div class="adm-btn" onclick="verificarPinAdmin()">Entrar</div>
+      <div class="adm-btn secondary" onclick="fecharAdmin()">Cancelar</div>`;
+    setTimeout(() => document.getElementById('adm-pin')?.focus(), 80);
+  } else if (adminStep === 'menu') {
+    el.innerHTML = `
+      <div class="adm-title">MENU ADMIN</div>
+      <div class="adm-btn" onclick="adminStep='local';renderAdmin()">📍 Configurar localização</div>
+      <div class="adm-btn" onclick="adminStep='funcs';renderAdmin()">📷 Registrar face</div>
+      <div class="adm-btn secondary" onclick="fecharAdmin()">Fechar</div>`;
+  } else if (adminStep === 'local') {
+    el.innerHTML = `
+      <div class="adm-title">CONFIGURAR LOCAL</div>
+      <div class="adm-func-name" style="text-align:center;color:#a5d6a7;line-height:1.6;font-size:.82rem">
+        Salvar sua posição atual como local de trabalho autorizado?<br>
+        <small style="color:#69f0ae">Raio: 200 metros</small>
+      </div>
+      <div class="adm-btn" onclick="salvarLocal()">✓ Salvar posição atual</div>
+      <div class="adm-btn secondary" onclick="adminStep='menu';renderAdmin()">← Voltar</div>`;
+  } else if (adminStep === 'funcs') {
+    const items = funcionariosCache.map(f => `
+      <div class="adm-func" onclick="iniciarRegistroFace('${esc(f.id)}','${esc(f.nome||'')}')">
+        <div>
+          <div class="adm-func-name">${esc(f.nome || '—')}</div>
+          <div class="adm-func-tag ${f.faceDescriptor ? '' : 'no'}">
+            ${f.faceDescriptor ? '✓ face registrada' : '✗ sem face'}
+          </div>
+        </div>
+        <span style="color:#a5d6a7;font-size:.8rem">→</span>
+      </div>`).join('');
+    el.innerHTML = `
+      <div class="adm-title">REGISTRAR FACE</div>
+      <div class="adm-list">${items || '<div style="text-align:center;color:#a5d6a7;padding:12px;font-size:.82rem">Nenhum funcionário</div>'}</div>
+      <div class="adm-btn secondary" style="margin-top:4px" onclick="adminStep='menu';renderAdmin()">← Voltar</div>`;
+  }
+}
+
+function verificarPinAdmin() {
+  const pin = document.getElementById('adm-pin')?.value;
+  if (pin === SENHA_ADMIN) {
+    adminStep = 'menu';
+    renderAdmin();
+  } else {
+    const inp = document.getElementById('adm-pin');
+    inp.value = ''; inp.placeholder = 'PIN incorreto';
+    setTimeout(() => { inp.placeholder = '••••'; }, 1200);
+  }
+}
+
+async function salvarLocal() {
+  try {
+    const pos = await getPosicao();
+    await db.collection('config').doc('ponto').set({
+      latitude: pos.lat, longitude: pos.lng, raio: 200
+    });
+    pontoConfig = { latitude: pos.lat, longitude: pos.lng, raio: 200 };
+    fecharAdmin();
+    alert('Localização configurada! Raio: 200m.');
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+// ── REGISTER FACE ──────────────────────────────────────────────────────────
+async function iniciarRegistroFace(id, nome) {
+  selectedFunc = { id, nome };
+  fecharAdmin();
+  document.getElementById('reg-func-name').textContent = nome;
+  document.getElementById('reg-hint').textContent = 'Posicione o rosto no oval e capture';
+  document.getElementById('btn-capture').disabled = false;
+  showScreen('s-register');
+
+  const video = document.getElementById('video-reg');
+  regStream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'user' }, audio: false
+  });
+  video.srcObject = regStream;
+  await new Promise(r => { video.onloadedmetadata = r; });
+  await video.play();
+}
+
+function cancelarRegistro() {
+  pararRegStream();
+  showScreen('s-camera');
+}
+
+function pararRegStream() {
+  if (regStream) { regStream.getTracks().forEach(t => t.stop()); regStream = null; }
+}
+
+async function capturarFace() {
+  const video = document.getElementById('video-reg');
+  document.getElementById('reg-hint').textContent = 'Processando...';
+  document.getElementById('btn-capture').disabled = true;
+
+  const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.5 });
+  const det  = await faceapi.detectSingleFace(video, opts)
+    .withFaceLandmarks(true)
+    .withFaceDescriptor();
+
+  if (!det) {
+    document.getElementById('reg-hint').textContent = 'Nenhum rosto detectado. Tente novamente.';
+    document.getElementById('btn-capture').disabled = false;
+    return;
+  }
+
+  // Capture thumbnail (120×120 crop from face region)
+  const fotoThumb = capturarThumb(video, det.detection.box);
+
+  const descriptor = Array.from(det.descriptor);
+
+  try {
+    await db.collection('funcionarios').doc(selectedFunc.id).update({ faceDescriptor: descriptor, fotoThumb });
+
+    // Update cache
+    const cached = funcionariosCache.find(f => f.id === selectedFunc.id);
+    if (cached) { cached.faceDescriptor = descriptor; cached.fotoThumb = fotoThumb; }
+
+    // Rebuild matchers
+    labeledDescriptors = funcionariosCache
+      .filter(f => Array.isArray(f.faceDescriptor) && f.faceDescriptor.length === 128)
+      .map(f => new faceapi.LabeledFaceDescriptors(f.id, [new Float32Array(f.faceDescriptor)]));
+
+    pararRegStream();
+    showScreen('s-camera');
+    alert(`Face de ${selectedFunc.nome} registrada!`);
+  } catch (e) {
+    alert('Erro ao salvar: ' + e.message);
+    document.getElementById('btn-capture').disabled = false;
+    document.getElementById('reg-hint').textContent = 'Erro ao salvar. Tente novamente.';
+  }
+}
+
+function capturarThumb(video, box) {
+  const canvas = document.createElement('canvas');
+  const size = 120;
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  // crop face region from video (undo the CSS mirror)
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const sx = vw - box.x - box.width;  // mirror X
+  ctx.drawImage(video, sx, box.y, box.width, box.height, 0, 0, size, size);
+  return canvas.toDataURL('image/jpeg', 0.7);
+}
+
+// ── UTILS ──────────────────────────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function setStatus(txt)    { document.getElementById('ld-status').textContent  = txt; }
+function setCamStatus(txt) { document.getElementById('cam-status').textContent = txt; }
+function setCamHint(txt)   { document.getElementById('cam-hint').textContent   = txt; }
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('../sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
