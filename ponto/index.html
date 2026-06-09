@@ -476,7 +476,7 @@ const FIREBASE_CONFIG = {
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 const MATCH_THRESHOLD = 0.55;
 const SENHA_ADMIN     = '2248';
-const VERSAO          = '1.5';
+const VERSAO          = '1.6';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let db;
@@ -492,6 +492,7 @@ let pendingPonto       = null;      // { funcionarioId, funcionarioNome, tipo, .
 let selectedFunc       = null;      // { id, nome } for face registration
 let holdTimer          = null;
 let lastRecognizeAt    = 0;
+let lastPontoAt        = 0;
 let adminStep          = 'pin';
 
 // ── INIT ───────────────────────────────────────────────────────────────────
@@ -621,7 +622,7 @@ function iniciarDeteccao() {
         setCamStatus('Rosto detectado');
         setCamHint('Aguarde o reconhecimento...');
         const now = Date.now();
-        if (now - lastRecognizeAt > 2200) {
+        if (now - lastRecognizeAt > 2200 && now - lastPontoAt > 30000) {
           lastRecognizeAt = now;
           reconhecerFace(video);
         }
@@ -728,6 +729,7 @@ async function confirmarPonto() {
 }
 
 function mostrarSucesso(ponto) {
+  lastPontoAt = Date.now();
   document.getElementById('suc-tipo').textContent = ponto.tipo === 'entrada' ? '● ENTRADA' : '● SAÍDA';
   document.getElementById('suc-nome').textContent = ponto.funcionarioNome || '';
   document.getElementById('suc-hora').textContent = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -742,6 +744,7 @@ function mostrarNaoEncontrado() {
 }
 
 function voltarCamera() {
+  lastRecognizeAt = Date.now();
   showScreen('s-camera');
   paused = false;
 }
@@ -794,7 +797,14 @@ function verificarSetupOk() {
 }
 
 async function finalizarSetup() {
-  await iniciarCameraMain();
+  document.getElementById('btn-entrar').disabled = true;
+  try {
+    await iniciarCameraMain();
+  } catch (e) {
+    document.getElementById('btn-entrar').disabled = false;
+    alert('Não foi possível acessar a câmera. Verifique as permissões e tente novamente.');
+    return;
+  }
   showScreen('s-camera');
   iniciarDeteccao();
   setupAdminHold();
