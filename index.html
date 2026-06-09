@@ -273,12 +273,12 @@
     const PIN_COMPLETO  = '2248'; // todos os apps
     const PIN_PARCIAL   = '4512'; // todos visíveis, só 4 acessíveis
     const PIN_RESTRITO  = '3733'; // sem Caixa e sem Relatório
-    const VERSAO = '2.3';
+    const VERSAO = '2.4';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
     let modo = 'parcial'; // 'completo' | 'parcial' | 'restrito'
 
-    const APPS_PARCIAL_ACESSO = ['Caixa', 'Relatório', 'Mapa', 'Rel. Folha'];
+    const APPS_PARCIAL_ACESSO = ['Caixa', 'Relatório', 'Mapa', 'Rel. Folha', 'Rel. Ponto'];
 
     const APPS = [
       { icon: '💰', name: 'Caixa',              desc: 'Lançamentos financeiros',   url: 'https://joaoibira-ux.github.io/caixa' },
