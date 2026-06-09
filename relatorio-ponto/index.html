@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Relatório de Ponto · GW</title>
+  <link rel="apple-touch-icon" href="../Logo-gw.png" />
+
+  <!-- Firebase Compat -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%; height: 100dvh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0f4f1;
+      color: #1a2e1e;
+    }
+    body { display: flex; flex-direction: column; }
+
+    /* ── HEADER ─────────────────────────────────────────── */
+    header {
+      background: #1a3322;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 16px;
+      padding-top: max(10px, env(safe-area-inset-top));
+      flex-shrink: 0;
+    }
+    header a {
+      display: flex; align-items: center; line-height: 0;
+      text-decoration: none;
+    }
+    header img {
+      height: 36px; width: 36px;
+      object-fit: contain; border-radius: 8px;
+    }
+    .h-title {
+      flex: 1;
+      font-size: 1rem; font-weight: 700;
+      white-space: nowrap;
+    }
+    .h-versao {
+      font-size: 0.6rem; font-weight: 400;
+      color: rgba(255,255,255,0.45);
+      text-align: right;
+    }
+
+    /* ── PERÍODO ─────────────────────────────────────────── */
+    .periodo-bar {
+      background: #1a3322;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 16px 10px;
+      flex-shrink: 0;
+      border-bottom: 2px solid #a5d6a7;
+    }
+    .periodo-btn {
+      background: rgba(165,214,167,0.15);
+      border: 1px solid rgba(165,214,167,0.25);
+      color: #a5d6a7;
+      font-size: 1.1rem;
+      width: 34px; height: 34px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .periodo-btn:active { background: rgba(165,214,167,0.3); }
+    .periodo-label {
+      flex: 1;
+      text-align: center;
+      color: #a5d6a7;
+      font-weight: 700;
+      font-size: 0.95rem;
+      text-transform: capitalize;
+    }
+    .periodo-total {
+      font-size: 0.7rem;
+      color: rgba(165,214,167,0.65);
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    /* ── CONTEÚDO ─────────────────────────────────────────── */
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 14px 12px;
+      padding-bottom: max(14px, env(safe-area-inset-bottom));
+    }
+
+    /* ── ESTADOS ─────────────────────────────────────────── */
+    .estado {
+      text-align: center;
+      padding: 48px 24px;
+      color: #6a9a72;
+      font-size: 0.88rem;
+    }
+    .estado.erro { color: #c62828; }
+
+    /* ── TABELA ─────────────────────────────────────────── */
+    .tabela-wrap { overflow-x: auto; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+      min-width: 320px;
+      background: #fff;
+    }
+    thead tr { background: #1a3322; }
+    th {
+      padding: 9px 10px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 0.7rem;
+      letter-spacing: 0.05em;
+      color: #a5d6a7;
+      white-space: nowrap;
+    }
+    tbody tr { border-bottom: 1px solid #e8f0e9; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:nth-child(even) { background: #f5fbf5; }
+    td {
+      padding: 8px 10px;
+      color: #2e3a2f;
+      vertical-align: middle;
+    }
+    .td-nome  { font-weight: 600; font-size: 0.82rem; }
+    .td-cargo { font-size: 0.68rem; color: #6a8a72; display: block; font-weight: 400; }
+    .td-data  { white-space: nowrap; color: #4a6a50; font-size: 0.78rem; }
+    .td-entrada { color: #2e7d32; font-weight: 700; white-space: nowrap; }
+    .td-saida   { color: #b84d00; font-weight: 700; white-space: nowrap; }
+    .td-vazio   { color: #c0c0c0; }
+
+    /* ── SEPARADOR DE DATA ───────────────────────────────── */
+    .tr-data-sep td {
+      background: #e8f5e9;
+      color: #2e7d32;
+      font-weight: 700;
+      font-size: 0.72rem;
+      padding: 5px 10px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <a href="https://joaoibira-ux.github.io/gw-redesign/" title="Voltar ao menu">
+    <img src="../Logo-gw.png" alt="GW" draggable="false" />
+  </a>
+  <span class="h-title">Relatório de Ponto</span>
+  <span class="h-versao">v1.0</span>
+</header>
+
+<div class="periodo-bar">
+  <button class="periodo-btn" onclick="mudarMes(-1)" aria-label="Mês anterior">‹</button>
+  <div class="periodo-label" id="periodo-label">—</div>
+  <button class="periodo-btn" onclick="mudarMes(1)" aria-label="Próximo mês">›</button>
+  <div class="periodo-total" id="periodo-total"></div>
+</div>
+
+<div class="content">
+  <div class="estado" id="estado">Carregando...</div>
+  <div class="tabela-wrap" id="tabela-wrap" style="display:none">
+    <table>
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>Data</th>
+          <th>Entrada</th>
+          <th>Saída</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const VERSAO = '1.0';
+
+const firebaseConfig = {
+  apiKey:            "AIzaSyBaqROPsywPgtKjQU7cs1ke1WaqDFhWwn0",
+  authDomain:        "sistema-gw-36566.firebaseapp.com",
+  projectId:         "sistema-gw-36566",
+  storageBucket:     "sistema-gw-36566.firebasestorage.app",
+  messagingSenderId: "472820177992",
+  appId:             "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+const MESES = [
+  'Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+  'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'
+];
+
+let anoAtual = new Date().getFullYear();
+let mesAtual = new Date().getMonth();
+
+function mudarMes(delta) {
+  mesAtual += delta;
+  if (mesAtual < 0)  { mesAtual = 11; anoAtual--; }
+  if (mesAtual > 11) { mesAtual = 0;  anoAtual++; }
+  carregar();
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmtHora(date) {
+  return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function fmtDataCurta(date) {
+  return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+}
+
+function fmtDataSep(date) {
+  return date.toLocaleDateString('pt-BR', {
+    weekday: 'short', day: '2-digit', month: '2-digit'
+  });
+}
+
+function setEstado(msg, erro = false) {
+  const el = document.getElementById('estado');
+  el.textContent = msg;
+  el.className = 'estado' + (erro ? ' erro' : '');
+  el.style.display = 'block';
+  document.getElementById('tabela-wrap').style.display = 'none';
+  document.getElementById('periodo-total').textContent = '';
+}
+
+async function carregar() {
+  document.getElementById('periodo-label').textContent = `${MESES[mesAtual]} ${anoAtual}`;
+  setEstado('Carregando...');
+
+  const inicio = new Date(anoAtual, mesAtual, 1);
+  const fim    = new Date(anoAtual, mesAtual + 1, 1);
+
+  try {
+    const snap = await db.collection('pontos')
+      .where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(inicio))
+      .where('timestamp', '<',  firebase.firestore.Timestamp.fromDate(fim))
+      .orderBy('timestamp', 'asc')
+      .get();
+
+    if (snap.empty) { setEstado('Nenhum registro neste período.'); return; }
+
+    // Agrupa por (funcionarioId, data-dia)
+    const mapa = new Map();
+    snap.docs.forEach(doc => {
+      const d  = doc.data();
+      const ts = d.timestamp ? d.timestamp.toDate() : new Date();
+      const diaKey = `${d.funcionarioId || d.funcionarioNome}|${ts.toDateString()}`;
+      if (!mapa.has(diaKey)) {
+        mapa.set(diaKey, {
+          nome:   d.funcionarioNome || '—',
+          dataTs: ts,
+          entrada: null,
+          saida:   null
+        });
+      }
+      const item = mapa.get(diaKey);
+      if (d.tipo === 'entrada') item.entrada = ts;
+      if (d.tipo === 'saida')   item.saida   = ts;
+    });
+
+    // Ordena por data asc, depois por nome
+    const linhas = [...mapa.values()].sort((a, b) => {
+      const dt = a.dataTs - b.dataTs;
+      if (dt !== 0) return dt;
+      return (a.nome || '').localeCompare(b.nome || '', 'pt-BR');
+    });
+
+    // Monta HTML com separadores de data
+    let html = '';
+    let ultimaData = '';
+    linhas.forEach(l => {
+      const dataKey = l.dataTs.toDateString();
+      if (dataKey !== ultimaData) {
+        ultimaData = dataKey;
+        html += `<tr class="tr-data-sep"><td colspan="4">${esc(fmtDataSep(l.dataTs))}</td></tr>`;
+      }
+      const entHtml = l.entrada
+        ? `<td class="td-entrada">${fmtHora(l.entrada)}</td>`
+        : `<td class="td-vazio">—</td>`;
+      const saiHtml = l.saida
+        ? `<td class="td-saida">${fmtHora(l.saida)}</td>`
+        : `<td class="td-vazio">—</td>`;
+      html += `
+        <tr>
+          <td class="td-nome">${esc(l.nome)}</td>
+          <td class="td-data">${fmtDataCurta(l.dataTs)}</td>
+          ${entHtml}
+          ${saiHtml}
+        </tr>`;
+    });
+
+    document.getElementById('tbody').innerHTML = html;
+    document.getElementById('estado').style.display = 'none';
+    document.getElementById('tabela-wrap').style.display = 'block';
+    document.getElementById('periodo-total').textContent = `${linhas.length} registro${linhas.length !== 1 ? 's' : ''}`;
+  } catch(e) {
+    setEstado('Erro ao carregar: ' + e.message, true);
+  }
+}
+
+carregar();
+</script>
+</body>
+</html>
