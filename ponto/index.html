@@ -476,7 +476,7 @@ const FIREBASE_CONFIG = {
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 const MATCH_THRESHOLD = 0.55;
 const SENHA_ADMIN     = '2248';
-const VERSAO          = '2.3';
+const VERSAO          = '2.4';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let db;
@@ -485,6 +485,7 @@ let regStream     = null;
 let detectionLoop = null;
 let modelsLoaded  = false;
 let paused        = false;          // pauses detection loop during confirm/not-found
+let recognizing   = false;          // true durante reconhecerFace() — evita chamadas concorrentes
 let labeledDescriptors = [];        // LabeledFaceDescriptors[]
 let funcionariosCache  = [];        // { id, nome, cargo, faceDescriptor?, fotoThumb? }
 let pontoConfig        = null;      // { latitude, longitude, raio }
@@ -622,7 +623,7 @@ function iniciarDeteccao() {
         setCamStatus('Rosto detectado');
         setCamHint('Aguarde o reconhecimento...');
         const now = Date.now();
-        if (now - lastRecognizeAt > 2200) {
+        if (!recognizing && now - lastRecognizeAt > 2200) {
           lastRecognizeAt = now;
           reconhecerFace(video);
         }
@@ -639,24 +640,29 @@ function iniciarDeteccao() {
 async function reconhecerFace(video) {
   if (labeledDescriptors.length === 0) { return; }
 
-  const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.5 });
-  const det  = await faceapi.detectSingleFace(video, opts)
-    .withFaceLandmarks(true)     // true = use tiny landmark model
-    .withFaceDescriptor();
+  recognizing = true;
+  try {
+    const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.5 });
+    const det  = await faceapi.detectSingleFace(video, opts)
+      .withFaceLandmarks(true)     // true = use tiny landmark model
+      .withFaceDescriptor();
 
-  if (!det) return;
+    if (!det) return;
 
-  const matcher = new faceapi.FaceMatcher(labeledDescriptors, MATCH_THRESHOLD);
-  const match   = matcher.findBestMatch(det.descriptor);
+    const matcher = new faceapi.FaceMatcher(labeledDescriptors, MATCH_THRESHOLD);
+    const match   = matcher.findBestMatch(det.descriptor);
 
-  if (match.label === 'unknown') { mostrarNaoEncontrado(); return; }
+    if (match.label === 'unknown') { mostrarNaoEncontrado(); return; }
 
-  paused = true;
-  const func = getFuncById(match.label);
-  if (!func) { paused = false; return; }
+    paused = true;
+    const func = getFuncById(match.label);
+    if (!func) { paused = false; return; }
 
-  const { tipo, docId } = await determinarTipo(func.id);
-  mostrarConfirmacao(func, tipo, docId);
+    const { tipo, docId } = await determinarTipo(func.id);
+    mostrarConfirmacao(func, tipo, docId);
+  } finally {
+    recognizing = false;
+  }
 }
 
 async function determinarTipo(funcId) {
