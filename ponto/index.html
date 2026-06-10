@@ -476,7 +476,7 @@ const FIREBASE_CONFIG = {
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 const MATCH_THRESHOLD = 0.55;
 const SENHA_ADMIN     = '2248';
-const VERSAO          = '2.2';
+const VERSAO          = '2.3';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let db;
@@ -578,8 +578,10 @@ function fecharApp() {
 // ── EMPLOYEES ──────────────────────────────────────────────────────────────
 async function carregarFuncionarios() {
   try {
-    const snap = await db.collection('funcionarios').where('ativo', '==', true).get();
-    funcionariosCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const snap = await db.collection('funcionarios').get();
+    funcionariosCache = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(f => f.ativo !== false); // sem o campo = ativo (mesma regra do app Funcionários)
 
     labeledDescriptors = funcionariosCache
       .filter(f => Array.isArray(f.faceDescriptor) && f.faceDescriptor.length === 128)
