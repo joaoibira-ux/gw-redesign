@@ -96,7 +96,7 @@
       display: flex; align-items: center; gap: 10px;
     }
     .cam-logo {
-      width: 34px; height: 34px; object-fit: contain;
+      width: 46px; height: 46px; object-fit: contain;
       filter: drop-shadow(0 1px 4px rgba(0,0,0,.5));
       cursor: pointer;
       -webkit-user-select: none; user-select: none;
@@ -476,7 +476,7 @@ const FIREBASE_CONFIG = {
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 const MATCH_THRESHOLD = 0.55;
 const SENHA_ADMIN     = '2248';
-const VERSAO          = '2.1';
+const VERSAO          = '2.2';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let db;
@@ -490,7 +490,6 @@ let funcionariosCache  = [];        // { id, nome, cargo, faceDescriptor?, fotoT
 let pontoConfig        = null;      // { latitude, longitude, raio }
 let pendingPonto       = null;      // { funcionarioId, funcionarioNome, tipo, ... }
 let selectedFunc       = null;      // { id, nome } for face registration
-let holdTimer          = null;
 let lastRecognizeAt    = 0;
 let adminStep          = 'pin';
 
@@ -821,16 +820,23 @@ async function finalizarSetup() {
   setupAdminHold();
 }
 
-// ── ADMIN MODE (long-press camera logo = 3s) ───────────────────────────────
+// ── ADMIN MODE (duplo toque na logo) ───────────────────────────────────────
 function setupAdminHold() {
   const logo = document.getElementById('cam-logo');
+  let lastTap = 0;
   logo.addEventListener('touchstart', e => {
     e.preventDefault();   // bloqueia menu nativo do iOS em imagens
-    holdTimer = setTimeout(abrirAdminModal, 3000);
   }, { passive: false });
-  ['touchend','touchcancel','touchmove'].forEach(ev =>
-    logo.addEventListener(ev, () => clearTimeout(holdTimer), { passive: true })
-  );
+  logo.addEventListener('touchend', e => {
+    e.preventDefault();
+    const now = Date.now();
+    if (now - lastTap < 400) {
+      lastTap = 0;
+      abrirAdminModal();
+    } else {
+      lastTap = now;
+    }
+  }, { passive: false });
 }
 
 function abrirAdminModal() {
