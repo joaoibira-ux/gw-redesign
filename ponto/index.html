@@ -211,108 +211,6 @@
       color: #ffd54f; font-size: .88rem; font-weight: 700; cursor: pointer;
     }
 
-    /* ── PRIMEIRO ACESSO ── */
-    #s-setup {
-      background: linear-gradient(160deg, rgba(15,46,28,.97) 0%, rgba(6,16,10,.99) 100%);
-      padding: env(safe-area-inset-top,20px) 20px env(safe-area-inset-bottom,20px);
-      gap: 0; overflow-y: auto; justify-content: flex-start;
-    }
-    .setup-header { text-align: center; padding: 28px 0 24px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
-    .setup-title { font-size: 1rem; font-weight: 800; letter-spacing: 3px; color: #e8f5e9; }
-    .setup-sub   { font-size: .62rem; letter-spacing: 2px; color: #b8d8bb; }
-    .setup-cards { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 380px; }
-    .setup-card {
-      border-radius: 18px; padding: 16px 18px;
-      display: flex; align-items: center; gap: 14px; cursor: pointer;
-    }
-    .setup-card:active { opacity: .8; }
-    .setup-card-icon { font-size: 1.8rem; flex-shrink: 0; }
-    .setup-card-body { flex: 1; }
-    .setup-card-name { font-size: .88rem; font-weight: 700; color: #f1f8f2; }
-    .setup-card-desc { font-size: .7rem; color: #a5d6a7; margin-top: 2px; }
-    .setup-tag {
-      font-size: .65rem; font-weight: 700; padding: 3px 10px; border-radius: 10px;
-      background: rgba(255,255,255,.1); color: #b0bec5;
-    }
-    .setup-tag.ok { background: rgba(105,240,174,.2); color: #69f0ae; }
-    .setup-func-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; width: 100%; max-width: 380px; }
-    .setup-func-item {
-      padding: 11px 14px; border-radius: 12px;
-      background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12);
-      display: flex; justify-content: space-between; align-items: center; cursor: pointer;
-    }
-    .setup-func-item:active { background: rgba(105,240,174,.15); }
-    .setup-func-nome { font-size: .82rem; color: #e8f5e9; font-weight: 600; }
-    .btn-entrar {
-      margin-top: 20px; width: 100%; max-width: 380px; padding: 15px;
-      background: linear-gradient(135deg, rgba(76,175,80,.5), rgba(27,94,32,.6));
-      border: 1px solid rgba(105,240,174,.3); border-radius: 14px;
-      color: #fff; font-size: .95rem; font-weight: 800; cursor: pointer;
-      display: none;
-    }
-
-    /* ── ADMIN MODAL ── */
-    #modal-admin {
-      position: fixed; inset: 0; z-index: 100;
-      display: none; align-items: center; justify-content: center;
-      background: rgba(0,0,0,.72); padding: 20px;
-    }
-    #modal-admin.open { display: flex; }
-    .adm-card {
-      width: 100%; max-width: 320px;
-      border-radius: 22px; padding: 22px 18px;
-      display: flex; flex-direction: column; gap: 12px;
-    }
-    .adm-title { font-size: .88rem; font-weight: 800; letter-spacing: 2px; color: #e8f5e9; text-align: center; }
-    .adm-input {
-      width: 100%; padding: 12px 14px;
-      background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2); border-radius: 11px;
-      color: #e8f5e9; font-size: 1.1rem; letter-spacing: 4px; text-align: center; outline: none;
-      -webkit-appearance: none;
-    }
-    .adm-btn {
-      padding: 11px 14px;
-      background: rgba(105,240,174,.18); border: 1px solid rgba(105,240,174,.3); border-radius: 11px;
-      color: #69f0ae; font-size: .82rem; font-weight: 700; cursor: pointer; text-align: center;
-    }
-    .adm-btn.secondary {
-      background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.14); color: #b0bec5;
-    }
-    .adm-list { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
-    .adm-func {
-      padding: 10px 13px;
-      background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-radius: 10px;
-      display: flex; justify-content: space-between; align-items: center; cursor: pointer;
-    }
-    .adm-func:active { background: rgba(105,240,174,.15); }
-    .adm-func-name   { font-size: .82rem; color: #e8f5e9; font-weight: 600; }
-    .adm-func-tag    { font-size: .62rem; color: #69f0ae; }
-    .adm-func-tag.no { color: #ff8a80; }
-
-    /* ── REGISTER FACE SCREEN ── */
-    #s-register { padding: 0; background: #000; }
-    #s-register.active { display: block; position: fixed; inset: 0; }
-    #video-reg {
-      position: absolute; inset: 0; width: 100%; height: 100%;
-      object-fit: cover; transform: scaleX(-1);
-    }
-    .reg-top {
-      position: absolute; top: 0; left: 0; right: 0; z-index: 10;
-      padding: calc(env(safe-area-inset-top,0px) + 12px) 14px 12px;
-      display: flex; align-items: center; gap: 10px;
-    }
-    .reg-bot {
-      position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
-      padding: 14px 20px calc(env(safe-area-inset-bottom,0px) + 16px);
-      display: flex; flex-direction: column; align-items: center; gap: 12px;
-    }
-    .reg-hint { font-size: .78rem; color: #c8e6c9; text-shadow: 0 1px 6px rgba(0,0,0,.8); }
-    .btn-capture {
-      width: 68px; height: 68px; border-radius: 50%;
-      background: #fff; border: 4px solid rgba(105,240,174,.6);
-      cursor: pointer; box-shadow: 0 4px 18px rgba(0,0,0,.5);
-    }
-    .btn-capture:disabled { opacity: .5; cursor: default; }
   </style>
 </head>
 <body>
@@ -398,66 +296,6 @@
   <button class="btn-retry" onclick="voltarCamera()">↩ Tentar novamente</button>
 </div>
 
-<!-- ── PRIMEIRO ACESSO ── -->
-<div id="s-setup" class="screen">
-  <div class="setup-header">
-    <img class="ld-logo" src="../Logo-gw.png" alt="GW" draggable="false" />
-    <div class="setup-title">PRIMEIRO ACESSO</div>
-    <div class="setup-sub">Configure antes de usar</div>
-  </div>
-
-  <div class="setup-cards">
-    <!-- Localização -->
-    <div class="setup-card glass" onclick="setupDefinirLocal(this)">
-      <div class="setup-card-icon">📍</div>
-      <div class="setup-card-body">
-        <div class="setup-card-name">Definir localização</div>
-        <div class="setup-card-desc">Salvar posição atual como local de trabalho</div>
-      </div>
-      <div class="setup-tag" id="tag-local">Pendente</div>
-    </div>
-
-    <!-- Rosto -->
-    <div class="setup-card glass" id="card-face" onclick="setupMostrarFuncs()">
-      <div class="setup-card-icon">📷</div>
-      <div class="setup-card-body">
-        <div class="setup-card-name">Registrar rosto</div>
-        <div class="setup-card-desc">Cadastrar seu rosto para reconhecimento</div>
-      </div>
-      <div class="setup-tag" id="tag-face">Pendente</div>
-    </div>
-  </div>
-
-  <!-- Lista de funcionários (aparece após clicar Registrar rosto) -->
-  <div class="setup-func-list" id="setup-func-list" style="display:none"></div>
-
-  <button class="btn-entrar" id="btn-entrar" onclick="finalizarSetup()">Entrar no sistema →</button>
-</div>
-
-<!-- ── ADMIN MODAL ── -->
-<div id="modal-admin">
-  <div class="adm-card glass" id="adm-content"></div>
-</div>
-
-<!-- ── REGISTER FACE ── -->
-<div id="s-register" class="screen">
-  <video id="video-reg" autoplay muted playsinline></video>
-  <div class="face-oval" id="face-oval-reg"></div>
-
-  <div class="reg-top glass">
-    <button class="btn-voltar" onclick="cancelarRegistro()">← Voltar</button>
-    <div class="cam-title-block" style="text-align:center">
-      <div class="cam-title">REGISTRAR FACE</div>
-      <div class="cam-status" id="reg-func-name">—</div>
-    </div>
-  </div>
-
-  <div class="reg-bot">
-    <div class="reg-hint" id="reg-hint">Posicione o rosto no oval e capture</div>
-    <button class="btn-capture" id="btn-capture" onclick="capturarFace()"></button>
-  </div>
-</div>
-
 <!-- face-api.js -->
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 
@@ -475,13 +313,11 @@ const FIREBASE_CONFIG = {
 };
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 const MATCH_THRESHOLD = 0.55;
-const SENHA_ADMIN     = '2248';
-const VERSAO          = '2.4';
+const VERSAO          = '2.5';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let db;
 let mainStream    = null;
-let regStream     = null;
 let detectionLoop = null;
 let modelsLoaded  = false;
 let paused        = false;          // pauses detection loop during confirm/not-found
@@ -490,9 +326,7 @@ let labeledDescriptors = [];        // LabeledFaceDescriptors[]
 let funcionariosCache  = [];        // { id, nome, cargo, faceDescriptor?, fotoThumb? }
 let pontoConfig        = null;      // { latitude, longitude, raio }
 let pendingPonto       = null;      // { funcionarioId, funcionarioNome, tipo, ... }
-let selectedFunc       = null;      // { id, nome } for face registration
 let lastRecognizeAt    = 0;
-let adminStep          = 'pin';
 
 // ── INIT ───────────────────────────────────────────────────────────────────
 window.addEventListener('load', async () => {
@@ -524,18 +358,11 @@ window.addEventListener('load', async () => {
   setStatus('Carregando funcionários...');
   await carregarFuncionarios();
 
-  // Primeiro acesso: nenhum rosto cadastrado → tela de setup
-  if (labeledDescriptors.length === 0) {
-    showScreen('s-setup');
-    return;
-  }
-
   setStatus('Iniciando câmera...');
   await iniciarCameraMain();
 
   showScreen('s-camera');
   iniciarDeteccao();
-  setupAdminHold();
 });
 
 // ── GEOLOCATION ────────────────────────────────────────────────────────────
@@ -765,257 +592,6 @@ function voltarCamera() {
   lastRecognizeAt = Date.now();
   showScreen('s-camera');
   paused = false;
-}
-
-// ── PRIMEIRO ACESSO ────────────────────────────────────────────────────────
-let setupLocalOk = false;
-let setupFaceOk  = false;
-let inSetupMode  = false;
-
-async function setupDefinirLocal(cardEl) {
-  cardEl.style.pointerEvents = 'none';
-  try {
-    const pos = await getPosicao();
-    await db.collection('config').doc('ponto').set({ latitude: pos.lat, longitude: pos.lng, raio: 200 });
-    pontoConfig = { latitude: pos.lat, longitude: pos.lng, raio: 200 };
-    setupLocalOk = true;
-    const tag = document.getElementById('tag-local');
-    tag.textContent = '✓ Salva';
-    tag.className = 'setup-tag ok';
-    verificarSetupOk();
-  } catch(e) {
-    alert('Erro ao obter localização: ' + e.message);
-    cardEl.style.pointerEvents = '';
-  }
-}
-
-function setupMostrarFuncs() {
-  const lista = document.getElementById('setup-func-list');
-  if (lista.style.display !== 'none') { lista.style.display = 'none'; return; }
-  const items = funcionariosCache.map(f => `
-    <div class="setup-func-item" onclick="setupIniciarRegistro('${esc(f.id)}','${esc(f.nome||'')}')">
-      <div class="setup-func-nome">${esc(f.nome || '—')}</div>
-      <span style="color:#a5d6a7;font-size:.8rem">→</span>
-    </div>`).join('');
-  lista.innerHTML = items || '<div style="color:#a5d6a7;font-size:.8rem;text-align:center;padding:10px">Nenhum funcionário ativo</div>';
-  lista.style.display = 'flex';
-}
-
-function setupIniciarRegistro(id, nome) {
-  document.getElementById('setup-func-list').style.display = 'none';
-  inSetupMode = true;
-  selectedFunc = { id, nome };
-  iniciarRegistroFace(id, nome);
-}
-
-function verificarSetupOk() {
-  if (setupLocalOk && setupFaceOk) {
-    document.getElementById('btn-entrar').style.display = 'block';
-  }
-}
-
-async function finalizarSetup() {
-  document.getElementById('btn-entrar').disabled = true;
-  try {
-    await iniciarCameraMain();
-  } catch (e) {
-    document.getElementById('btn-entrar').disabled = false;
-    alert('Não foi possível acessar a câmera. Verifique as permissões e tente novamente.');
-    return;
-  }
-  showScreen('s-camera');
-  iniciarDeteccao();
-  setupAdminHold();
-}
-
-// ── ADMIN MODE (duplo toque na logo) ───────────────────────────────────────
-function setupAdminHold() {
-  const logo = document.getElementById('cam-logo');
-  let lastTap = 0;
-  logo.addEventListener('touchstart', e => {
-    e.preventDefault();   // bloqueia menu nativo do iOS em imagens
-  }, { passive: false });
-  logo.addEventListener('touchend', e => {
-    e.preventDefault();
-    const now = Date.now();
-    if (now - lastTap < 400) {
-      lastTap = 0;
-      abrirAdminModal();
-    } else {
-      lastTap = now;
-    }
-  }, { passive: false });
-}
-
-function abrirAdminModal() {
-  adminStep = 'pin';
-  renderAdmin();
-  document.getElementById('modal-admin').classList.add('open');
-}
-function fecharAdmin() { document.getElementById('modal-admin').classList.remove('open'); }
-
-function renderAdmin() {
-  const el = document.getElementById('adm-content');
-  if (adminStep === 'pin') {
-    el.innerHTML = `
-      <div class="adm-title">ADMINISTRADOR</div>
-      <input class="adm-input" type="password" inputmode="numeric" id="adm-pin" maxlength="4" placeholder="••••" />
-      <div class="adm-btn" onclick="verificarPinAdmin()">Entrar</div>
-      <div class="adm-btn secondary" onclick="fecharAdmin()">Cancelar</div>`;
-    setTimeout(() => document.getElementById('adm-pin')?.focus(), 80);
-  } else if (adminStep === 'menu') {
-    el.innerHTML = `
-      <div class="adm-title">MENU ADMIN</div>
-      <div class="adm-btn" onclick="adminStep='local';renderAdmin()">📍 Configurar localização</div>
-      <div class="adm-btn" onclick="adminStep='funcs';renderAdmin()">📷 Registrar face</div>
-      <div class="adm-btn secondary" onclick="fecharAdmin()">Fechar</div>`;
-  } else if (adminStep === 'local') {
-    el.innerHTML = `
-      <div class="adm-title">CONFIGURAR LOCAL</div>
-      <div class="adm-func-name" style="text-align:center;color:#a5d6a7;line-height:1.6;font-size:.82rem">
-        Salvar sua posição atual como local de trabalho autorizado?<br>
-        <small style="color:#69f0ae">Raio: 200 metros</small>
-      </div>
-      <div class="adm-btn" onclick="salvarLocal()">✓ Salvar posição atual</div>
-      <div class="adm-btn secondary" onclick="adminStep='menu';renderAdmin()">← Voltar</div>`;
-  } else if (adminStep === 'funcs') {
-    const items = funcionariosCache.map(f => `
-      <div class="adm-func" onclick="iniciarRegistroFace('${esc(f.id)}','${esc(f.nome||'')}')">
-        <div>
-          <div class="adm-func-name">${esc(f.nome || '—')}</div>
-          <div class="adm-func-tag ${f.faceDescriptor ? '' : 'no'}">
-            ${f.faceDescriptor ? '✓ face registrada' : '✗ sem face'}
-          </div>
-        </div>
-        <span style="color:#a5d6a7;font-size:.8rem">→</span>
-      </div>`).join('');
-    el.innerHTML = `
-      <div class="adm-title">REGISTRAR FACE</div>
-      <div class="adm-list">${items || '<div style="text-align:center;color:#a5d6a7;padding:12px;font-size:.82rem">Nenhum funcionário</div>'}</div>
-      <div class="adm-btn secondary" style="margin-top:4px" onclick="adminStep='menu';renderAdmin()">← Voltar</div>`;
-  }
-}
-
-function verificarPinAdmin() {
-  const pin = document.getElementById('adm-pin')?.value;
-  if (pin === SENHA_ADMIN) {
-    adminStep = 'menu';
-    renderAdmin();
-  } else {
-    const inp = document.getElementById('adm-pin');
-    inp.value = ''; inp.placeholder = 'PIN incorreto';
-    setTimeout(() => { inp.placeholder = '••••'; }, 1200);
-  }
-}
-
-async function salvarLocal() {
-  try {
-    const pos = await getPosicao();
-    await db.collection('config').doc('ponto').set({
-      latitude: pos.lat, longitude: pos.lng, raio: 200
-    });
-    pontoConfig = { latitude: pos.lat, longitude: pos.lng, raio: 200 };
-    fecharAdmin();
-    alert('Localização configurada! Raio: 200m.');
-  } catch (e) { alert('Erro: ' + e.message); }
-}
-
-// ── REGISTER FACE ──────────────────────────────────────────────────────────
-async function iniciarRegistroFace(id, nome) {
-  selectedFunc = { id, nome };
-  fecharAdmin();
-  document.getElementById('reg-func-name').textContent = nome;
-  document.getElementById('reg-hint').textContent = 'Posicione o rosto no oval e capture';
-  document.getElementById('btn-capture').disabled = false;
-  showScreen('s-register');
-
-  const video = document.getElementById('video-reg');
-  regStream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: 'user' }, audio: false
-  });
-  video.srcObject = regStream;
-  await new Promise(r => { video.onloadedmetadata = r; });
-  await video.play();
-}
-
-function cancelarRegistro() {
-  pararRegStream();
-  if (inSetupMode) {
-    inSetupMode = false;
-    showScreen('s-setup');
-  } else {
-    showScreen('s-camera');
-  }
-}
-
-function pararRegStream() {
-  if (regStream) { regStream.getTracks().forEach(t => t.stop()); regStream = null; }
-}
-
-async function capturarFace() {
-  const video = document.getElementById('video-reg');
-  document.getElementById('reg-hint').textContent = 'Processando...';
-  document.getElementById('btn-capture').disabled = true;
-
-  const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.5 });
-  const det  = await faceapi.detectSingleFace(video, opts)
-    .withFaceLandmarks(true)
-    .withFaceDescriptor();
-
-  if (!det) {
-    document.getElementById('reg-hint').textContent = 'Nenhum rosto detectado. Tente novamente.';
-    document.getElementById('btn-capture').disabled = false;
-    return;
-  }
-
-  // Capture thumbnail (120×120 crop from face region)
-  const fotoThumb = capturarThumb(video, det.detection.box);
-
-  const descriptor = Array.from(det.descriptor);
-
-  try {
-    await db.collection('funcionarios').doc(selectedFunc.id).update({ faceDescriptor: descriptor, fotoThumb });
-
-    // Update cache
-    const cached = funcionariosCache.find(f => f.id === selectedFunc.id);
-    if (cached) { cached.faceDescriptor = descriptor; cached.fotoThumb = fotoThumb; }
-
-    // Rebuild matchers
-    labeledDescriptors = funcionariosCache
-      .filter(f => Array.isArray(f.faceDescriptor) && f.faceDescriptor.length === 128)
-      .map(f => new faceapi.LabeledFaceDescriptors(f.id, [new Float32Array(f.faceDescriptor)]));
-
-    pararRegStream();
-    if (inSetupMode) {
-      inSetupMode = false;
-      setupFaceOk = true;
-      const tag = document.getElementById('tag-face');
-      tag.textContent = '✓ Registrado';
-      tag.className = 'setup-tag ok';
-      document.getElementById('card-face').style.cursor = 'default';
-      verificarSetupOk();
-      showScreen('s-setup');
-    } else {
-      showScreen('s-camera');
-      alert(`Face de ${selectedFunc.nome} registrada!`);
-    }
-  } catch (e) {
-    alert('Erro ao salvar: ' + e.message);
-    document.getElementById('btn-capture').disabled = false;
-    document.getElementById('reg-hint').textContent = 'Erro ao salvar. Tente novamente.';
-  }
-}
-
-function capturarThumb(video, box) {
-  const canvas = document.createElement('canvas');
-  const size = 120;
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  // crop face region from video (undo the CSS mirror)
-  const vw = video.videoWidth, vh = video.videoHeight;
-  const sx = vw - box.x - box.width;  // mirror X
-  ctx.drawImage(video, sx, box.y, box.width, box.height, 0, 0, size, size);
-  return canvas.toDataURL('image/jpeg', 0.7);
 }
 
 // ── UTILS ──────────────────────────────────────────────────────────────────
