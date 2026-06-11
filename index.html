@@ -270,12 +270,13 @@
     // iOS Safari restaura do bfcache sem redesenhar os backgrounds (ficam em branco) — força reload
     window.addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
 
-    // Backup diário automático (Telegram): dispara ao acessar o sistema pela 1ª vez no dia
+    // Backup diário automático (Telegram): dispara ao acessar o sistema pela 1ª vez no dia.
+    // O iframe (mesma origem) só marca gw_backup_disparado DEPOIS de confirmar o envio —
+    // se o usuário sair antes de terminar, tenta de novo na próxima abertura.
     (function dispararBackupDiario() {
       const hoje = new Date();
       const chave = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,"0")}-${String(hoje.getDate()).padStart(2,"0")}`;
       if (localStorage.getItem('gw_backup_disparado') === chave) return;
-      localStorage.setItem('gw_backup_disparado', chave);
 
       const iframe = document.createElement('iframe');
       iframe.src = './caixa/relatorio.html?autobackup=1';
@@ -287,7 +288,7 @@
     const PIN_COMPLETO  = '2248'; // todos os apps
     const PIN_PARCIAL   = '4512'; // todos visíveis, só 4 acessíveis
     const PIN_RESTRITO  = '3733'; // só Folha, Rel. Folha, Mapa, Funcionários, Almoxarifado, Ponto, Rel. Ponto
-    const VERSAO = '3.28';
+    const VERSAO = '3.29';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
     let modo = 'parcial'; // 'completo' | 'parcial' | 'restrito'

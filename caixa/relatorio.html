@@ -685,7 +685,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.56";
+  const VERSAO = "1.57";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -721,10 +721,9 @@
     setTimeout(() => { if (lo.parentNode) lo.parentNode.removeChild(lo); }, 420);
   }
 
-  async function enviarTelegram(btn) {
-    btn.disabled = true;
-    btn.textContent = '⏳ Capturando...';
-
+  // Captura a tela atual (mesma interface do relatório) e envia por foto ao Telegram.
+  // Retorna true/false conforme o envio foi confirmado pela API do Telegram.
+  async function capturarEEnviarTelegram() {
     // Esconde controles temporariamente
     const ocultar = ['.filtros', '.btn-print', '.btn-telegram', '#rotate-overlay', '.header-right .data-geracao'];
     const estados = ocultar.map(sel => {
@@ -755,14 +754,21 @@
         method: 'POST', body: formData
       });
 
-      btn.textContent = res.ok ? '✅ Enviado!' : '❌ Erro Telegram';
+      return res.ok;
     } catch(e) {
-      btn.textContent = '❌ Erro';
+      return false;
     } finally {
       estados.forEach(({ el, prev }) => { if (el) el.style.display = prev; });
-      btn.disabled = false;
-      setTimeout(() => { btn.textContent = '📸 Telegram'; }, 3000);
     }
+  }
+
+  async function enviarTelegram(btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Capturando...';
+    const ok = await capturarEEnviarTelegram();
+    btn.textContent = ok ? '✅ Enviado!' : '❌ Erro Telegram';
+    btn.disabled = false;
+    setTimeout(() => { btn.textContent = '📸 Telegram'; }, 3000);
   }
   function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   function ordemServico(nome) {
@@ -807,16 +813,21 @@
   }
 
   // Backup diário automático: disparado pelo menu GW ao acessar o sistema (?autobackup=1)
+  // Importante: só marca como "feito" (Firestore + localStorage) DEPOIS de confirmar o envio.
+  // Assim, se o app for fechado/trocado antes de terminar, tenta de novo na próxima abertura.
   async function verificarBackupDiario() {
     const agora = new Date();
     const chave = `${agora.getFullYear()}-${String(agora.getMonth()+1).padStart(2,"0")}-${String(agora.getDate()).padStart(2,"0")}`;
+
+    function marcarFeito() {
+      try { localStorage.setItem('gw_backup_disparado', chave); } catch(e) {}
+    }
 
     // Controle no Firestore — compartilhado entre todos os dispositivos
     const configRef = db.collection("config").doc("backupDiario");
     try {
       const snap = await configRef.get();
-      if (snap.exists && snap.data().ultimaData === chave) return;
-      await configRef.set({ ultimaData: chave });
+      if (snap.exists && snap.data().ultimaData === chave) { marcarFeito(); return; }
     } catch(e) {
       return;
     }
@@ -830,9 +841,21 @@
     const dataSemBarra = `${dd}${mm}${yyyy}`;
 
     const temLancamentosOntem = todosOsDocs.some(r => r.data === dataBR || r.data === dataSemBarra);
-    if (!temLancamentosOntem) return;
+    if (!temLancamentosOntem) {
+      // Nada para enviar hoje — marca como feito para não verificar de novo
+      try { await configRef.set({ ultimaData: chave }); } catch(e) {}
+      marcarFeito();
+      return;
+    }
 
-    setTimeout(() => enviarTelegram({ disabled: false, textContent: '' }), 3000);
+    setTimeout(async () => {
+      const ok = await capturarEEnviarTelegram();
+      if (ok) {
+        try { await configRef.set({ ultimaData: chave }); } catch(e) {}
+        marcarFeito();
+      }
+      // se falhar, não marca nada — tenta de novo na próxima abertura do sistema
+    }, 3000);
   }
 
   let todosOsDocs = [];
