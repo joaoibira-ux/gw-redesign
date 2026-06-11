@@ -286,13 +286,14 @@
 
     const PIN_COMPLETO  = '2248'; // todos os apps
     const PIN_PARCIAL   = '4512'; // todos visíveis, só 4 acessíveis
-    const PIN_RESTRITO  = '3733'; // sem Caixa e sem Relatório
-    const VERSAO = '3.19';
+    const PIN_RESTRITO  = '3733'; // só Folha, Rel. Folha, Mapa, Funcionários, Almoxarifado, Ponto, Rel. Ponto
+    const VERSAO = '3.20';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
     let modo = 'parcial'; // 'completo' | 'parcial' | 'restrito'
 
     const APPS_PARCIAL_ACESSO = ['Caixa', 'Relatório', 'Mapa', 'Rel. Folha', 'Rel. Ponto'];
+    const APPS_RESTRITO = ['Folha', 'Rel. Folha', 'Mapa', 'Funcionários', 'Almoxarifado', 'Ponto', 'Rel. Ponto'];
 
     const APPS = [
       { icon: '💰', name: 'Caixa',              desc: 'Lançamentos financeiros',   url: 'https://joaoibira-ux.github.io/caixa' },
@@ -434,7 +435,7 @@
     function renderApps() {
       const grid = document.getElementById('apps-grid');
       let lista = APPS;
-      if (modo === 'restrito') lista = APPS.filter(a => !['Caixa','Relatório'].includes(a.name));
+      if (modo === 'restrito') lista = APPS.filter(a => APPS_RESTRITO.includes(a.name));
 
       grid.innerHTML = lista.map((app, i) => {
         const wide    = (lista.length % 2 !== 0 && i === lista.length - 1) ? ' wide' : '';
