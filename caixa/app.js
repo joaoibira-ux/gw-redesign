@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.30";
+const VERSAO_CAIXA = "3.31";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -277,7 +277,7 @@ document.getElementById("f-data").value = hoje();
 const ORIGEM_GRUPOS = {
   "ANE": [
     { value: "ANE", label: "DESPESA" },
-    { value: "ANE->GW-INTER", label: "ANE → GW-INTER" },
+    { value: "ANE->GW-INTER", label: "TRANSFERÊNCIA CEF → INTER" },
     { value: "ANE->HORACIO", label: "HORACIO-Pagamento de Empréstimo (Baixa do Crédito Horácio)" },
     { value: "ANE->JOAO", label: "JOÃO ALBÉRICO - Pagamento de Prólabore (Baixa do Crédito João)" },
     { value: "ANE->RETENCAO PARADIGMA 5%", label: "RETENÇÃO PARADIGMA 5% (A Receber)" },
