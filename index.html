@@ -287,7 +287,7 @@
     const PIN_COMPLETO  = '2248'; // todos os apps
     const PIN_PARCIAL   = '4512'; // todos visíveis, só 4 acessíveis
     const PIN_RESTRITO  = '3733'; // sem Caixa e sem Relatório
-    const VERSAO = '3.8';
+    const VERSAO = '3.9';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
     let modo = 'parcial'; // 'completo' | 'parcial' | 'restrito'
@@ -298,6 +298,7 @@
       { icon: '💰', name: 'Caixa',              desc: 'Lançamentos financeiros',   url: 'https://joaoibira-ux.github.io/caixa' },
       { icon: '📊', name: 'Relatório',           desc: 'Financeiro',                url: 'https://joaoibira-ux.github.io/caixa/relatorio.html' },
       { icon: '🧾', name: 'A Receber',           desc: 'Contas a receber',          url: 'https://joaoibira-ux.github.io/areceber' },
+      { icon: '💸', name: 'A Pagar',             desc: 'Contas a pagar',            url: 'https://joaoibira-ux.github.io/apagar' },
       { icon: '📋', name: 'Folha',               desc: 'Pagamento da produção',     url: 'https://joaoibira-ux.github.io/folha' },
       { icon: '📄', name: 'Rel. Folha',          desc: 'Previsão de pagamento',     url: 'https://joaoibira-ux.github.io/folha/#relatorio' },
       { icon: '🗺️', name: 'Mapa',               desc: 'Serviços da obra',          url: 'https://joaoibira-ux.github.io/mapa' },
