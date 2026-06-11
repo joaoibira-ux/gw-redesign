@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.65";
+const VERSAO = "4.66";
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
 // ── Loading overlay ───────────────────────────────────────────
@@ -30,8 +30,15 @@ let _loIdx = 0, _loTimer = setInterval(() => {
   setTimeout(() => { if (el) { el.textContent = _loMsgs[_loIdx]; el.style.opacity = '1'; } }, 300);
 }, 3000);
 
+// Se demorar demais, oferece um botão para recarregar (2ª carga costuma ser bem mais rápida)
+let _loBtnTimer = setTimeout(() => {
+  const btn = document.getElementById('lo-reload');
+  if (btn) btn.style.display = 'inline-block';
+}, 7000);
+
 function esconderLoading() {
   clearInterval(_loTimer);
+  clearTimeout(_loBtnTimer);
   const lo = document.getElementById('lo');
   if (!lo) return;
   lo.style.opacity = '0';
