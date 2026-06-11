@@ -287,7 +287,7 @@
     const PIN_COMPLETO  = '2248'; // todos os apps
     const PIN_PARCIAL   = '4512'; // todos visíveis, só 4 acessíveis
     const PIN_RESTRITO  = '3733'; // sem Caixa e sem Relatório
-    const VERSAO = '3.14';
+    const VERSAO = '3.15';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
     let modo = 'parcial'; // 'completo' | 'parcial' | 'restrito'
@@ -398,7 +398,7 @@
       const home = document.getElementById('home-screen');
       pin.style.display = 'none';
 
-      if (!estaComoApp() && ehMobile()) {
+      if (!estaComoApp()) {
         mostrarAvisoInstalacao();
         return;
       }
