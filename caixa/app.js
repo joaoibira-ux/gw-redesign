@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.29";
+const VERSAO_CAIXA = "3.30";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -276,14 +276,13 @@ document.getElementById("f-data").value = hoje();
 // Origem em 2 níveis: escolhe ANE/JOAO primeiro, depois as origens específicas de cada um
 const ORIGEM_GRUPOS = {
   "ANE": [
-    { value: "ANE", label: "ANE (Geral)" },
+    { value: "ANE", label: "DESPESA" },
     { value: "ANE->GW-INTER", label: "ANE → GW-INTER" },
-    { value: "ANE->HORACIO", label: "ANE → HORACIO" },
-    { value: "ANE->JOAO", label: "ANE → JOAO" },
-    { value: "ANE->RETENCAO PARADIGMA 5%", label: "ANE → RETENÇÃO PARADIGMA 5%" },
-    { value: "ANE->FOLHA DE PAGAMENTO", label: "ANE → FOLHA DE PAGAMENTO" },
-    { value: "ANE->ADIANTAMENTO", label: "ANE → ADIANTAMENTO" },
-    { value: "ANE->CREDITO A REPASSAR P BBS FOMENTO", label: "ANE → CRÉDITO A REPASSAR P/ BBS FOMENTO" }
+    { value: "ANE->HORACIO", label: "HORACIO-Pagamento de Empréstimo (Baixa do Crédito Horácio)" },
+    { value: "ANE->JOAO", label: "JOÃO ALBÉRICO - Pagamento de Prólabore (Baixa do Crédito João)" },
+    { value: "ANE->RETENCAO PARADIGMA 5%", label: "RETENÇÃO PARADIGMA 5% (A Receber)" },
+    { value: "ANE->FOLHA DE PAGAMENTO", label: "PAGAMENTO DA FOLHA (Reseta a Folha de Pag)" },
+    { value: "ANE->ADIANTAMENTO", label: "ADIANTAMENTO DE SALÁRIO (Debita da Folha)" }
   ],
   "JOAO": [
     { value: "JOAO", label: "JOAO (Geral)" },
