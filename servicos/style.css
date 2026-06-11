@@ -1,0 +1,211 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  height: 100dvh;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f0f2f5;
+  color: #1a1a2e;
+  display: flex;
+  flex-direction: column;
+}
+
+header {
+  background: #1a3322;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  padding-top: max(12px, env(safe-area-inset-top));
+  font-size: 1.1rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.header-versao {
+  font-size: 0.7rem;
+  color: #a5d6a7;
+  font-weight: 400;
+}
+
+.lista {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 12px 80px;
+}
+
+.card {
+  background: white;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  border-left: 4px solid #1a3322;
+  position: relative;
+}
+
+.card-nome {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1a3322;
+  margin-bottom: 6px;
+  padding-right: 60px;
+}
+
+.card-item-badge {
+  display: inline-block;
+  background: #e8f0e9;
+  color: #1a3322;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.card-nome-mapa {
+  font-size: 0.78rem;
+  color: #6a8a76;
+  margin-bottom: 6px;
+}
+
+.card-valores {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.card-linha {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.val-label {
+  font-size: 0.78rem;
+  color: #888;
+}
+
+.val-num {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #1565c0;
+}
+
+.card-obs {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: #aaa;
+  font-style: italic;
+}
+
+.card-acoes {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 4px;
+}
+
+.btn-edit, .btn-del {
+  background: none;
+  border: none;
+  font-size: 1rem;
+  color: #ccc;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+}
+.btn-edit:active { color: #1a3322; }
+.btn-del:active  { color: #f44336; }
+
+.fab {
+  position: fixed;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  right: 20px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #1a3322;
+  color: white;
+  border: none;
+  font-size: 1.6rem;
+  font-weight: 300;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+  line-height: 52px;
+  text-align: center;
+  transition: background 0.15s, transform 0.2s;
+  z-index: 100;
+}
+.fab.open { background: #c62828; transform: rotate(45deg); }
+
+.form-card {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: white;
+  border-radius: 20px 20px 0 0;
+  padding: 20px 16px max(20px, env(safe-area-inset-bottom));
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+  z-index: 200;
+}
+
+.form-card h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1a3322;
+  margin-bottom: 14px;
+}
+
+.form-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.form-grid label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #888;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.form-grid input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.form-grid input:focus { border-color: #1a3322; }
+
+.btn-add {
+  background: #1a3322;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 14px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 4px;
+}
+.btn-add:active { background: #2d5a2d; }
+
+.empty {
+  text-align: center;
+  color: #aaa;
+  padding: 60px 0;
+  font-size: 0.9rem;
+}

@@ -278,7 +278,7 @@
       localStorage.setItem('gw_backup_disparado', chave);
 
       const iframe = document.createElement('iframe');
-      iframe.src = 'https://joaoibira-ux.github.io/caixa/relatorio.html?autobackup=1';
+      iframe.src = './caixa/relatorio.html?autobackup=1';
       iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:1200px;height:900px;border:none;visibility:hidden;';
       document.body.appendChild(iframe);
       setTimeout(() => { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); }, 90000);
@@ -287,7 +287,7 @@
     const PIN_COMPLETO  = '2248'; // todos os apps
     const PIN_PARCIAL   = '4512'; // todos visíveis, só 4 acessíveis
     const PIN_RESTRITO  = '3733'; // só Folha, Rel. Folha, Mapa, Funcionários, Almoxarifado, Ponto, Rel. Ponto
-    const VERSAO = '3.25';
+    const VERSAO = '3.26';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
     let modo = 'parcial'; // 'completo' | 'parcial' | 'restrito'
@@ -296,17 +296,17 @@
     const APPS_RESTRITO = ['Folha', 'Rel. Folha', 'Mapa', 'Funcionários', 'Almoxarifado', 'Ponto', 'Rel. Ponto'];
 
     const APPS = [
-      { icon: '💰', name: 'Caixa',              desc: 'Lançamentos financeiros',   url: 'https://joaoibira-ux.github.io/caixa' },
-      { icon: '📊', name: 'Relatório',           desc: 'Financeiro',                url: 'https://joaoibira-ux.github.io/caixa/relatorio.html' },
-      { icon: '🧾', name: 'A Receber',           desc: 'Contas a receber',          url: 'https://joaoibira-ux.github.io/areceber' },
-      { icon: '💸', name: 'A Pagar',             desc: 'Contas a pagar',            url: 'https://joaoibira-ux.github.io/apagar' },
-      { icon: '📋', name: 'Folha',               desc: 'Pagamento da produção',     url: 'https://joaoibira-ux.github.io/folha' },
-      { icon: '📄', name: 'Rel. Folha',          desc: 'Previsão de pagamento',     url: 'https://joaoibira-ux.github.io/folha/#relatorio' },
-      { icon: '🗺️', name: 'Mapa',               desc: 'Serviços da obra',          url: 'https://joaoibira-ux.github.io/mapa' },
-      { icon: '👷', name: 'Funcionários',        desc: 'Cadastro e fichas',         url: 'https://joaoibira-ux.github.io/funcionarios' },
-      { icon: '🏪', name: 'Almoxarifado',        desc: 'EPI e Ferramentas',         url: 'https://joaoibira-ux.github.io/almoxarifado' },
-      { icon: '🏢', name: 'Locais',              desc: 'Cadastro de locais',        url: 'https://joaoibira-ux.github.io/Locais' },
-      { icon: '🔧', name: 'Serviços',            desc: 'Cadastro de serviços',      url: 'https://joaoibira-ux.github.io/servicos' },
+      { icon: '💰', name: 'Caixa',              desc: 'Lançamentos financeiros',   url: 'https://sistema.gwrevestimentos.com.br/caixa/' },
+      { icon: '📊', name: 'Relatório',           desc: 'Financeiro',                url: 'https://sistema.gwrevestimentos.com.br/caixa/relatorio.html' },
+      { icon: '🧾', name: 'A Receber',           desc: 'Contas a receber',          url: 'https://sistema.gwrevestimentos.com.br/areceber/' },
+      { icon: '💸', name: 'A Pagar',             desc: 'Contas a pagar',            url: 'https://sistema.gwrevestimentos.com.br/apagar/' },
+      { icon: '📋', name: 'Folha',               desc: 'Pagamento da produção',     url: 'https://sistema.gwrevestimentos.com.br/folha/' },
+      { icon: '📄', name: 'Rel. Folha',          desc: 'Previsão de pagamento',     url: 'https://sistema.gwrevestimentos.com.br/folha/#relatorio' },
+      { icon: '🗺️', name: 'Mapa',               desc: 'Serviços da obra',          url: 'https://sistema.gwrevestimentos.com.br/mapa/' },
+      { icon: '👷', name: 'Funcionários',        desc: 'Cadastro e fichas',         url: 'https://sistema.gwrevestimentos.com.br/funcionarios/' },
+      { icon: '🏪', name: 'Almoxarifado',        desc: 'EPI e Ferramentas',         url: 'https://sistema.gwrevestimentos.com.br/almoxarifado/' },
+      { icon: '🏢', name: 'Locais',              desc: 'Cadastro de locais',        url: 'https://sistema.gwrevestimentos.com.br/locais/' },
+      { icon: '🔧', name: 'Serviços',            desc: 'Cadastro de serviços',      url: 'https://sistema.gwrevestimentos.com.br/servicos/' },
       { icon: '🕐', name: 'Ponto',              desc: 'Registro de presença',       url: 'https://sistema.gwrevestimentos.com.br/ponto/?menu=1' },
       { icon: '📅', name: 'Rel. Ponto',        desc: 'Relatório de presença',      url: 'https://sistema.gwrevestimentos.com.br/relatorio-ponto/' },
     ];

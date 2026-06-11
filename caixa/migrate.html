@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Migração</title>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; }
+    button { padding: 1rem 2rem; font-size: 1rem; cursor: pointer; }
+    #log { margin-top: 1rem; white-space: pre-wrap; font-family: monospace; }
+  </style>
+</head>
+<body>
+  <h2>Migração: ANE->JOAO → ANE->GW-INTER</h2>
+  <button onclick="migrar()">Executar migração</button>
+  <div id="log"></div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBaqROPsywPgtKjQU7cs1ke1WaqDFhWwn0",
+      authDomain: "sistema-gw-36566.firebaseapp.com",
+      projectId: "sistema-gw-36566",
+      storageBucket: "sistema-gw-36566.firebasestorage.app",
+      messagingSenderId: "472820177992",
+      appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const log = document.getElementById("log");
+
+    async function migrar() {
+      log.textContent = "Buscando registros...\n";
+      const snap = await db.collection("lancamentos").where("origem", "==", "ANE->JOAO").get();
+      if (snap.empty) {
+        log.textContent += "Nenhum registro encontrado com ANE->JOAO.\n";
+        return;
+      }
+      log.textContent += `${snap.size} registro(s) encontrado(s). Atualizando...\n`;
+      const batch = db.batch();
+      snap.forEach(doc => {
+        batch.update(doc.ref, { origem: "ANE->GW-INTER" });
+        log.textContent += `  - ${doc.id}: ${doc.data().descricao}\n`;
+      });
+      await batch.commit();
+      log.textContent += "\nMigração concluída!";
+    }
+  </script>
+</body>
+</html>

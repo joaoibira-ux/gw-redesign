@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Folha de Pagamento da Produção</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <link rel="stylesheet" href="style.css?v=4.20">
+  <style>
+    html.gw-blocked body > *:not(#aviso-instalacao) { display: none !important; }
+    #aviso-instalacao {
+      display: none; position: fixed; inset: 0; z-index: 99999;
+      flex-direction: column; align-items: center; justify-content: center;
+      padding: 24px; gap: 16px; overflow-y: auto;
+      background:
+        linear-gradient(180deg, rgba(8,20,12,0.6) 0%, rgba(8,20,12,0.85) 100%),
+        url('./Logo-gw.png') center/cover no-repeat scroll;
+    }
+    html.gw-blocked #aviso-instalacao { display: flex; }
+    .aviso-card { width: 100%; max-width: 420px; padding: 16px; border-radius: 22px; }
+    .aviso-card img { width: 100%; display: block; border-radius: 14px; box-shadow: 0 4px 24px rgba(0,0,0,0.5); }
+    .aviso-card img.aviso-logo {
+      width: 50%; margin: 28px auto;
+      border-radius: 0; box-shadow: none;
+      animation: aviso-logo-fade 1.1s ease-in-out;
+    }
+    @keyframes aviso-logo-fade {
+      0%   { opacity: 0; transform: scale(.9); }
+      35%  { opacity: 1; transform: scale(1); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+  </style>
+  <script>
+    (function() {
+      function estaComoApp() {
+        return window.navigator.standalone === true
+          || window.matchMedia('(display-mode: standalone)').matches
+          || window.matchMedia('(display-mode: fullscreen)').matches;
+      }
+      function ehMobile() {
+        return /iPad|iPhone|iPod|Android/.test(navigator.userAgent) && !window.MSStream;
+      }
+      if (ehMobile() && !estaComoApp()) {
+        document.documentElement.classList.add('gw-blocked');
+      }
+    })();
+  </script>
+</head>
+<body>
+
+  <!-- Aviso de instalação -->
+  <div id="aviso-instalacao">
+    <div class="aviso-card">
+      <img id="aviso-img" src="" alt="Instruções" />
+    </div>
+  </div>
+
+  <!-- Loading overlay — animação local, sem rede -->
+  <div id="lo">
+    <style>
+      #lo{position:fixed;inset:0;background:#1a3322;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#a5d6a7;gap:0;transition:opacity .4s}
+      @keyframes lo-ring{0%{transform:scale(.8);opacity:.9}100%{transform:scale(2.4);opacity:0}}
+      @keyframes lo-pulse{0%,100%{opacity:.7;transform:scale(1)}50%{opacity:1;transform:scale(1.08)}}
+      .lo-ring{position:absolute;width:72px;height:72px;border-radius:50%;border:1.5px solid #4caf50;animation:lo-ring 2.4s ease-out infinite}
+      .lo-r2{animation-delay:.8s}.lo-r3{animation-delay:1.6s}
+      #lo-msg{transition:opacity .3s}
+    </style>
+    <div style="font-size:.65rem;letter-spacing:4px;color:#2d6b40;margin-bottom:36px;font-weight:800">GREEN WALL</div>
+    <div style="position:relative;width:72px;height:72px;display:flex;align-items:center;justify-content:center;margin-bottom:28px">
+      <div class="lo-ring"></div>
+      <div class="lo-ring lo-r2"></div>
+      <div class="lo-ring lo-r3"></div>
+      <svg width="38" height="38" viewBox="0 0 38 38" style="animation:lo-pulse 2s ease-in-out infinite">
+        <circle cx="19" cy="19" r="15" fill="none" stroke="#388e3c" stroke-width="2"/>
+        <polyline points="11,19 17,25 27,13" fill="none" stroke="#a5d6a7" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div style="font-size:.95rem;font-weight:800;letter-spacing:1px;color:#c8e6c9;margin-bottom:6px">FOLHA DE PAGAMENTO</div>
+    <div style="font-size:.72rem;color:#4a8a5a;margin-bottom:28px">da Produção</div>
+    <div id="lo-msg" style="font-size:.8rem;color:#66bb6a;min-height:1.1em;text-align:center;padding:0 40px">Buscando dados atualizados...</div>
+    <div style="font-size:.6rem;color:#243d2a;margin-top:32px">Aguarde — buscando da rede</div>
+  </div>
+
+  <header>
+    <a href="https://sistema.gwrevestimentos.com.br/index.html" style="display:flex;align-items:center;line-height:0;">
+      <img src="./Logo-gw.png" alt="GW" style="height:34px;width:34px;object-fit:contain;border-radius:6px;" />
+    </a>
+    <span>Folha de Pagamento</span>
+    <span id="total-header" class="total-header"></span>
+  </header>
+
+  <!-- View 1: Funcionários (padrão) -->
+  <div id="view-funcionarios" class="view ativa">
+    <div class="mapa-barra" id="barra-funcionarios" style="display:none">
+      <button class="btn-voltar" onclick="apenasProducao=false;mostrarView('view-folha')">&#8592;</button>
+      <span class="func-atual">Selecionar funcionário</span>
+      <span></span>
+    </div>
+    <div id="lista-funcionarios"><p class="vazio" style="padding:40px;text-align:center;color:#aaa">Carregando...</p></div>
+  </div>
+
+  <!-- View 2: Mapa (com barra do funcionário + botão OK) -->
+  <div id="view-mapa" class="view">
+    <div class="mapa-barra">
+      <button class="btn-voltar" onclick="entradas.length ? mostrarView('view-folha') : mostrarView('view-funcionarios')">&#8592;</button>
+      <span id="func-atual" class="func-atual"></span>
+      <button id="btn-ok" class="btn-ok" onclick="confirmarSelecao()" disabled>OK</button>
+    </div>
+    <div class="legenda">
+      <span class="leg-item"><span class="leg-cor concluido"></span> Concluído</span>
+      <span class="leg-item"><span class="leg-cor pendente"></span> Pendente</span>
+      <span class="leg-item"><span class="leg-cor em_pagamento"></span> Na folha</span>
+      <span class="leg-item"><span class="leg-cor selecionado"></span> Selecionado</span>
+    </div>
+    <div id="mapa" class="mapa"></div>
+  </div>
+
+  <!-- View 3: Calendário (ajudante) -->
+  <div id="view-calendario" class="view">
+    <div class="mapa-barra">
+      <button class="btn-voltar" onclick="mostrarView('view-funcionarios')">&#8592;</button>
+      <span id="cal-func-nome" class="func-atual"></span>
+      <button id="btn-ok-cal" class="btn-ok" onclick="confirmarDias()" disabled>OK</button>
+    </div>
+    <div class="cal-nav">
+      <button class="cal-nav-btn" onclick="calMes(-1)">&#8249;</button>
+      <span id="cal-titulo" class="cal-titulo-mes"></span>
+      <button class="cal-nav-btn" onclick="calMes(1)">&#8250;</button>
+    </div>
+    <div id="cal-grid" class="cal-grid"></div>
+  </div>
+
+  <!-- View 4: Folha Preview -->
+  <div id="view-folha" class="view">
+    <div id="folha-documento"></div>
+    <div class="folha-acoes">
+      <div class="folha-acoes-row">
+        <button class="btn-adicionar" onclick="apenasProducao=false;mostrarView('view-funcionarios')">Funcionários</button>
+        <button class="btn-remover"   onclick="mostrarView('view-mapa')">Mapa</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="app.js?v=4.65"></script>
+  <script>
+    if (document.documentElement.classList.contains('gw-blocked')) {
+      (function() {
+        const isIOS     = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        const isAndroid = /Android/.test(navigator.userAgent);
+        const img = document.getElementById('aviso-img');
+        let destino;
+        if (isIOS)          destino = './Aviso iPhone.png';
+        else if (isAndroid) destino = './Aviso Adroide.png';
+        else                destino = './instrucoes_sistema_gw.png';
+        img.src = './Logo-gw.png';
+        img.classList.add('aviso-logo');
+        setTimeout(() => {
+          img.classList.remove('aviso-logo');
+          img.src = destino;
+        }, 1200);
+      })();
+    }
+  </script>
+</body>
+</html>

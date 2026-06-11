@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Locais" />
+  <title>Locais</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="./style.css?v=15" />
+  <link rel="apple-touch-icon" href="./Logo-gw.png" />
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <a href="https://sistema.gwrevestimentos.com.br/index.html" style="display:flex;align-items:center;line-height:0;">
+      <img src="./Logo-gw.png" alt="GW" style="height:34px;width:34px;object-fit:contain;border-radius:6px;" />
+    </a>
+    <span>Locais</span>
+  </div>
+  <div class="header-right">
+    <button class="btn-config" id="btn-config-ponto" onclick="abrirConfigPonto()" title="Local do Ponto">📍</button>
+    <span id="versao-app" class="header-versao"></span>
+  </div>
+</header>
+
+<div id="lista" class="lista"></div>
+
+<button class="fab" id="fab" onclick="toggleForm()">+</button>
+
+<form class="form-card" id="form" novalidate style="display:none">
+  <div class="form-header">
+    <h3 id="form-titulo">Novo Local</h3>
+    <button type="button" class="btn-fechar" onclick="toggleForm()">✕</button>
+  </div>
+  <div class="form-grid">
+
+    <div class="col2">
+      <div>
+        <label for="f-tipo">Tipo</label>
+        <select id="f-tipo">
+          <option value="Apartamento">Apartamento</option>
+        </select>
+      </div>
+      <div>
+        <label for="f-id">Identificação</label>
+        <input type="text" id="f-id" placeholder="Ex: A01" />
+      </div>
+    </div>
+
+    <div>
+      <label for="f-area">Área (m²)</label>
+      <input type="decimal" inputmode="decimal" id="f-area" placeholder="0,00" />
+    </div>
+
+    <div>
+      <label>Serviços a executar</label>
+      <div id="servicos-check" class="servicos-check">
+        <p class="check-vazio">Carregando serviços...</p>
+      </div>
+    </div>
+
+    <button type="submit" class="btn-add" id="btn-submit">+ Cadastrar</button>
+  </div>
+</form>
+
+<!-- Modal de seleção de funcionário -->
+<div id="modal-func" class="modal-overlay" style="display:none" onclick="if(event.target===this)fecharModal()">
+  <div class="modal-sheet">
+    <div class="form-header">
+      <h3 id="modal-titulo-serv">Quem executou?</h3>
+      <button type="button" class="btn-fechar" onclick="fecharModal()">✕</button>
+    </div>
+    <div class="modal-pagamento">
+      <div class="modal-campo">
+        <label for="modal-valor">Valor pago (R$)</label>
+        <input type="decimal" inputmode="decimal" id="modal-valor" placeholder="0,00" />
+      </div>
+      <div class="modal-campo">
+        <label for="modal-data">Data do pagamento</label>
+        <input type="text" id="modal-data" placeholder="DD/MM/AAAA" />
+      </div>
+    </div>
+    <p class="modal-label-func">Selecione o executor:</p>
+    <div id="modal-lista-func"></div>
+  </div>
+</div>
+
+<!-- Modal de configuração do local do ponto -->
+<div id="modal-ponto" class="modal-overlay" style="display:none" onclick="if(event.target===this)fecharConfigPonto()">
+  <div class="modal-sheet">
+    <div class="form-header">
+      <h3>Local do Ponto</h3>
+      <button type="button" class="btn-fechar" onclick="fecharConfigPonto()">✕</button>
+    </div>
+    <div class="form-grid">
+      <div class="col2">
+        <div>
+          <label for="cp-lat">Latitude</label>
+          <input type="text" inputmode="decimal" id="cp-lat" placeholder="-23.000000" />
+        </div>
+        <div>
+          <label for="cp-lng">Longitude</label>
+          <input type="text" inputmode="decimal" id="cp-lng" placeholder="-46.000000" />
+        </div>
+      </div>
+      <div>
+        <label for="cp-raio">Raio (metros)</label>
+        <input type="text" inputmode="decimal" id="cp-raio" placeholder="200" />
+      </div>
+      <button type="button" class="btn-add" onclick="usarLocalizacaoAtual()">📍 Usar localização atual</button>
+      <button type="button" class="btn-add" onclick="salvarConfigPonto()">✓ Salvar</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="./app.js?v=17"></script>
+</body>
+</html>

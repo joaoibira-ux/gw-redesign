@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="A Pagar" />
+  <title>A Pagar</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="./style.css?v=1" />
+  <link rel="apple-touch-icon" href="./Logo-gw.png" />
+</head>
+<body>
+
+<header>
+  <a href="https://sistema.gwrevestimentos.com.br/index.html" style="display:flex;align-items:center;line-height:0;">
+    <img src="./Logo-gw.png" alt="GW" style="height:34px;width:34px;object-fit:contain;border-radius:6px;" />
+  </a>
+  <span>A Pagar</span>
+  <span id="versao-app" class="header-versao"></span>
+</header>
+
+<div class="resumo">
+  <span class="resumo-label">Total em aberto</span>
+  <span class="resumo-valor" id="tot-aberto">R$ 0,00</span>
+</div>
+
+<div id="lista" class="lista"></div>
+
+<button class="fab" id="fab" onclick="toggleForm()">+</button>
+
+<form class="form-card" id="form" novalidate style="display:none">
+  <h3>Nova Conta a Pagar</h3>
+  <div class="form-grid">
+    <div class="full">
+      <label for="f-data">Data</label>
+      <input type="text" id="f-data" placeholder="DD/MM/AAAA" />
+    </div>
+    <div class="full">
+      <label for="f-desc">Descrição</label>
+      <input type="text" id="f-desc" placeholder="Ex: Empréstimo de fornecedor X" />
+    </div>
+    <div class="full">
+      <label for="f-valor">Valor (R$)</label>
+      <input type="decimal" inputmode="decimal" id="f-valor" placeholder="0,00" />
+    </div>
+    <button type="submit" class="btn-add">+ Cadastrar</button>
+  </div>
+</form>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="./app.js?v=2"></script>
+</body>
+</html>

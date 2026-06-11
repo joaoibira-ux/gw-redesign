@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Funcionários" />
+  <title>Cadastro de Funcionários</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="./style.css?v=11" />
+</head>
+<body>
+
+<header>
+  <a href="https://sistema.gwrevestimentos.com.br/index.html" style="display:flex;align-items:center;line-height:0;">
+    <img src="./Logo-gw.png" alt="GW" style="height:34px;width:34px;object-fit:contain;border-radius:6px;" />
+  </a>
+  <span>Funcionários</span>
+  <span id="versao-app" class="header-versao"></span>
+</header>
+
+<div id="lista" class="lista"></div>
+<button class="fab" id="fab" onclick="abrirFormulario()">+</button>
+
+<!-- PÁGINA 1: Dados do funcionário -->
+<div id="form-overlay" class="form-overlay" style="display:none">
+  <div class="form-scroll">
+    <form id="form" novalidate>
+
+      <div class="form-section-title">Identificação</div>
+      <div class="form-row">
+        <div class="form-group full">
+          <label>Nome completo *</label>
+          <input type="text" id="f-nome" placeholder="Nome do funcionário" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group full face-status-row">
+          <div class="face-preview" id="face-preview">👤</div>
+          <div class="face-info">
+            <div class="face-label" id="face-label">Face não cadastrada</div>
+            <button type="button" class="btn-face" id="btn-face" onclick="abrirCameraFace()">📷 Cadastrar Face</button>
+          </div>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Cargo *</label>
+          <select id="f-cargo">
+            <option value="">Selecionar...</option>
+            <option value="Pintor">Pintor</option>
+            <option value="Ajudante">Ajudante</option>
+            <option value="Raspador">Raspador</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Admissão</label>
+          <input type="text" id="f-admissao" placeholder="DD/MM/AAAA" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" id="wrap-salario">
+          <label id="lbl-salario">Salário (R$)</label>
+          <input type="decimal" inputmode="decimal" id="f-salario" placeholder="0,00" />
+        </div>
+        <div class="form-group">
+          <label>Telefone</label>
+          <input type="tel" id="f-telefone" placeholder="(00) 00000-0000" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group full">
+          <label>Observações</label>
+          <input type="text" id="f-obs" placeholder="Opcional" />
+        </div>
+      </div>
+
+      <div class="form-section-title">Dados Pessoais</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Nacionalidade</label>
+          <input type="text" id="f-nacionalidade" placeholder="Brasileiro(a)" />
+        </div>
+        <div class="form-group">
+          <label>Estado Civil</label>
+          <select id="f-estadocivil">
+            <option value="">Selecionar...</option>
+            <option>Solteiro(a)</option>
+            <option>Casado(a)</option>
+            <option>Divorciado(a)</option>
+            <option>Viúvo(a)</option>
+            <option>União Estável</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Data de Nascimento</label>
+          <input type="text" id="f-nascimento" placeholder="DD/MM/AAAA" />
+        </div>
+        <div class="form-group">
+          <label>Cônjuge</label>
+          <input type="text" id="f-conjuge" placeholder="Nome" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Local de Nascimento</label>
+          <input type="text" id="f-localnasc" placeholder="Cidade" />
+        </div>
+        <div class="form-group">
+          <label>UF Nascimento</label>
+          <input type="text" id="f-ufnasc" placeholder="UF" maxlength="2" class="upper" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group full">
+          <label>Nome da Mãe</label>
+          <input type="text" id="f-nomemae" placeholder="Nome completo da mãe" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group full">
+          <label>Grau de Instrução</label>
+          <div class="radio-group">
+            <label class="radio-label"><input type="radio" name="instrucao" value="Fundamental" /> Fundamental</label>
+            <label class="radio-label"><input type="radio" name="instrucao" value="Médio" /> Médio</label>
+            <label class="radio-label"><input type="radio" name="instrucao" value="Superior" /> Superior</label>
+          </div>
+          <div class="radio-group mt6">
+            <label class="radio-label"><input type="radio" name="instrucao_status" value="Completo" /> Completo</label>
+            <label class="radio-label"><input type="radio" name="instrucao_status" value="Incompleto" /> Incompleto</label>
+            <label class="radio-label"><input type="radio" name="instrucao_status" value="Cursando" /> Cursando</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section-title">Documentos</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>CPF</label>
+          <input type="text" id="f-cpf" placeholder="000.000.000-00" inputmode="numeric" />
+        </div>
+        <div class="form-group">
+          <label>Identidade (RG)</label>
+          <input type="text" id="f-rg" placeholder="Número" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Órgão Emissor</label>
+          <input type="text" id="f-orgaoemissor" placeholder="SSP" />
+        </div>
+        <div class="form-group">
+          <label>UF Identidade</label>
+          <input type="text" id="f-ufrg" placeholder="UF" maxlength="2" class="upper" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Data Emissão RG</label>
+          <input type="text" id="f-emissaorg" placeholder="DD/MM/AAAA" />
+        </div>
+        <div class="form-group">
+          <label>CTPS</label>
+          <input type="text" id="f-ctps" placeholder="Número" inputmode="numeric" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Série CTPS</label>
+          <input type="text" id="f-seriectps" placeholder="Série" />
+        </div>
+        <div class="form-group">
+          <label>UF CTPS</label>
+          <input type="text" id="f-ufctps" placeholder="UF" maxlength="2" class="upper" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group full">
+          <label>Data Emissão CTPS</label>
+          <input type="text" id="f-emissaoctps" placeholder="DD/MM/AAAA" />
+        </div>
+      </div>
+
+      <div class="form-section-title">Endereço</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>CEP *</label>
+          <input type="text" id="f-cep" placeholder="00000-000" inputmode="numeric" maxlength="9" />
+        </div>
+        <div class="form-group">
+          <label>UF *</label>
+          <input type="text" id="f-uf" placeholder="UF" maxlength="2" class="upper" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group full">
+          <label>Endereço *</label>
+          <input type="text" id="f-endereco" placeholder="Rua, número, complemento" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group full">
+          <label>Cidade *</label>
+          <input type="text" id="f-cidade" placeholder="Cidade" />
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn-cancel" onclick="fecharFormulario()">Cancelar</button>
+        <button type="button" class="btn-save" onclick="irParaAssinaturaParaSalvar()">✍ Assinar e Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- TELA DE CONSULTA -->
+<div id="consultar-overlay" class="form-overlay" style="display:none">
+  <div class="form-scroll">
+    <div id="consultar-body"></div>
+    <div class="form-actions">
+      <button type="button" class="btn-cancel" onclick="fecharConsultar()">Fechar</button>
+      <button type="button" class="btn-next"   onclick="editarDoConsultar()">✏ Editar</button>
+      <button type="button" class="btn-pdf"    onclick="irParaAssinaturaDoConsultar()">📋 Ficha Cadastral</button>
+      <button type="button" class="btn-epi"    onclick="">🦺 Ficha EPI / Ferramentas</button>
+    </div>
+  </div>
+</div>
+
+<!-- ASSINATURA (acesso via Gerar PDF na consulta) -->
+<div id="assin-overlay" class="form-overlay" style="display:none">
+  <div class="form-scroll">
+    <div class="form-section-title">Assinatura do Funcionário</div>
+    <p class="assin-instrucao">Assine com o dedo ou caneta — obrigatório para gerar o PDF</p>
+    <div class="canvas-wrap">
+      <canvas id="assin-canvas"></canvas>
+    </div>
+    <div style="text-align:center;margin:10px 0">
+      <button type="button" class="btn-limpar" onclick="limparAssinatura()">🗑 Limpar</button>
+    </div>
+    <div class="form-actions">
+      <button type="button" class="btn-cancel" onclick="voltarDaAssinatura()">← Voltar</button>
+      <button type="button" class="btn-save" id="btn-assin-acao" onclick="acaoAssinatura()">✅ Assinar e Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- CAPTURA DE FACE -->
+<div id="face-overlay" class="face-overlay" style="display:none">
+  <video id="video-face" autoplay muted playsinline></video>
+  <div class="face-oval"></div>
+  <div class="face-top">
+    <button type="button" class="btn-voltar" onclick="cancelarCapturaFace()">← Voltar</button>
+    <div class="face-title">CADASTRAR FACE</div>
+  </div>
+  <div class="face-bot">
+    <div class="face-hint" id="face-hint">Carregando...</div>
+    <button type="button" class="btn-capture" id="btn-capture-face" onclick="capturarFotoFace()" disabled></button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="./app.js?v=17"></script>
+</body>
+</html>

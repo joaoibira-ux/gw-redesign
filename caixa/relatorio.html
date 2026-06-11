@@ -1,0 +1,1288 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=1100" />
+  <title>Relatório Financeiro – Green Wall</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #1a3322;
+      color: #c8e6c9;
+      min-height: 100vh;
+    }
+
+    /* ── HEADER ── */
+    .header {
+      background: linear-gradient(135deg, #1a3322 0%, #2d5a2d 100%);
+      color: white;
+      padding: 24px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    .header-logo {
+      height: 72px;
+      width: auto;
+    }
+    .header-logo-placeholder {
+      height: 72px;
+      width: 72px;
+      background: rgba(255,255,255,0.15);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.8rem;
+      font-weight: 900;
+      color: #4caf50;
+      letter-spacing: -2px;
+    }
+    .header-title h1 {
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+    .header-title p {
+      font-size: 0.8rem;
+      color: #a5d6a7;
+      margin-top: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .header-right {
+      text-align: right;
+    }
+    .header-right .data-geracao {
+      font-size: 0.8rem;
+      color: #a5d6a7;
+      margin-bottom: 8px;
+    }
+    .btn-print, .btn-telegram {
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 20px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s;
+    }
+    .btn-print    { background: #4caf50; }
+    .btn-print:hover { background: #388e3c; }
+    .btn-telegram { background: #1976d2; }
+    .btn-telegram:hover { background: #1251a0; }
+    .btn-telegram:disabled { background: #555; cursor: default; }
+    .btn-pesquisa { background: #4a2c7a; }
+    .btn-pesquisa:hover { background: #6a3d9a; }
+    .header-btns  { display: flex; gap: 8px; }
+    @media print  { .btn-telegram, .btn-pesquisa { display: none !important; } }
+
+    /* ── MODAL PESQUISA ── */
+    .pesquisa-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+      display: none; align-items: flex-start; justify-content: center;
+      z-index: 300; padding: 24px 16px; overflow-y: auto;
+    }
+    .pesquisa-overlay.ativa { display: flex; }
+    .pesquisa-modal {
+      background: #1a3322; border-radius: 14px; width: 100%; max-width: 700px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4); overflow: hidden;
+    }
+    .pesquisa-header {
+      background: #0d2318; padding: 16px 20px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .pesquisa-input {
+      flex: 1; background: rgba(255,255,255,0.1); border: 1px solid rgba(165,214,167,0.3);
+      border-radius: 8px; padding: 10px 14px; color: #e8f5e9; font-size: 1rem;
+      outline: none;
+    }
+    .pesquisa-input::placeholder { color: #4a8a5a; }
+    .pesquisa-input:focus { border-color: #4caf50; background: rgba(255,255,255,0.15); }
+    .btn-fechar-pesquisa {
+      background: none; border: none; color: #a5d6a7; font-size: 1.4rem;
+      cursor: pointer; padding: 4px 8px; line-height: 1;
+    }
+    .pesquisa-resultado { padding: 16px 20px; }
+    .pesq-secao-titulo {
+      font-size: 0.68rem; font-weight: 800; letter-spacing: 1.5px;
+      text-transform: uppercase; color: #4a8a5a; padding: 8px 0 6px;
+      border-bottom: 1px solid rgba(165,214,167,0.15); margin-bottom: 6px;
+    }
+    .pesq-linha {
+      display: flex; justify-content: space-between; align-items: baseline;
+      padding: 5px 0; border-bottom: 1px solid rgba(165,214,167,0.06);
+      font-size: 0.82rem; gap: 8px;
+    }
+    .pesq-linha-info { color: #c8e6c9; flex: 1; min-width: 0; }
+    .pesq-linha-data { color: #4a8a5a; font-size: 0.72rem; white-space: nowrap; }
+    .pesq-linha-val  { font-weight: 700; white-space: nowrap; }
+    .pesq-val-entrada { color: #81c784; }
+    .pesq-val-saida   { color: #ef9a9a; }
+    .pesq-resumo {
+      margin-top: 14px; background: #0d2318; border-radius: 8px; padding: 12px 16px;
+      display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    }
+    .pesq-res-item { text-align: center; }
+    .pesq-res-label { font-size: 0.65rem; color: #4a8a5a; text-transform: uppercase; letter-spacing: 1px; }
+    .pesq-res-val   { font-size: 1rem; font-weight: 800; margin-top: 2px; }
+    .pesq-vazio { color: #4a8a5a; text-align: center; padding: 24px; font-size: 0.9rem; }
+
+    /* ── FILTROS (dentro da barra escura da tabela) ── */
+    .filtros {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+      flex-wrap: wrap;
+    }
+    .filtro-grupo {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .filtro-grupo label {
+      font-size: 0.62rem;
+      font-weight: 600;
+      color: #a5d6a7;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .filtro-grupo input,
+    .filtro-grupo select {
+      padding: 5px 9px;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 6px;
+      font-size: 0.82rem;
+      color: #1a3322;
+      background: rgba(255,255,255,0.9);
+      outline: none;
+      height: 30px;
+    }
+    .filtro-grupo input:focus,
+    .filtro-grupo select:focus { border-color: #4caf50; background: #fff; }
+    .btn-filtrar {
+      background: rgba(255,255,255,0.15);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 6px;
+      padding: 0 14px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      height: 30px;
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+    .btn-filtrar:hover { background: rgba(255,255,255,0.25); }
+    .btn-filtrar.verde { background: #4caf50; border-color: #4caf50; }
+    .btn-filtrar.verde:hover { background: #388e3c; }
+
+    /* ── CARDS RESUMO ── */
+    .resumo {
+      display: flex;
+      gap: 16px;
+      padding: 24px 32px 8px;
+      flex-wrap: wrap;
+    }
+    .card-resumo {
+      flex: 1;
+      min-width: 140px;
+      background: #0d2318;
+      border-radius: 12px;
+      padding: 16px 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      border-top: 4px solid #2d5a2d;
+    }
+    .card-resumo.entrada  { border-top-color: #4caf50; }
+    .card-resumo.saida    { border-top-color: #e53935; }
+    .card-resumo.saldo    { border-top-color: #1a3322; }
+    .card-resumo.cef      { border-top-color: #2196f3; }
+    .card-resumo.inter    { border-top-color: #ff9800; }
+    .card-resumo .cr-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: #4a8a5a;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 6px;
+    }
+    .card-resumo .cr-valor {
+      font-size: 1.1rem;
+      font-weight: 800;
+    }
+    .card-resumo.entrada  .cr-valor { color: #2e7d32; }
+    .card-resumo.saida    .cr-valor { color: #c62828; }
+    .card-resumo.saldo    .cr-valor { color: #a5d6a7; }
+    .card-resumo.cef      .cr-valor { color: #64b5f6; }
+    .card-resumo.inter    .cr-valor { color: #e65100; }
+
+    /* ── TABELA ── */
+    .tabela-wrap {
+      margin: 16px 32px 32px;
+      background: #1a3322;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+    .tabela-titulo {
+      background: #1a3322;
+      color: white;
+      padding: 10px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .tt-label { color: #a5d6a7; font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
+    .titulo-saldos {
+      display: flex;
+      gap: 24px;
+    }
+    .titulo-saldo-item {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+    }
+    .ts-label {
+      font-size: 0.65rem;
+      color: #a5d6a7;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .ts-valor {
+      font-size: 1rem;
+      font-weight: 800;
+      color: #ffffff;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    thead th {
+      background: #2d5a2d;
+      color: white;
+      padding: 12px 14px;
+      text-align: left;
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+    thead th.col-entrada { background: #1b5e20; }
+    thead th.col-saida   { background: #b71c1c; }
+    thead th.col-saldo   { background: #0d2e0d; }
+    tbody tr { background: rgba(255,255,255,0.04); }
+    tbody tr:hover { background: rgba(165,214,167,0.1); }
+    tbody td {
+      padding: 11px 14px;
+      font-size: 0.88rem;
+      border-bottom: 1px solid rgba(165,214,167,0.1);
+      vertical-align: middle;
+      color: #c8e6c9;
+    }
+    .badge {
+      background: rgba(46,125,50,0.3);
+      color: #a5d6a7;
+      border-radius: 4px;
+      padding: 2px 7px;
+      font-size: 0.72rem;
+      font-weight: 700;
+    }
+    .badge.joao { background: rgba(230,81,0,0.25); color: #ffb74d; }
+    .badge.transf { background: rgba(106,27,154,0.3); color: #ce93d8; }
+    .col-entrada-val {
+      color: #a5d6a7;
+      font-weight: 700;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .col-saida-val {
+      color: #ef9a9a;
+      font-weight: 700;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .col-saldo-val {
+      font-weight: 700;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .col-saldo-val.pos { color: #a5d6a7; }
+    .col-saldo-val.neg { color: #ef9a9a; }
+    td.vazio { color: #4a8a5a; text-align: right; }
+    .col-numero {
+      color: #4a8a5a;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    /* ── RODAPÉ TABELA ── */
+    .row-totais td {
+      padding: 12px 14px;
+      font-weight: 800;
+      font-size: 0.92rem;
+      background: #0d2318;
+      color: white;
+      white-space: nowrap;
+    }
+    .row-totais td.lbl { color: #a5d6a7; }
+    .row-totais td.entrada-total { color: #81c784; text-align: right; }
+    .row-totais td.saida-total   { color: #ef9a9a; text-align: right; }
+    .row-totais td.saldo-total   { text-align: right; }
+    .row-totais td.saldo-total.pos { color: #c8e6c9; }
+    .row-totais td.saldo-total.neg { color: #ef9a9a; }
+
+    .row-retencao td {
+      padding: 12px 14px;
+      font-weight: 800;
+      font-size: 0.92rem;
+      background: #004d61;
+      color: white;
+      white-space: nowrap;
+      print-color-adjust: exact;
+      -webkit-print-color-adjust: exact;
+    }
+    .row-retencao td.lbl { color: #80deea; }
+    .row-retencao td.retencao-valor { color: #e0f7fa; text-align: right; }
+
+    .row-saldo-anterior td {
+      background: #0d2318;
+      border-bottom: 2px solid #2d5a2d;
+      padding: 10px 14px;
+    }
+    .sa-label {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #2e7d32;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .sa-valor {
+      font-size: 1rem;
+      font-weight: 800;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .sa-valor.pos { color: #a5d6a7; }
+    .sa-valor.neg { color: #ef9a9a; }
+
+    .empty-row td {
+      text-align: center;
+      color: #aaa;
+      padding: 40px;
+      font-size: 0.9rem;
+    }
+
+    /* ── LOADING ── */
+    .loading-row td {
+      text-align: center;
+      padding: 32px;
+      color: #4a8a5a;
+      font-size: 0.88rem;
+    }
+    .loading-dots::after {
+      content: '';
+      animation: dots 1.5s steps(4, end) infinite;
+    }
+    @keyframes dots {
+      0%   { content: ''; }
+      25%  { content: '.'; }
+      50%  { content: '..'; }
+      75%  { content: '...'; }
+      100% { content: ''; }
+    }
+    .loading-lenta { color: #e65100 !important; }
+    .loading-spinner {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid #4a8a5a; border-top-color: transparent;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+      margin-right: 8px; vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── PRINT ── */
+    @media print {
+      body { background: white; }
+      .filtros, .btn-print { display: none; }
+      .header        { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .tabela-titulo { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .row-totais td { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      thead th       { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    }
+
+    /* Overlay de rotação — desativado */
+    .rotate-overlay {
+      display: none !important;
+      position: fixed;
+      inset: 0;
+      background: #1a3322;
+      color: white;
+      z-index: 9999;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 40px;
+      gap: 16px;
+    }
+    .rotate-icon {
+      font-size: 4rem;
+      animation: spin 2s linear infinite;
+    }
+    @keyframes spin {
+      0%   { transform: rotate(0deg); }
+      25%  { transform: rotate(90deg); }
+      75%  { transform: rotate(90deg); }
+      100% { transform: rotate(180deg); }
+    }
+    .rotate-overlay h2 { font-size: 1.4rem; font-weight: 800; }
+    .rotate-overlay p  { font-size: 0.95rem; color: #a5d6a7; }
+
+    /* orientação portrait — sem overlay */
+
+    /* ── Previsão da Folha ── */
+    .previsao-wrap { margin: 0 32px 32px; }
+    #previsao-folha.previsao-wrap { margin-top: 28px; }
+    .previsao-card { background: #1a3322; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .prev-titulo { background: #0d2318; color: #a5d6a7; padding: 10px 16px; font-size: 0.72rem; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; }
+    #previsao-folha .prev-titulo {
+      background: #1a3322;
+      color: #fff;
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: normal;
+      text-transform: none;
+      padding: 22px 16px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .prev-titulo-logo { height: 34px; width: 34px; object-fit: contain; border-radius: 6px; flex-shrink: 0; }
+    .prev-cols { grid-template-columns: 1fr 120px 120px 120px; }
+    .prev-header { display: grid; padding: 5px 16px; border-bottom: 1px solid rgba(165,214,167,0.15); }
+    .prev-header span { font-size: 0.6rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #4a8a5a; text-align: right; white-space: nowrap; }
+    .prev-header span:first-child { text-align: left; }
+    .prev-linha { display: grid; align-items: center; padding: 8px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.04); }
+    .prev-enc { background: rgba(255,255,255,0.04); }
+    .prev-nome { font-size: 0.88rem; font-weight: 600; color: #c8e6c9; }
+    .prev-cargo { font-size: 0.68rem; font-weight: 400; color: #4a8a5a; text-transform: capitalize; margin-left: 8px; }
+    .prev-valor { font-size: 0.85rem; font-weight: 700; color: #a5d6a7; white-space: nowrap; text-align: right; }
+    .prev-adiant { font-size: 0.85rem; font-weight: 700; color: #ef9a9a; white-space: nowrap; text-align: right; }
+    .prev-liq    { font-size: 0.85rem; font-weight: 700; color: #fff; white-space: nowrap; text-align: right; }
+    .prev-total { display: grid; padding: 10px 16px; background: #0d2318; color: #a5d6a7; font-weight: 800; font-size: 0.9rem; }
+    .prev-total span { text-align: right; white-space: nowrap; }
+    .prev-total span:first-child { text-align: left; }
+    @media (max-width: 768px) { .previsao-wrap { margin: 0 8px 24px; } }
+    @media print { .previsao-card { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
+
+    @media (max-width: 768px) {
+      /* Header */
+      .header {
+        padding: 14px 16px;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .header-logo { height: 52px; }
+      .header-logo-placeholder { height: 52px; width: 52px; font-size: 1.3rem; }
+      .header-title h1 { font-size: 1.1rem; }
+      .header-right {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .header-right .data-geracao { font-size: 0.72rem; }
+
+      /* Filtros na barra da tabela */
+      .tabela-titulo { flex-direction: column; align-items: flex-start; gap: 8px; }
+      .filtros { gap: 8px; }
+
+      /* Tabela: scroll horizontal */
+      .tabela-wrap {
+        margin: 8px 8px 24px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      table { min-width: 580px; }
+
+      /* Título da tabela */
+      .tabela-titulo {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 12px 14px;
+      }
+      .titulo-saldos {
+        width: 100%;
+        justify-content: flex-start;
+        gap: 20px;
+      }
+      .titulo-saldo-item { align-items: flex-start; }
+      .ts-valor { font-size: 0.9rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Loading overlay ── -->
+<div id="rel-loading">
+  <style>
+    #rel-loading{position:fixed;inset:0;background:#1a3322;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#e8f5e9;gap:0;transition:opacity .4s}
+    @keyframes rl-ring{0%{transform:scale(.8);opacity:.9}100%{transform:scale(2.4);opacity:0}}
+    @keyframes rl-pulse{0%,100%{opacity:.7;transform:scale(1)}50%{opacity:1;transform:scale(1.08)}}
+    .rl-ring{position:absolute;width:72px;height:72px;border-radius:50%;border:1.5px solid #4caf50;animation:rl-ring 2.4s ease-out infinite}
+    .rl-r2{animation-delay:.8s}.rl-r3{animation-delay:1.6s}
+    #rel-loading-msg{transition:opacity .3s}
+  </style>
+  <div style="font-size:.65rem;letter-spacing:4px;color:#2d6b40;margin-bottom:32px;font-weight:800">GREEN WALL</div>
+  <div style="position:relative;width:72px;height:72px;display:flex;align-items:center;justify-content:center;margin-bottom:28px">
+    <div class="rl-ring"></div>
+    <div class="rl-ring rl-r2"></div>
+    <div class="rl-ring rl-r3"></div>
+    <svg width="38" height="38" viewBox="0 0 38 38" style="animation:rl-pulse 2s ease-in-out infinite">
+      <circle cx="19" cy="19" r="15" fill="none" stroke="#388e3c" stroke-width="2"/>
+      <polyline points="11,19 17,25 27,13" fill="none" stroke="#a5d6a7" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+  <div style="font-size:.95rem;font-weight:800;letter-spacing:1px;color:#a5d6a7;margin-bottom:6px">RELATÓRIO FINANCEIRO</div>
+  <div style="font-size:.72rem;color:#4a8a5a;margin-bottom:28px">Green Wall</div>
+  <div id="rel-loading-msg" style="font-size:.8rem;color:#66bb6a;min-height:1.1em;text-align:center;padding:0 40px">Buscando lançamentos...</div>
+</div>
+
+<div class="header">
+  <div class="header-left">
+    <a href="https://sistema.gwrevestimentos.com.br/index.html" style="line-height:0;flex-shrink:0;">
+      <img src="./Logo-gw.png" alt="GW" class="header-logo">
+    </a>
+    <div class="header-title">
+      <h1>RELATÓRIO FINANCEIRO</h1>
+      <p id="versao-app"></p>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="data-geracao" id="data-geracao"></div>
+    <div class="header-btns">
+      <button class="btn-pesquisa" onclick="abrirPesquisa()">🔍 Pesquisar</button>
+      <button class="btn-telegram" onclick="enviarTelegram(this)">📸 Telegram</button>
+      <button class="btn-print" onclick="window.print()">🖨 Imprimir</button>
+    </div>
+  </div>
+</div>
+
+<div class="tabela-wrap">
+  <div class="tabela-titulo">
+    <span class="tt-label">Lançamentos <span id="total-registros"></span></span>
+    <div class="filtros">
+      <div class="filtro-grupo">
+        <label>De</label>
+        <input type="date" id="f-de" />
+      </div>
+      <div class="filtro-grupo">
+        <label>Até</label>
+        <input type="date" id="f-ate" />
+      </div>
+      <div class="filtro-grupo">
+        <label>Origem</label>
+        <select id="f-origem">
+          <option value="">Todas</option>
+          <option value="ANE">ANE</option>
+          <option value="JOAO">JOAO</option>
+          <option value="ANE->GW-INTER">Transferências</option>
+          <option value="ANE->HORACIO">ANE → HORACIO</option>
+          <option value="JOAO->HORACIO">JOÃO → HORÁCIO</option>
+          <option value="ANE->RETENCAO PARADIGMA 5%">ANE → RETENÇÃO PARADIGMA 5%</option>
+          <option value="JOAO->RETENCAO PARADIGMA 5%">JOAO → RETENÇÃO PARADIGMA 5%</option>
+          <option value="JOAO->JOAO">JOÃO → JOÃO</option>
+          <option value="JOAO->CREDITO DE PROLABORE">JOAO → CRÉDITO DE PRÓ-LABORE</option>
+        </select>
+      </div>
+      <button class="btn-filtrar" onclick="aplicarFiltro()">Filtrar</button>
+      <button class="btn-filtrar verde" onclick="limparFiltro()">Limpar</button>
+    </div>
+    <div class="titulo-saldos">
+      <div class="titulo-saldo-item">
+        <span class="ts-label">CEF (ANE)</span>
+        <span class="ts-valor" id="r-cef">R$ 0,00</span>
+      </div>
+      <div class="titulo-saldo-item">
+        <span class="ts-label">INTER (JOAO)</span>
+        <span class="ts-valor" id="r-inter">R$ 0,00</span>
+      </div>
+      <div class="titulo-saldo-item">
+        <span class="ts-label">JOÃO ALBÉRICO</span>
+        <span class="ts-valor" id="r-joao">R$ 0,00</span>
+      </div>
+      <div class="titulo-saldo-item">
+        <span class="ts-label">HORÁCIO FORTE</span>
+        <span class="ts-valor" id="r-horacio">R$ 0,00</span>
+      </div>
+    </div>
+  </div>
+  <table id="tabela">
+    <thead>
+      <tr>
+        <th>Nº</th>
+        <th>Data</th>
+        <th>Origem</th>
+        <th>Descrição</th>
+        <th class="col-entrada" style="text-align:right">Entrada (R$)</th>
+        <th class="col-saida" style="text-align:right">Saída (R$)</th>
+        <th class="col-saldo" style="text-align:right">Saldo Acum.</th>
+      </tr>
+    </thead>
+    <tbody id="tbody">
+      <tr class="loading-row">
+        <td colspan="7"><span class="loading-spinner"></span><span class="loading-dots">Carregando</span></td>
+      </tr>
+    </tbody>
+    <tbody id="tbody-totais">
+      <tr class="row-totais">
+        <td colspan="4" class="lbl">TOTAIS</td>
+        <td class="entrada-total" id="f-total-entrada">R$ 0,00</td>
+        <td class="saida-total"  id="f-total-saida">R$ 0,00</td>
+        <td class="saldo-total"  id="f-total-saldo">R$ 0,00</td>
+      </tr>
+      <tr class="row-retencao">
+        <td colspan="6" class="lbl">RETENÇÃO 5% PARADIGMA</td>
+        <td class="retencao-valor" id="r-retencao">R$ 0,00</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="previsao-wrap" id="previsao-folha"></div>
+<div class="previsao-wrap" id="previsao-medicao"></div>
+
+<div class="pesquisa-overlay" id="pesquisa-overlay" onclick="fecharPesquisaSe(event)">
+  <div class="pesquisa-modal">
+    <div class="pesquisa-header">
+      <input class="pesquisa-input" id="pesquisa-input" type="text"
+             placeholder="Ex: BM 04, Paradigma, ANE…"
+             oninput="executarPesquisa()" />
+      <button class="btn-fechar-pesquisa" onclick="fecharPesquisa()">✕</button>
+    </div>
+    <div class="pesquisa-resultado" id="pesquisa-resultado"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+  const VERSAO = "1.56";
+
+  // ── Loading overlay ──────────────────────────────────────
+  const _rlMsgs = [
+    'Buscando lançamentos...',
+    'Carregando dados financeiros...',
+    'Calculando saldos...',
+    'Sincronizando com o servidor...',
+    'Pode demorar em redes lentas...',
+    'Ainda carregando, aguarde...'
+  ];
+  let _rlIdx = 0;
+  const _rlTimer = setInterval(() => {
+    _rlIdx = (_rlIdx + 1) % _rlMsgs.length;
+    const el = document.getElementById('rel-loading-msg');
+    if (!el) { clearInterval(_rlTimer); return; }
+    el.style.opacity = '0';
+    setTimeout(() => { if (el) { el.textContent = _rlMsgs[_rlIdx]; el.style.opacity = '1'; } }, 300);
+  }, 3000);
+
+  // Só esconde quando lancamentos E folhas/previsao estiverem prontos
+  const _rlFontes = { lancamentos: false, folhas: false };
+  function _verificarTudo() {
+    if (_rlFontes.lancamentos && _rlFontes.folhas) esconderLoadingRelatorio();
+  }
+  // Segurança: esconde depois de 6s no máximo
+  setTimeout(() => esconderLoadingRelatorio(), 6000);
+
+  function esconderLoadingRelatorio() {
+    clearInterval(_rlTimer);
+    const lo = document.getElementById('rel-loading');
+    if (!lo) return;
+    lo.style.opacity = '0';
+    setTimeout(() => { if (lo.parentNode) lo.parentNode.removeChild(lo); }, 420);
+  }
+
+  async function enviarTelegram(btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Capturando...';
+
+    // Esconde controles temporariamente
+    const ocultar = ['.filtros', '.btn-print', '.btn-telegram', '#rotate-overlay', '.header-right .data-geracao'];
+    const estados = ocultar.map(sel => {
+      const el = document.querySelector(sel);
+      const prev = el ? el.style.display : null;
+      if (el) el.style.display = 'none';
+      return { el, prev };
+    });
+
+    try {
+      const canvas = await html2canvas(document.body, {
+        scale: 1.6,
+        useCORS: true,
+        backgroundColor: '#f0f5f0',
+        scrollX: 0,
+        scrollY: -window.scrollY,
+        windowWidth: document.body.scrollWidth,
+        windowHeight: document.body.scrollHeight
+      });
+
+      const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.88));
+      const formData = new FormData();
+      formData.append('chat_id', '1672059919');
+      formData.append('photo', blob, 'relatorio-gw.jpg');
+      formData.append('caption', `📊 Relatório GW — ${new Date().toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'})}`);
+
+      const res = await fetch('https://api.telegram.org/bot7469790318:AAEFzcPeS_MG6vvmKrhiZjVWXv1m9J0PTk4/sendPhoto', {
+        method: 'POST', body: formData
+      });
+
+      btn.textContent = res.ok ? '✅ Enviado!' : '❌ Erro Telegram';
+    } catch(e) {
+      btn.textContent = '❌ Erro';
+    } finally {
+      estados.forEach(({ el, prev }) => { if (el) el.style.display = prev; });
+      btn.disabled = false;
+      setTimeout(() => { btn.textContent = '📸 Telegram'; }, 3000);
+    }
+  }
+  function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function ordemServico(nome) {
+    const n = (nome||'').toLowerCase();
+    if (n.includes('tratamento'))                          return 0;
+    if (n.includes('pasta'))                               return 1;
+    if (n.includes('emassamento') || n.includes('massa'))  return 2;
+    if (n.includes('textura'))                             return 3;
+    return 99;
+  }
+  function nomeAbrev(nome) {
+    const n = (nome||'').toLowerCase();
+    if (n.includes('tratamento')) return 'Tratamento';
+    if (n.includes('pasta'))      return 'Gesso';
+    if (n.includes('emassamento') || n.includes('massa')) return 'Massa';
+    if (n.includes('textura'))    return 'Textura';
+    return (nome||'').substring(0, 12);
+  }
+  document.getElementById("versao-app").textContent = "Versão: " + VERSAO;
+
+  firebase.initializeApp({
+    apiKey: "AIzaSyBaqROPsywPgtKjQU7cs1ke1WaqDFhWwn0",
+    authDomain: "sistema-gw-36566.firebaseapp.com",
+    projectId: "sistema-gw-36566",
+    storageBucket: "sistema-gw-36566.firebasestorage.app",
+    messagingSenderId: "472820177992",
+    appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
+  });
+  const db = firebase.firestore();
+
+  function fmt(v) {
+    return "R$ " + (v||0).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  }
+
+  function parseDateBR(s) {
+    if (!s) return null;
+    if (!s.includes("/") && s.length === 8) {
+      return new Date(s.slice(4), parseInt(s.slice(2, 4)) - 1, parseInt(s.slice(0, 2)));
+    }
+    const [d, m, y] = s.split("/");
+    return new Date(y, m - 1, d);
+  }
+
+  // Backup diário automático: disparado pelo menu GW ao acessar o sistema (?autobackup=1)
+  async function verificarBackupDiario() {
+    const agora = new Date();
+    const chave = `${agora.getFullYear()}-${String(agora.getMonth()+1).padStart(2,"0")}-${String(agora.getDate()).padStart(2,"0")}`;
+
+    // Controle no Firestore — compartilhado entre todos os dispositivos
+    const configRef = db.collection("config").doc("backupDiario");
+    try {
+      const snap = await configRef.get();
+      if (snap.exists && snap.data().ultimaData === chave) return;
+      await configRef.set({ ultimaData: chave });
+    } catch(e) {
+      return;
+    }
+
+    const ontem = new Date(agora);
+    ontem.setDate(ontem.getDate() - 1);
+    const dd   = String(ontem.getDate()).padStart(2, "0");
+    const mm   = String(ontem.getMonth() + 1).padStart(2, "0");
+    const yyyy = String(ontem.getFullYear());
+    const dataBR       = `${dd}/${mm}/${yyyy}`;
+    const dataSemBarra = `${dd}${mm}${yyyy}`;
+
+    const temLancamentosOntem = todosOsDocs.some(r => r.data === dataBR || r.data === dataSemBarra);
+    if (!temLancamentosOntem) return;
+
+    setTimeout(() => enviarTelegram({ disabled: false, textContent: '' }), 3000);
+  }
+
+  let todosOsDocs = [];
+  let _loadingTimer = null;
+
+  function iniciarTimerRedeLenta() {
+    _loadingTimer = setTimeout(() => {
+      const tbody = document.getElementById('tbody');
+      if (tbody && tbody.querySelector('.loading-row')) {
+        tbody.innerHTML = `<tr class="loading-row"><td colspan="7"><span class="loading-spinner" style="border-color:#e65100;border-top-color:transparent"></span><span class="loading-lenta">Rede lenta — aguarde<span class="loading-dots"></span></span></td></tr>`;
+      }
+    }, 5000);
+  }
+
+  function pararTimerRedeLenta() {
+    clearTimeout(_loadingTimer);
+    _loadingTimer = null;
+    _rlFontes.lancamentos = true;
+    _verificarTudo();
+  }
+
+  document.getElementById("data-geracao").textContent =
+    "Gerado em " + new Date().toLocaleDateString("pt-BR", { day:"2-digit", month:"long", year:"numeric", hour:"2-digit", minute:"2-digit" });
+
+  function isoDate(daysAgo) {
+    const d = new Date();
+    d.setDate(d.getDate() - daysAgo);
+    // Usa data local (não UTC) para evitar bug de fuso horário após 21h no Brasil
+    const yyyy = d.getFullYear();
+    const mm   = String(d.getMonth() + 1).padStart(2, '0');
+    const dd   = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  // Filtro inicial: ontem + hoje
+  document.getElementById("f-de").value  = isoDate(1);
+  document.getElementById("f-ate").value = isoDate(0);
+
+  iniciarTimerRedeLenta();
+
+  db.collection("lancamentos").orderBy("criadoEm", "asc").onSnapshot(snap => {
+    pararTimerRedeLenta();
+    todosOsDocs = snap.docs.map((d, i) => ({ id: d.id, ...d.data(), numero: i + 1 }));
+    atualizaTotaisGlobais();
+    aplicarFiltro();
+    if (new URLSearchParams(window.location.search).get('autobackup') === '1' && !window._autobackupFeito) {
+      window._autobackupFeito = true;
+      verificarBackupDiario();
+    }
+  });
+
+  function aplicarFiltro() {
+    const de   = document.getElementById("f-de").value;
+    const ate  = document.getElementById("f-ate").value;
+    const orig = document.getElementById("f-origem").value;
+
+    const dataInicio = de  ? new Date(de  + "T00:00:00") : null;
+    const dataFim    = ate ? new Date(ate + "T23:59:59")  : null;
+
+    let saldoAnterior = 0;
+    let temAnterior   = false;
+    const filtrados   = [];
+
+    todosOsDocs.forEach(r => {
+      const dataDoc = parseDateBR(r.data);
+
+      // antes do início: acumula saldo anterior
+      if (dataInicio && dataDoc && dataDoc < dataInicio) {
+        temAnterior = true;
+        // exclui transferências internas e lançamentos contábeis (não são caixa real)
+        if (r.origem !== "ANE->GW-INTER" && r.origem !== "JOAO->CREDITO DE PROLABORE") {
+          saldoAnterior += (r.entrada || 0) - (r.saida || 0);
+        }
+        return;
+      }
+
+      // fora do período final: ignora
+      if (dataFim && dataDoc && dataDoc > dataFim) return;
+
+      // filtro de origem
+      if (orig && r.origem !== orig) return;
+
+      filtrados.push(r);
+    });
+
+    atualizaTotaisGlobais();
+    renderTabela(filtrados, temAnterior ? saldoAnterior : null);
+  }
+
+  function limparFiltro() {
+    document.getElementById("f-de").value = "";
+    document.getElementById("f-ate").value = "";
+    document.getElementById("f-origem").value = "";
+    atualizaTotaisGlobais();
+    renderTabela(todosOsDocs);
+  }
+
+  function renderTabela(docs, saldoAnterior = null) {
+    const tbody = document.getElementById("tbody");
+    let totalE = 0, totalS = 0, cefE = 0, cefS = 0, interE = 0, interS = 0;
+    const base = saldoAnterior !== null ? saldoAnterior : 0;
+    let saldoAcum = base;
+
+    const rowAnterior = saldoAnterior !== null ? `
+      <tr class="row-saldo-anterior">
+        <td colspan="6" class="sa-label">Saldo Anterior ao Período</td>
+        <td class="sa-valor ${saldoAnterior >= 0 ? 'pos' : 'neg'}">${fmt(saldoAnterior)}</td>
+      </tr>` : "";
+
+    if (docs.length === 0) {
+      tbody.innerHTML = rowAnterior + '<tr class="empty-row"><td colspan="7">Nenhum lançamento no período selecionado.</td></tr>';
+      document.getElementById("total-registros").textContent = "0 registro(s)";
+      atualizaRodape(0, 0, base);
+      return;
+    }
+
+    tbody.innerHTML = rowAnterior + docs.map(r => {
+      const isTransf   = r.origem === "ANE->GW-INTER";
+      const isContabil = r.origem === "JOAO->CREDITO DE PROLABORE";
+      const entrada  = isTransf ? 0 : (r.entrada || 0);
+      const saida    = isTransf ? 0 : (r.saida || 0);
+
+      if (!isTransf && !isContabil) {
+        totalE += entrada;
+        totalS += saida;
+        if (r.origem === "ANE" || r.origem === "ANE->HORACIO")  { cefE += entrada; cefS += saida; }
+        if (r.origem === "JOAO") { interE += entrada; interS += saida; }
+        saldoAcum += entrada - saida;
+      } else if (isTransf) {
+        cefS   += r.saida || 0;
+        interE += r.saida || 0;
+      }
+      // isContabil (JOAO->CREDITO DE PROLABORE): exibido mas não altera saldoAcum
+
+      const badgeCls = r.origem === "JOAO" ? "joao" : (isTransf ? "transf" : "");
+      const saldoCls = saldoAcum >= 0 ? "pos" : "neg";
+      const entradaCell = entrada > 0 ? `<td class="col-entrada-val">${fmt(entrada)}</td>` : `<td class="vazio">—</td>`;
+      const saidaCell   = saida   > 0 ? `<td class="col-saida-val">${fmt(saida)}</td>`     : `<td class="vazio">—</td>`;
+      const transCell   = isTransf
+        ? `<td class="col-saida-val" style="color:#6a1b9a">⇄ ${fmt(r.saida||0)}</td>`
+        : "";
+
+      const numero = String(r.numero).padStart(4, "0");
+
+      if (isTransf) {
+        return `<tr>
+          <td class="col-numero">${numero}</td>
+          <td>${r.data||""}</td>
+          <td><span class="badge transf">${r.origem}</span></td>
+          <td>${r.descricao||""}</td>
+          <td class="vazio">—</td>
+          ${transCell}
+          <td class="col-saldo-val ${saldoCls}">${fmt(saldoAcum)}</td>
+        </tr>`;
+      }
+
+      return `<tr>
+        <td class="col-numero">${numero}</td>
+        <td>${r.data||""}</td>
+        <td><span class="badge ${badgeCls}">${r.origem}</span></td>
+        <td>${r.descricao||""}</td>
+        ${entradaCell}
+        ${saidaCell}
+        <td class="col-saldo-val ${saldoCls}">${fmt(saldoAcum)}</td>
+      </tr>`;
+    }).join("");
+
+    atualizaRodape(totalE, totalS, base + totalE - totalS);
+    document.getElementById("total-registros").textContent = docs.length + " registro(s)";
+  }
+
+  const HORACIO_BASE  = -136306.23;
+  const JOAO_BASE     = -32250;
+  const RETENCAO_BASE = 4666.66;
+
+  function atualizaTotaisGlobais() {
+    let cefE = 0, cefS = 0, interE = 0, interS = 0, horacioSaidas = 0, joaoE = 0, retencaoE = 0;
+    todosOsDocs.forEach(r => {
+      if (r.origem === "ANE->GW-INTER") {
+        cefS   += r.saida || 0;
+        interE += r.saida || 0;
+      } else if (r.origem === "JOAO->CREDITO DE PROLABORE") {
+        joaoE -= r.saida || 0;
+      } else if (r.origem === "ANE->JOAO") {
+        cefS  += r.saida || 0;
+        joaoE += r.saida || 0;
+      } else if (r.origem === "JOAO->JOAO") {
+        interS += r.saida || 0;
+        joaoE  += r.saida || 0;
+      } else if (r.origem === "JOAO->HORACIO") {
+        interS        += r.saida || 0;
+        horacioSaidas += r.saida || 0;
+      } else if (r.origem === "ANE->RETENCAO PARADIGMA 5%") {
+        cefS      += r.saida || 0;
+        retencaoE += r.saida || 0;
+      } else if (r.origem === "JOAO->RETENCAO PARADIGMA 5%") {
+        interS    += r.saida || 0;
+        retencaoE += r.saida || 0;
+      } else if (r.origem === "ANE->HORACIO") {
+        cefS          += r.saida || 0;
+        horacioSaidas += r.saida || 0;
+      } else if (r.origem === "ANE->FOLHA DE PAGAMENTO") {
+        cefS += r.saida || 0;
+      } else if (r.origem === "ANE->ADIANTAMENTO") {
+        cefS += r.saida || 0;
+      } else if (r.origem === "ANE") {
+        cefE += r.entrada || 0;
+        cefS += r.saida   || 0;
+      } else if (r.origem === "JOAO") {
+        interE += r.entrada || 0;
+        interS += r.saida   || 0;
+      } else if (r.origem === "ANE->CREDITO A REPASSAR P BBS FOMENTO") {
+        cefE += r.entrada || 0;
+      }
+    });
+    const joao    = JOAO_BASE + joaoE;
+    const horacio = HORACIO_BASE + horacioSaidas;
+    document.getElementById("r-cef").textContent     = fmt(cefE - cefS);
+    document.getElementById("r-inter").textContent   = fmt(interE - interS);
+    document.getElementById("r-joao").textContent    = fmt(joao);
+    document.getElementById("r-joao").style.color    = joao    >= 0 ? "#ffffff" : "#ef9a9a";
+    document.getElementById("r-horacio").textContent = fmt(horacio);
+    document.getElementById("r-horacio").style.color = horacio >= 0 ? "#ffffff" : "#ef9a9a";
+    document.getElementById("r-retencao").textContent = fmt(RETENCAO_BASE + retencaoE);
+  }
+
+  function atualizaRodape(tE, tS, saldo) {
+    document.getElementById("f-total-entrada").textContent = fmt(tE);
+    document.getElementById("f-total-saida").textContent   = fmt(tS);
+    const el = document.getElementById("f-total-saldo");
+    el.textContent = fmt(saldo);
+    el.className   = "saldo-total " + (saldo >= 0 ? "pos" : "neg");
+  }
+
+  // ── Pesquisa ──
+  function abrirPesquisa() {
+    document.getElementById('pesquisa-overlay').classList.add('ativa');
+    document.getElementById('pesquisa-input').focus();
+    executarPesquisa();
+  }
+  function fecharPesquisa() {
+    document.getElementById('pesquisa-overlay').classList.remove('ativa');
+  }
+  function fecharPesquisaSe(e) {
+    if (e.target === document.getElementById('pesquisa-overlay')) fecharPesquisa();
+  }
+
+  function normPesq(s) {
+    return String(s || '').toLowerCase()
+      .replace(/\s+/g, '')                        // remove espaços
+      .replace(/\d+/g, n => String(parseInt(n))); // normaliza números (005 → 5)
+  }
+
+  function executarPesquisa() {
+    const termoRaw = (document.getElementById('pesquisa-input').value || '').trim();
+    const el       = document.getElementById('pesquisa-resultado');
+
+    if (!termoRaw) { el.innerHTML = '<p class="pesq-vazio">Digite algo para pesquisar.</p>'; return; }
+
+    const termo = normPesq(termoRaw);
+    const encontrados = todosOsDocs.filter(r => {
+      const haystack = normPesq(`${r.data||''} ${r.descricao||''} ${r.origem||''}`);
+      return haystack.includes(termo);
+    });
+
+    if (!encontrados.length) {
+      el.innerHTML = '<p class="pesq-vazio">Nenhum resultado encontrado.</p>';
+      return;
+    }
+
+    const entradas = encontrados.filter(r => (r.entrada || 0) > 0 && r.origem !== 'ANE->GW-INTER');
+    const saidas   = encontrados.filter(r => (r.saida   || 0) > 0);
+
+    const totalE = entradas.reduce((s, r) => s + (r.entrada || 0), 0);
+    const totalS = saidas.reduce((s, r) => s + (r.saida || 0), 0);
+    const saldo  = totalE - totalS;
+
+    const linhaHtml = r => `
+      <div class="pesq-linha">
+        <span class="pesq-linha-data">${escHtml(r.data||'')}</span>
+        <span class="pesq-linha-info">${escHtml(r.descricao||'')} <small style="color:#4a8a5a">${escHtml(r.origem||'')}</small></span>
+        ${(r.entrada||0) > 0 && r.origem !== 'ANE->GW-INTER'
+          ? `<span class="pesq-linha-val pesq-val-entrada">+${fmt(r.entrada)}</span>`
+          : `<span class="pesq-linha-val pesq-val-saida">-${fmt(r.saida||0)}</span>`}
+      </div>`;
+
+    const secEntradas = entradas.length ? `
+      <div class="pesq-secao-titulo">Entradas (${entradas.length})</div>
+      ${entradas.map(linhaHtml).join('')}` : '';
+
+    const secSaidas = saidas.length ? `
+      <div class="pesq-secao-titulo" style="margin-top:12px">Saídas (${saidas.length})</div>
+      ${saidas.map(linhaHtml).join('')}` : '';
+
+    el.innerHTML = `
+      ${secEntradas}${secSaidas}
+      <div class="pesq-resumo">
+        <div class="pesq-res-item">
+          <div class="pesq-res-label">Entradas</div>
+          <div class="pesq-res-val" style="color:#81c784">${fmt(totalE)}</div>
+        </div>
+        <div class="pesq-res-item">
+          <div class="pesq-res-label">Saídas</div>
+          <div class="pesq-res-val" style="color:#ef9a9a">${fmt(totalS)}</div>
+        </div>
+        <div class="pesq-res-item">
+          <div class="pesq-res-label">Saldo</div>
+          <div class="pesq-res-val" style="color:${saldo>=0?'#a5d6a7':'#ef9a9a'}">${fmt(saldo)}</div>
+        </div>
+      </div>`;
+  }
+
+  // ── Previsão da Medição ──
+  let _locaisSnap = null, _servicosSnap = null;
+
+  function renderPrevisaoMedicao() {
+    const el = document.getElementById('previsao-medicao');
+    if (!el || !_locaisSnap || !_servicosSnap) return;
+
+    const medicaoMap = {};
+    _servicosSnap.docs.forEach(d => {
+      const s = d.data();
+      const cat = ordemServico(s.nome);
+      if (cat < 99) medicaoMap[cat] = { nome: nomeAbrev(s.nome), medicao: s.medicao || 0 };
+    });
+
+    const countMap = {};
+    _locaisSnap.docs.forEach(d => {
+      (d.data().servicos || []).forEach(s => {
+        if (s.status === 'em_pagamento') {
+          const cat = ordemServico(s.nome);
+          countMap[cat] = (countMap[cat] || 0) + 1;
+        }
+      });
+    });
+
+    const cats = Object.keys(countMap).map(Number).sort((a, b) => a - b);
+    if (!cats.length) { el.innerHTML = ''; return; }
+
+    let total = 0;
+    const linhas = cats.map(cat => {
+      const count = countMap[cat];
+      const { nome, medicao } = medicaoMap[cat] || { nome: `Tipo ${cat}`, medicao: 0 };
+      const subtotal = count * medicao;
+      total += subtotal;
+      return `
+        <div class="prev-linha prev-cols">
+          <div class="prev-nome" style="grid-column:1/4">${escHtml(nome)} <span class="prev-cargo">${count} apto${count !== 1 ? 's' : ''} × ${fmt(medicao)}</span></div>
+          <div class="prev-valor">${fmt(subtotal)}</div>
+        </div>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div class="previsao-card">
+        <div class="prev-titulo">Previsão da Medição</div>
+        ${linhas}
+        <div class="prev-total prev-cols"><span style="grid-column:1/4">Total</span><span>${fmt(total)}</span></div>
+      </div>`;
+  }
+
+  db.collection('locais').onSnapshot(snap => { _locaisSnap = snap; renderPrevisaoMedicao(); });
+  db.collection('servicos').onSnapshot(snap => { _servicosSnap = snap; renderPrevisaoMedicao(); });
+
+  // ── Previsão da Folha ──
+  function normNome(s) {
+    return String(s||'').toLowerCase().replace(/\s+/g,'').replace(/\d+/g,n=>String(parseInt(n))).normalize('NFC');
+  }
+
+  db.collection('folhas').orderBy('criadoEm', 'desc').limit(1).onSnapshot(async snap => {
+    const el = document.getElementById('previsao-folha');
+    if (!el) { _rlFontes.folhas = true; _verificarTudo(); return; }
+    if (snap.empty) { el.innerHTML = ''; _rlFontes.folhas = true; _verificarTudo(); return; }
+    const folha = snap.docs[0].data();
+    if (folha.status === 'paga') { el.innerHTML = ''; _rlFontes.folhas = true; _verificarTudo(); return; }
+    // Remove ajudantes do documento salvo — agora vêm da coleção 'diarias'
+    let grupos = (folha.grupos || []).filter(g =>
+      g.isEncarregado || !(g.funcionario?.cargo || '').toLowerCase().includes('ajudante')
+    );
+
+    // Busca diaristas e adiantamentos em paralelo
+    const [diarSnap, adSnap] = await Promise.all([
+      db.collection('diarias').get().catch(() => null),
+      db.collection('lancamentos').where('origem','==','ANE->ADIANTAMENTO').get().catch(() => null)
+    ]);
+
+    if (diarSnap) diarSnap.docs.forEach(d => {
+      const doc = d.data();
+      const subtotal = (doc.dias || []).reduce((s, dia) => s + Number(dia.valor || 0), 0);
+      if (subtotal > 0) grupos = [...grupos, {
+        isEncarregado: false,
+        funcionario: { nome: doc.funcionarioNome, cargo: doc.cargo || 'Ajudante' },
+        subtotal
+      }];
+    });
+
+    if (!grupos.length) { el.innerHTML = ''; _rlFontes.folhas = true; _verificarTudo(); return; }
+
+    const adiantMap = new Map();
+    if (adSnap) adSnap.docs.forEach(d => {
+      const r = d.data();
+      const desc = r.descricao || '';
+      if (!desc.startsWith('Adiantamento: ')) return;
+      const nome = desc.slice('Adiantamento: '.length).split(/\s*[—–\-]/)[0].trim().normalize('NFC');
+      if (!nome) return;
+      adiantMap.set(normNome(nome), (adiantMap.get(normNome(nome)) || 0) + (r.saida || 0));
+    });
+
+    let totalBruto = 0, totalAdiant = 0;
+    const linhas = grupos.map(g => {
+      const bruto  = g.subtotal || 0;
+      const adiant = adiantMap.get(normNome(g.funcionario.nome)) || 0;
+      const liq    = bruto - adiant;
+      totalBruto  += bruto;
+      totalAdiant += adiant;
+      return `
+        <div class="prev-linha prev-cols${g.isEncarregado ? ' prev-enc' : ''}">
+          <div class="prev-nome">${escHtml(g.funcionario.nome)} <span class="prev-cargo">${escHtml(g.funcionario.cargo||'')}</span></div>
+          <div class="prev-valor">${fmt(bruto)}</div>
+          <div class="prev-adiant">${adiant > 0 ? '- '+fmt(adiant) : '—'}</div>
+          <div class="prev-liq">${fmt(liq)}</div>
+        </div>`;
+    }).join('');
+
+    const totalLiq = totalBruto - totalAdiant;
+    el.innerHTML = `
+      <div class="previsao-card">
+        <div class="prev-titulo">
+          <img src="./Logo-gw.png" alt="GW" class="prev-titulo-logo">
+          <span>Previsão da Folha de Pagamento</span>
+        </div>
+        <div class="prev-header prev-cols">
+          <span>Funcionário</span><span>Bruto</span><span>Adiant.</span><span>Líquido</span>
+        </div>
+        ${linhas}
+        <div class="prev-total prev-cols">
+          <span>Total</span>
+          <span>${fmt(totalBruto)}</span>
+          <span style="color:#ef9a9a">${totalAdiant > 0 ? '- '+fmt(totalAdiant) : '—'}</span>
+          <span>${fmt(totalLiq)}</span>
+        </div>
+      </div>`;
+    _rlFontes.folhas = true;
+    _verificarTudo();
+  });
+</script>
+<div class="rotate-overlay" id="rotate-overlay">
+  <div class="rotate-icon">⟳</div>
+  <h2>Gire o dispositivo</h2>
+  <p>O relatório é melhor visualizado na horizontal.</p>
+</div>
+
+</body>
+</html>

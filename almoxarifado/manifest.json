@@ -1,0 +1,12 @@
+{
+  "name": "Almoxarifado GW",
+  "short_name": "Almoxarifado",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#3e2723",
+  "theme_color": "#4e342e",
+  "icons": [
+    { "src": "./logo-gw.png.jpeg", "sizes": "192x192", "type": "image/jpeg" },
+    { "src": "./logo-gw.png.jpeg", "sizes": "512x512", "type": "image/jpeg" }
+  ]
+}

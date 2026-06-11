@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Almoxarifado" />
+  <title>Almoxarifado GW</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="apple-touch-icon" href="./logo-gw.png.jpeg" />
+  <link rel="stylesheet" href="./style.css?v=1" />
+</head>
+<body>
+
+  <header>
+    <div class="header-top">
+      <h1>ALMOXARIFADO</h1>
+      <span id="versao-app"></span>
+    </div>
+    <div class="tabs">
+      <button class="tab active" data-cat="">Todos</button>
+      <button class="tab" data-cat="EPI">EPI</button>
+      <button class="tab" data-cat="Ferramenta">Ferramentas</button>
+    </div>
+  </header>
+
+  <!-- Lista principal -->
+  <div id="lista-itens"></div>
+  <button class="fab" id="btn-novo">+</button>
+
+  <!-- ── Overlay: Cadastro / Edição ── -->
+  <div id="overlay-cadastro" class="overlay" style="display:none">
+    <div class="overlay-box">
+      <h2 id="cadastro-titulo">Novo Item</h2>
+      <div class="form-group">
+        <label>Nome</label>
+        <input type="text" id="f-nome" placeholder="Ex: Capacete de segurança" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Categoria</label>
+          <select id="f-categoria">
+            <option value="EPI">EPI</option>
+            <option value="Ferramenta">Ferramenta</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Estado</label>
+          <select id="f-estado">
+            <option value="Novo">Novo</option>
+            <option value="Bom">Bom</option>
+            <option value="Desgastado">Desgastado</option>
+            <option value="Danificado">Danificado</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Identificação</label>
+          <input type="text" id="f-identificacao" placeholder="Ex: CAP-001" />
+        </div>
+        <div class="form-group">
+          <label>Valor (R$)</label>
+          <input type="text" inputmode="decimal" id="f-valor" placeholder="0,00" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Quantidade Total</label>
+        <input type="number" inputmode="numeric" id="f-quantidade" placeholder="0" min="0" />
+      </div>
+      <div class="form-actions">
+        <button class="btn-cancel" id="btn-cancelar-cadastro">Cancelar</button>
+        <button class="btn-delete" id="btn-excluir-item" style="display:none">🗑 Excluir</button>
+        <button class="btn-save" id="btn-salvar-item">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Overlay: Detalhe do item ── -->
+  <div id="overlay-detalhe" class="overlay" style="display:none">
+    <div class="overlay-box">
+      <div id="detalhe-header"></div>
+      <div class="entregas-titulo">Com funcionários:</div>
+      <div id="detalhe-entregas"></div>
+      <div class="form-actions">
+        <button class="btn-cancel" id="btn-fechar-detalhe">Fechar</button>
+        <button class="btn-edit" id="btn-editar-item">✏ Editar</button>
+        <button class="btn-save" id="btn-abrir-entrega">📦 Entregar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Overlay: Entrega ── -->
+  <div id="overlay-entrega" class="overlay" style="display:none">
+    <div class="overlay-box">
+      <h2>Entregar Item</h2>
+      <div id="entrega-item-info" class="entrega-item-info"></div>
+      <div class="form-group">
+        <label>Funcionário</label>
+        <div class="func-selecionado" id="func-selecionado">Toque para selecionar →</div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Quantidade</label>
+          <input type="number" inputmode="numeric" id="f-entrega-qtd" value="1" min="1" />
+        </div>
+        <div class="form-group">
+          <label>Data</label>
+          <input type="text" id="f-entrega-data" placeholder="DD/MM/AAAA" />
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-cancel" id="btn-cancelar-entrega">Cancelar</button>
+        <button class="btn-save" id="btn-confirmar-entrega">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Overlay: Picker de funcionário ── -->
+  <div id="overlay-picker" class="overlay" style="display:none">
+    <div class="overlay-box picker-box">
+      <h2>Selecionar Funcionário</h2>
+      <div id="picker-lista"></div>
+      <button class="btn-cancel" id="btn-fechar-picker" style="margin-top:12px;width:100%">Cancelar</button>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="./app.js?v=1"></script>
+</body>
+</html>

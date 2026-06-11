@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Serviços" />
+  <title>Cadastro de Serviços</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="./style.css?v=6" />
+  <link rel="apple-touch-icon" href="./Logo-gw.png" />
+</head>
+<body>
+
+<header>
+  <a href="https://sistema.gwrevestimentos.com.br/index.html" style="display:flex;align-items:center;line-height:0;">
+    <img src="./Logo-gw.png" alt="GW" style="height:34px;width:34px;object-fit:contain;border-radius:6px;" />
+  </a>
+  <span>Serviços</span>
+  <span id="versao-app" class="header-versao"></span>
+</header>
+
+<div id="lista" class="lista"></div>
+
+<button class="fab" id="fab" onclick="toggleForm()">+</button>
+
+<form class="form-card" id="form" novalidate style="display:none">
+  <h3 id="form-titulo">Novo Serviço</h3>
+  <div class="form-grid">
+    <div class="full">
+      <label for="f-item">Item</label>
+      <input type="text" id="f-item" placeholder="Ex: 1.0" />
+    </div>
+    <div class="full">
+      <label for="f-nome">Nome do serviço</label>
+      <input type="text" id="f-nome" placeholder="Ex: Pintura de apartamento" />
+    </div>
+    <div class="full">
+      <label for="f-nomemapa">Nome no Mapa</label>
+      <input type="text" id="f-nomemapa" placeholder="Ex: TEXTURA WC" />
+    </div>
+    <div class="full">
+      <label for="f-mdo">Custo de M.d.o por Apt. (R$)</label>
+      <input type="decimal" inputmode="decimal" id="f-mdo" placeholder="0,00" />
+    </div>
+    <div class="full">
+      <label for="f-medicao">Valor de Medição por Apt. (R$)</label>
+      <input type="decimal" inputmode="decimal" id="f-medicao" placeholder="0,00" />
+    </div>
+    <div class="full">
+      <label for="f-material">Custo de Material por Apt. (R$)</label>
+      <input type="decimal" inputmode="decimal" id="f-material" placeholder="0,00" />
+    </div>
+    <div class="full">
+      <label for="f-obs">Observações</label>
+      <input type="text" id="f-obs" placeholder="Opcional" />
+    </div>
+    <button type="submit" class="btn-add" id="btn-submit">+ Cadastrar</button>
+  </div>
+</form>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="./app.js?v=8"></script>
+</body>
+</html>

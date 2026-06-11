@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Seed Locais</title>
+  <style>
+    body { font-family: sans-serif; padding: 24px; max-width: 500px; }
+    button { padding: 14px 24px; background: #1a3322; color: white; border: none; border-radius: 8px; font-size: 1rem; cursor: pointer; }
+    #log { margin-top: 20px; font-size: 0.9rem; line-height: 1.8; }
+    .ok  { color: #2e7d32; }
+    .err { color: #c62828; }
+  </style>
+</head>
+<body>
+  <h2>Inserir I01→I08, I101→I108, J01→J08, J101→J108</h2>
+  <p>Clique para criar os apartamentos seguindo o mesmo padrão do A01.</p>
+  <button onclick="seed()">Executar</button>
+  <div id="log"></div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+  firebase.initializeApp({
+    apiKey: "AIzaSyBaqROPsywPgtKjQU7cs1ke1WaqDFhWwn0",
+    authDomain: "sistema-gw-36566.firebaseapp.com",
+    projectId: "sistema-gw-36566",
+    storageBucket: "sistema-gw-36566.firebasestorage.app",
+    messagingSenderId: "472820177992",
+    appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
+  });
+  const db  = firebase.firestore();
+  const col = db.collection("locais");
+
+  function log(msg, ok) {
+    const div = document.getElementById("log");
+    div.innerHTML += `<div class="${ok ? 'ok' : 'err'}">${msg}</div>`;
+  }
+
+  async function seed() {
+    document.querySelector("button").disabled = true;
+    document.getElementById("log").innerHTML = "";
+
+    // Lê A01 como modelo
+    const snap = await col.where("identificacao", "==", "A01").get();
+    if (snap.empty) { log("❌ A01 não encontrado.", false); return; }
+
+    const modelo = snap.docs[0].data();
+    const servicos = (modelo.servicos || []).map(s => ({ id: s.id, nome: s.nome, status: "pendente" }));
+    const area = modelo.area || 0;
+    const tipo = modelo.tipo || "Apartamento";
+
+    const novos = [
+      "I01","I02","I03","I04","I05","I06","I07","I08",
+      "I101","I102","I103","I104","I105","I106","I107","I108",
+      "J01","J02","J03","J04","J05","J06","J07","J08",
+      "J101","J102","J103","J104","J105","J106","J107","J108"
+    ];
+
+    for (const id of novos) {
+      // Verifica se já existe
+      const existe = await col.where("identificacao", "==", id).get();
+      if (!existe.empty) {
+        log(`⚠️ ${id} já existe — pulado.`, true);
+        continue;
+      }
+      await col.add({
+        tipo,
+        identificacao: id,
+        area,
+        servicos,
+        criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      log(`✓ ${id} criado (${tipo}, ${area} m², ${servicos.length} serviços)`, true);
+    }
+
+    log("✅ Concluído!", true);
+    document.querySelector("button").disabled = false;
+  }
+</script>
+</body>
+</html>

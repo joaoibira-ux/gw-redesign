@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Mapa" />
+  <title>Mapa de Execução</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="./style.css?v=28" />
+</head>
+<body>
+
+<header>
+  <a href="https://sistema.gwrevestimentos.com.br/index.html" style="display:flex;align-items:center;line-height:0;">
+    <img src="./Logo-gw.png" alt="GW" style="height:34px;width:34px;object-fit:contain;border-radius:6px;" />
+  </a>
+  <span>Mapa de Execução</span>
+  <span id="versao-app" class="header-versao"></span>
+</header>
+
+<div class="legenda">
+  <span class="leg-item"><span class="leg-cor concluido"></span> Concluído</span>
+  <span class="leg-item"><span class="leg-cor em_pagamento"></span> Na folha</span>
+  <span class="leg-item"><span class="leg-cor pendente"></span> Pendente</span>
+</div>
+
+<div id="mapa" class="mapa"></div>
+
+<div id="popup-det" class="popup-det" style="display:none">
+  <div class="pop-header">
+    <strong>Detalhes</strong>
+    <button onclick="fecharInfo()">✕</button>
+  </div>
+  <div class="pop-body"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="./app.js?v=33"></script>
+</body>
+</html>
