@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.27";
+const VERSAO_CAIXA = "3.28";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -272,6 +272,49 @@ document.getElementById("form").addEventListener("submit", function(e) {
 
 
 document.getElementById("f-data").value = hoje();
+
+// Origem em 2 níveis: escolhe ANE/JOAO primeiro, depois as origens específicas de cada um
+const ORIGEM_GRUPOS = {
+  "ANE": [
+    { value: "ANE", label: "ANE (Geral)" },
+    { value: "ANE->GW-INTER", label: "ANE → GW-INTER" },
+    { value: "ANE->HORACIO", label: "ANE → HORACIO" },
+    { value: "ANE->JOAO", label: "ANE → JOAO" },
+    { value: "ANE->RETENCAO PARADIGMA 5%", label: "ANE → RETENÇÃO PARADIGMA 5%" },
+    { value: "ANE->FOLHA DE PAGAMENTO", label: "ANE → FOLHA DE PAGAMENTO" },
+    { value: "ANE->ADIANTAMENTO", label: "ANE → ADIANTAMENTO" },
+    { value: "ANE->CREDITO A REPASSAR P BBS FOMENTO", label: "ANE → CRÉDITO A REPASSAR P/ BBS FOMENTO" }
+  ],
+  "JOAO": [
+    { value: "JOAO", label: "JOAO (Geral)" },
+    { value: "JOAO->HORACIO", label: "JOÃO → HORÁCIO" },
+    { value: "JOAO->RETENCAO PARADIGMA 5%", label: "JOAO → RETENÇÃO PARADIGMA 5%" },
+    { value: "JOAO->CREDITO DE PROLABORE", label: "JOAO → CRÉDITO DE PRÓ-LABORE" },
+    { value: "JOAO->JOAO", label: "JOÃO → JOÃO" },
+    { value: "JOAO->CTAS A RECEBER", label: "JOÃO → CTAS A RECEBER" },
+    { value: "JOAO->BAIXA CTAS A RECEBER", label: "JOÃO → BAIXA CTAS A RECEBER" },
+    { value: "JOAO->CTAS A PAGAR", label: "JOÃO → CTAS A PAGAR" },
+    { value: "JOAO->BAIXA CTAS A PAGAR", label: "JOÃO → BAIXA CTAS A PAGAR" }
+  ]
+};
+
+document.getElementById("f-origem-grupo").addEventListener("change", function() {
+  const grupo = this.value;
+  const wrap  = document.getElementById("f-origem-detalhe-wrap");
+  const sel   = document.getElementById("f-origem");
+
+  if (!grupo) {
+    wrap.style.display = "none";
+    sel.innerHTML = "";
+    sel.dispatchEvent(new Event("change"));
+    return;
+  }
+
+  sel.innerHTML = ORIGEM_GRUPOS[grupo].map(o => `<option value="${o.value}">${o.label}</option>`).join("");
+  wrap.style.display = "";
+  sel.value = grupo;
+  sel.dispatchEvent(new Event("change"));
+});
 
 document.getElementById("f-origem").addEventListener("change", function() {
   const desc    = document.getElementById("f-desc");

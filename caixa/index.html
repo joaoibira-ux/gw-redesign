@@ -107,26 +107,16 @@
       <input type="text" id="f-data" placeholder="DD/MM/AAAA" />
     </div>
     <div>
-      <label for="f-origem">Origem</label>
-      <select id="f-origem">
+      <label for="f-origem-grupo">Origem</label>
+      <select id="f-origem-grupo">
+        <option value="">Selecione...</option>
         <option value="ANE">ANE</option>
         <option value="JOAO">JOAO</option>
-        <option value="ANE->GW-INTER">ANE → GW-INTER</option>
-        <option value="ANE->HORACIO">ANE → HORACIO</option>
-        <option value="ANE->JOAO">ANE → JOAO</option>
-        <option value="JOAO->HORACIO">JOÃO → HORÁCIO</option>
-        <option value="ANE->RETENCAO PARADIGMA 5%">ANE → RETENÇÃO PARADIGMA 5%</option>
-        <option value="JOAO->RETENCAO PARADIGMA 5%">JOAO → RETENÇÃO PARADIGMA 5%</option>
-        <option value="ANE->FOLHA DE PAGAMENTO">ANE → FOLHA DE PAGAMENTO</option>
-        <option value="ANE->ADIANTAMENTO">ANE → ADIANTAMENTO</option>
-        <option value="JOAO->CREDITO DE PROLABORE">JOAO → CRÉDITO DE PRÓ-LABORE</option>
-        <option value="JOAO->JOAO">JOÃO → JOÃO</option>
-        <option value="JOAO->CTAS A RECEBER">JOÃO → CTAS A RECEBER</option>
-        <option value="JOAO->BAIXA CTAS A RECEBER">JOÃO → BAIXA CTAS A RECEBER</option>
-        <option value="JOAO->CTAS A PAGAR">JOÃO → CTAS A PAGAR</option>
-        <option value="JOAO->BAIXA CTAS A PAGAR">JOÃO → BAIXA CTAS A PAGAR</option>
-        <option value="ANE->CREDITO A REPASSAR P BBS FOMENTO">ANE → CRÉDITO A REPASSAR P/ BBS FOMENTO</option>
       </select>
+    </div>
+    <div class="full" id="f-origem-detalhe-wrap" style="display:none">
+      <label for="f-origem">Detalhe da origem</label>
+      <select id="f-origem"></select>
     </div>
     <div class="full">
       <label for="f-desc">Descrição</label>
@@ -161,7 +151,7 @@
   </div>
 </div>
 
-<script src="./app.js?v=64"></script>
+<script src="./app.js?v=65"></script>
 <script>
   if (document.documentElement.classList.contains('gw-blocked')) {
     (function() {
