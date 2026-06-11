@@ -114,6 +114,7 @@
       background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.18); border-radius: 9px;
       color: #e8f5e9; font-size: .74rem; font-weight: 600; text-decoration: none;
     }
+    .sem-menu .btn-voltar { display: none; }
 
     .cam-bot {
       position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
@@ -221,6 +222,13 @@
 <!-- bfcache fix (iOS) -->
 <script>window.addEventListener('pageshow', e => { if (e.persisted) location.reload(); });</script>
 
+<!-- Aberto direto pelo ícone do PONTO (sem ?menu=1): sem botão de voltar ao menu -->
+<script>
+  if (new URLSearchParams(location.search).get('menu') !== '1') {
+    document.body.classList.add('sem-menu');
+  }
+</script>
+
 <!-- ── LOADING ── -->
 <div id="s-loading" class="screen active">
   <img class="ld-logo" src="../Logo-gw.png" alt="GW" />
@@ -314,7 +322,7 @@ const FIREBASE_CONFIG = {
 };
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 const MATCH_THRESHOLD = 0.55;
-const VERSAO          = '2.7';
+const VERSAO          = '2.8';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let db;
@@ -421,8 +429,11 @@ function haversine(lat1, lng1, lat2, lng2) {
 }
 
 function fecharApp() {
-  window.close();
-  location.href = 'https://sistema.gwrevestimentos.com.br/';
+  if (new URLSearchParams(location.search).get('menu') === '1') {
+    location.href = 'https://sistema.gwrevestimentos.com.br/';
+  } else {
+    location.reload();
+  }
 }
 
 // ── EMPLOYEES ──────────────────────────────────────────────────────────────
