@@ -322,7 +322,7 @@ const FIREBASE_CONFIG = {
 };
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 const MATCH_THRESHOLD = 0.55;
-const VERSAO          = '2.9';
+const VERSAO          = '2.10';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let db;
@@ -364,7 +364,7 @@ function mostrarAvisoInstalacao() {
 }
 
 window.addEventListener('load', async () => {
-  if (!estaComoApp()) { mostrarAvisoInstalacao(); return; }
+  if (ehMobile() && !estaComoApp()) { mostrarAvisoInstalacao(); return; }
 
   firebase.initializeApp(FIREBASE_CONFIG);
   db = firebase.firestore();

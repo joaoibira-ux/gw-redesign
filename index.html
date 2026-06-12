@@ -288,7 +288,7 @@
     const PIN_COMPLETO  = '2248'; // todos os apps
     const PIN_PARCIAL   = '4512'; // todos visíveis, só 4 acessíveis
     const PIN_RESTRITO  = '3733'; // só Folha, Rel. Folha, Mapa, Funcionários, Almoxarifado, Ponto, Rel. Ponto
-    const VERSAO = '3.31';
+    const VERSAO = '3.32';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
     let modo = 'parcial'; // 'completo' | 'parcial' | 'restrito'
@@ -314,7 +314,7 @@
 
     // Fora do modo app (instalado pelo ícone): mostra aviso de instalação direto, sem pedir PIN
     const _sessao = sessionStorage.getItem('gw_auth');
-    if (!estaComoApp()) {
+    if (ehMobile() && !estaComoApp()) {
       document.getElementById('pin-screen').style.display = 'none';
       mostrarAvisoInstalacao();
     } else if (_sessao === 'completo')  { modo = 'completo';  mostrarHome(false); }
@@ -403,7 +403,7 @@
       const home = document.getElementById('home-screen');
       pin.style.display = 'none';
 
-      if (!estaComoApp()) {
+      if (ehMobile() && !estaComoApp()) {
         mostrarAvisoInstalacao();
         return;
       }
