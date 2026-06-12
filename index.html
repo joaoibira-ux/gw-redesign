@@ -136,6 +136,7 @@
     .home-title-block { flex: 1; }
     .home-title { font-size: 1rem; font-weight: 800; letter-spacing: 2px; color: #f1f8f2; text-shadow: 0 1px 6px rgba(0,0,0,0.4); }
     .home-sub   { font-size: 0.6rem; letter-spacing: 1.5px; color: #c8e6c9; font-weight: 600; }
+    .home-version { font-size: 0.55rem; color: #a5d6a7; letter-spacing: 1px; align-self: flex-end; }
 
     .apps-grid {
       flex: 1; overflow-y: auto;
@@ -250,6 +251,7 @@
         <div class="home-title">GREEN WALL</div>
         <div class="home-sub">SISTEMA DE GESTÃO</div>
       </div>
+      <div class="home-version" id="home-version-display"></div>
     </div>
     <div class="apps-grid" id="apps-grid"></div>
   </div>
@@ -288,8 +290,9 @@
     const PIN_COMPLETO  = '2248'; // todos os apps
     const PIN_PARCIAL   = '4512'; // todos visíveis, só 4 acessíveis
     const PIN_RESTRITO  = '3733'; // só Folha, Rel. Folha, Mapa, Funcionários, Almoxarifado, Ponto, Rel. Ponto
-    const VERSAO = '3.33';
+    const VERSAO = '3.34';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
+    document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
     let modo = 'parcial'; // 'completo' | 'parcial' | 'restrito'
 
