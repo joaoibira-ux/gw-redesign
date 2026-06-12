@@ -287,33 +287,33 @@
     thead th.col-entrada { background: #1b5e20; }
     thead th.col-saida   { background: #b71c1c; }
     thead th.col-saldo   { background: #0d2e0d; }
-    tbody tr { background: rgba(255,255,255,0.04); }
-    tbody tr:hover { background: rgba(165,214,167,0.1); }
+    tbody tr { background: #ffffff; }
+    tbody tr:hover { background: rgba(165,214,167,0.25); }
     tbody td {
       padding: 11px 14px;
       font-size: 0.88rem;
-      border-bottom: 1px solid rgba(165,214,167,0.1);
+      border-bottom: 1px solid rgba(76,140,90,0.15);
       vertical-align: middle;
-      color: #c8e6c9;
+      color: #1b3a26;
     }
     .badge {
-      background: rgba(46,125,50,0.3);
-      color: #a5d6a7;
+      background: rgba(46,125,50,0.15);
+      color: #1b5e20;
       border-radius: 4px;
       padding: 2px 7px;
       font-size: 0.72rem;
       font-weight: 700;
     }
-    .badge.joao { background: rgba(230,81,0,0.25); color: #ffb74d; }
-    .badge.transf { background: rgba(106,27,154,0.3); color: #ce93d8; }
+    .badge.joao { background: rgba(230,81,0,0.14); color: #e65100; }
+    .badge.transf { background: rgba(106,27,154,0.14); color: #6a1b9a; }
     .col-entrada-val {
-      color: #a5d6a7;
+      color: #2e7d32;
       font-weight: 700;
       text-align: right;
       white-space: nowrap;
     }
     .col-saida-val {
-      color: #ef9a9a;
+      color: #c62828;
       font-weight: 700;
       text-align: right;
       white-space: nowrap;
@@ -323,8 +323,8 @@
       text-align: right;
       white-space: nowrap;
     }
-    .col-saldo-val.pos { color: #a5d6a7; }
-    .col-saldo-val.neg { color: #ef9a9a; }
+    .col-saldo-val.pos { color: #1b5e20; }
+    .col-saldo-val.neg { color: #c62828; }
     td.vazio { color: #4a8a5a; text-align: right; }
     .col-numero {
       color: #4a8a5a;
@@ -384,7 +384,7 @@
 
     .empty-row td {
       text-align: center;
-      color: #aaa;
+      color: #4a8a5a;
       padding: 40px;
       font-size: 0.9rem;
     }
@@ -688,7 +688,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.58";
+  const VERSAO = "1.59";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
