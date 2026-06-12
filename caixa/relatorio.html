@@ -488,6 +488,9 @@
     .prev-total { display: grid; padding: 10px 16px; background: #0d2318; color: #a5d6a7; font-weight: 800; font-size: 0.9rem; }
     .prev-total span { text-align: right; white-space: nowrap; }
     .prev-total span:first-child { text-align: left; }
+    .prev-bbs { display: grid; padding: 10px 16px; background: #004d61; font-weight: 800; font-size: 0.9rem; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    .prev-bbs span { text-align: right; white-space: nowrap; color: #e0f7fa; }
+    .prev-bbs span:first-child { text-align: left; color: #80deea; }
     @media (max-width: 768px) { .previsao-wrap { margin: 0 8px 24px; } }
     @media print { .previsao-card { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
 
@@ -685,7 +688,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.57";
+  const VERSAO = "1.58";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1195,24 +1198,44 @@
     const cats = Object.keys(countMap).map(Number).sort((a, b) => a - b);
     if (!cats.length) { el.innerHTML = ''; return; }
 
-    let total = 0;
+    let totalMedicao = 0, totalRetencao = 0, totalAReceber = 0;
     const linhas = cats.map(cat => {
       const count = countMap[cat];
       const { nome, medicao } = medicaoMap[cat] || { nome: `Tipo ${cat}`, medicao: 0 };
       const subtotal = count * medicao;
-      total += subtotal;
+      const retencao = subtotal * 0.05;
+      const aReceber = subtotal - retencao;
+      totalMedicao  += subtotal;
+      totalRetencao += retencao;
+      totalAReceber += aReceber;
       return `
         <div class="prev-linha prev-cols">
-          <div class="prev-nome" style="grid-column:1/4">${escHtml(nome)} <span class="prev-cargo">${count} apto${count !== 1 ? 's' : ''} × ${fmt(medicao)}</span></div>
+          <div class="prev-nome">${escHtml(nome)} <span class="prev-cargo">${count} apto${count !== 1 ? 's' : ''} × ${fmt(medicao)}</span></div>
           <div class="prev-valor">${fmt(subtotal)}</div>
+          <div class="prev-adiant">${retencao > 0 ? '- '+fmt(retencao) : '—'}</div>
+          <div class="prev-liq">${fmt(aReceber)}</div>
         </div>`;
     }).join('');
+
+    const liquidoBBS = totalMedicao * 0.965;
 
     el.innerHTML = `
       <div class="previsao-card">
         <div class="prev-titulo">Previsão da Medição</div>
+        <div class="prev-header prev-cols">
+          <span>Serviço</span><span>Medição</span><span>Retenção</span><span>A Receber</span>
+        </div>
         ${linhas}
-        <div class="prev-total prev-cols"><span style="grid-column:1/4">Total</span><span>${fmt(total)}</span></div>
+        <div class="prev-total prev-cols">
+          <span>Total</span>
+          <span>${fmt(totalMedicao)}</span>
+          <span style="color:#ef9a9a">${totalRetencao > 0 ? '- '+fmt(totalRetencao) : '—'}</span>
+          <span>${fmt(totalAReceber)}</span>
+        </div>
+        <div class="prev-bbs prev-cols">
+          <span style="grid-column:1/4">VALOR LÍQUIDO PREVISTO PRA ESSA MEDIÇÃO (BBS Fomento)</span>
+          <span>${fmt(liquidoBBS)}</span>
+        </div>
       </div>`;
   }
 
