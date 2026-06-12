@@ -322,7 +322,7 @@ const FIREBASE_CONFIG = {
 };
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 const MATCH_THRESHOLD = 0.55;
-const VERSAO          = '2.11';
+const VERSAO          = '2.12';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let db;
@@ -628,7 +628,22 @@ function mostrarSucesso(ponto) {
   document.getElementById('suc-nome').textContent = ponto.funcionarioNome || '';
   document.getElementById('suc-hora').textContent = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   showScreen('s-success');
-  setTimeout(() => { fecharApp(); }, 3500);
+
+  if (document.body.classList.contains('sem-menu')) {
+    // Aberto direto pelo ícone do PONTO: trava na tela de sucesso, câmera desligada, sem reiniciar
+    pararCamera();
+  } else {
+    setTimeout(() => { fecharApp(); }, 3500);
+  }
+}
+
+function pararCamera() {
+  if (detectionLoop) cancelAnimationFrame(detectionLoop);
+  detectionLoop = null;
+  if (mainStream) {
+    mainStream.getTracks().forEach(t => t.stop());
+    mainStream = null;
+  }
 }
 
 function mostrarNaoEncontrado() {
