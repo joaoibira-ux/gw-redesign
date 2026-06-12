@@ -288,7 +288,7 @@
     const PIN_COMPLETO  = '2248'; // todos os apps
     const PIN_PARCIAL   = '4512'; // todos visíveis, só 4 acessíveis
     const PIN_RESTRITO  = '3733'; // só Folha, Rel. Folha, Mapa, Funcionários, Almoxarifado, Ponto, Rel. Ponto
-    const VERSAO = '3.32';
+    const VERSAO = '3.33';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
     let modo = 'parcial'; // 'completo' | 'parcial' | 'restrito'
@@ -301,6 +301,7 @@
       { icon: '📊', name: 'Relatório',           desc: 'Financeiro',                url: 'https://sistema.gwrevestimentos.com.br/caixa/relatorio.html' },
       { icon: '🧾', name: 'A Receber',           desc: 'Contas a receber',          url: 'https://sistema.gwrevestimentos.com.br/areceber/' },
       { icon: '💸', name: 'A Pagar',             desc: 'Contas a pagar',            url: 'https://sistema.gwrevestimentos.com.br/apagar/' },
+      { icon: '📐', name: 'Medições',            desc: 'Medição por foto',          url: 'https://sistema.gwrevestimentos.com.br/medicoes/' },
       { icon: '📋', name: 'Folha',               desc: 'Pagamento da produção',     url: 'https://sistema.gwrevestimentos.com.br/folha/' },
       { icon: '📄', name: 'Rel. Folha',          desc: 'Previsão de pagamento',     url: 'https://sistema.gwrevestimentos.com.br/folha/#relatorio' },
       { icon: '🗺️', name: 'Mapa',               desc: 'Serviços da obra',          url: 'https://sistema.gwrevestimentos.com.br/mapa/' },

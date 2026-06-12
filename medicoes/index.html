@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Medições" />
+  <title>Medições</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="./style.css?v=1" />
+  <link rel="apple-touch-icon" href="./Logo-gw.png" />
+</head>
+<body>
+
+<header>
+  <a href="https://sistema.gwrevestimentos.com.br/index.html" style="display:flex;align-items:center;line-height:0;">
+    <img src="./Logo-gw.png" alt="GW" style="height:34px;width:34px;object-fit:contain;border-radius:6px;" />
+  </a>
+  <span>Medições</span>
+  <span id="versao-app" class="header-versao"></span>
+</header>
+
+<div class="resumo">
+  <span class="resumo-label">Total medido</span>
+  <span class="resumo-valor" id="tot-medido">R$ 0,00</span>
+</div>
+
+<div id="lista" class="lista"></div>
+
+<button class="fab" id="fab" onclick="abrirSeletorFoto()">+</button>
+<input type="file" id="input-foto" accept="image/*" style="display:none" />
+
+<div class="overlay-loading" id="overlay-loading" style="display:none">
+  <div class="spinner"></div>
+  <p>Analisando planilha...</p>
+</div>
+
+<div class="overlay-revisao" id="overlay-revisao" style="display:none">
+  <div class="revisao-card">
+    <h3>Itens identificados</h3>
+    <p class="revisao-sub">Confira e ajuste antes de salvar.</p>
+
+    <div class="full">
+      <label for="rv-data">Data</label>
+      <input type="text" id="rv-data" placeholder="DD/MM/AAAA" />
+    </div>
+
+    <div id="revisao-lista"></div>
+
+    <button type="button" class="btn-add-linha" onclick="adicionarLinhaRevisao()">+ Adicionar item</button>
+
+    <div class="revisao-acoes">
+      <button type="button" class="btn-cancelar" onclick="cancelarRevisao()">Cancelar</button>
+      <button type="button" class="btn-add" onclick="salvarRevisao()">Salvar Tudo</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="./app.js?v=1"></script>
+</body>
+</html>
