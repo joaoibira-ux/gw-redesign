@@ -689,7 +689,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.63";
+  const VERSAO = "1.64";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1173,11 +1173,14 @@
   }
 
   // ── Previsão da Medição ──
-  let _locaisSnap = null, _servicosSnap = null;
+  let _locaisSnap = null, _servicosSnap = null, _funcSnap = null;
 
   function renderPrevisaoMedicao() {
     const el = document.getElementById('previsao-medicao');
-    if (!el || !_locaisSnap || !_servicosSnap) return;
+    if (!el || !_locaisSnap || !_servicosSnap || !_funcSnap) return;
+
+    const cargoById = {};
+    _funcSnap.docs.forEach(d => { cargoById[d.id] = d.data().cargo || ''; });
 
     const servByName = {};
     const catFallback = {};
@@ -1195,10 +1198,14 @@
           const cat = ordemServico(s.nome);
           if (cat >= 99) return;
           const valores = servByName[s.nome] || catFallback[cat] || { medicao: 0, mdo: 0 };
+          let custoApto = valores.mdo;
+          if (cat === 0 && s.executor && (cargoById[s.executor.id] || '').toLowerCase().includes('pintor')) {
+            custoApto += 10;
+          }
           if (!sumsByCat[cat]) sumsByCat[cat] = { count: 0, subtotal: 0, custo: 0 };
           sumsByCat[cat].count++;
           sumsByCat[cat].subtotal += valores.medicao;
-          sumsByCat[cat].custo    += valores.mdo;
+          sumsByCat[cat].custo    += custoApto;
         }
       });
     });
@@ -1251,6 +1258,7 @@
 
   db.collection('locais').onSnapshot(snap => { _locaisSnap = snap; renderPrevisaoMedicao(); });
   db.collection('servicos').onSnapshot(snap => { _servicosSnap = snap; renderPrevisaoMedicao(); });
+  db.collection('funcionarios').onSnapshot(snap => { _funcSnap = snap; renderPrevisaoMedicao(); });
 
   // ── Previsão da Folha ──
   function normNome(s) {
