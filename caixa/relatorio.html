@@ -689,7 +689,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.67";
+  const VERSAO = "1.68";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1173,12 +1173,13 @@
   }
 
   // ── Previsão da Medição / Previsão da Folha ──
-  let _locaisSnap = null, _servicosSnap = null, _porFuncProducao = null;
+  let _locaisSnap = null, _servicosSnap = null, _porFuncProducao = null, _nServTotal = null;
 
   function renderPrevisaoMedicao() {
     const el = document.getElementById('previsao-medicao');
     if (!_locaisSnap || !_servicosSnap) {
       _porFuncProducao = null;
+      _nServTotal = null;
       renderPrevisaoFolha();
       return;
     }
@@ -1194,9 +1195,11 @@
 
     const sumsByCat = {};
     const porFunc = new Map();
+    let nServTotal = 0;
     _locaisSnap.docs.forEach(d => {
       (d.data().servicos || []).forEach(s => {
         if (s.status !== 'em_pagamento') return;
+        nServTotal++;
         const cat = ordemServico(s.nome);
         const valores = servByName[s.nome] || catFallback[cat] || { medicao: 0, mdo: 0 };
         let custoApto = valores.mdo;
@@ -1220,6 +1223,7 @@
       });
     });
     _porFuncProducao = porFunc;
+    _nServTotal = nServTotal;
     renderPrevisaoFolha();
 
     if (!el) return;
@@ -1316,7 +1320,12 @@
     const linhas = grupos.map(g => {
       // Bruto recalculado a partir do estado atual de 'locais' (mais confiável que o subtotal salvo na folha)
       let bruto = g.subtotal || 0;
-      if (!g.isEncarregado && _porFuncProducao) {
+      if (g.isEncarregado) {
+        if (_nServTotal !== null) {
+          const quinzena = (g.itens || []).find(i => i.servico === 'Quinzena 50%');
+          if (quinzena) bruto = Number(quinzena.valor || 0) + 5 * _nServTotal;
+        }
+      } else if (_porFuncProducao) {
         const key = g.funcionario.id || g.funcionario.nome;
         if (_porFuncProducao.has(key)) bruto = _porFuncProducao.get(key);
       }
