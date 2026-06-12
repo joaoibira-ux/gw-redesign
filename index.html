@@ -41,6 +41,12 @@
     }
     .pin-logo { width: 72px; height: 72px; object-fit: contain; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.4)); }
     .pin-title { font-size: 1.3rem; font-weight: 800; letter-spacing: 3px; color: #e8f5e9; text-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+    .pin-erp {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      font-size: 0.8rem; font-weight: 800; letter-spacing: 5px; color: #69f0ae;
+      text-shadow: 0 0 8px rgba(105,240,174,0.4);
+    }
+    .pin-erp::before, .pin-erp::after { content: ''; width: 28px; height: 1px; background: #69f0ae; opacity: 0.6; }
     .pin-sub   { font-size: 0.65rem; letter-spacing: 2px; color: #b8d8bb; font-weight: 600; }
 
     .pin-dots-wrap {
@@ -135,6 +141,13 @@
     .home-logo { width: 44px; height: 44px; object-fit: contain; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.4)); -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
     .home-title-block { flex: 1; }
     .home-title { font-size: 1rem; font-weight: 800; letter-spacing: 2px; color: #f1f8f2; text-shadow: 0 1px 6px rgba(0,0,0,0.4); }
+    .home-erp {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 0.6rem; font-weight: 800; letter-spacing: 3px; color: #69f0ae;
+      text-shadow: 0 0 8px rgba(105,240,174,0.4);
+      margin: 2px 0;
+    }
+    .home-erp::before, .home-erp::after { content: ''; width: 16px; height: 1px; background: #69f0ae; opacity: 0.6; }
     .home-sub   { font-size: 0.6rem; letter-spacing: 1.5px; color: #c8e6c9; font-weight: 600; }
     .home-version { font-size: 0.55rem; color: #a5d6a7; letter-spacing: 1px; align-self: flex-end; }
 
@@ -210,6 +223,7 @@
     <div class="pin-header glass">
       <img class="pin-logo" src="./Logo-gw.png" alt="GW" />
       <div class="pin-title">GREEN WALL</div>
+      <div class="pin-erp">ERP</div>
       <div class="pin-sub">SISTEMA DE GESTÃO</div>
       <div class="pin-version" id="pin-version-display"></div>
     </div>
@@ -249,6 +263,7 @@
       <img class="home-logo" src="./Logo-gw.png" alt="GW" draggable="false" />
       <div class="home-title-block">
         <div class="home-title">GREEN WALL</div>
+        <div class="home-erp">ERP</div>
         <div class="home-sub">SISTEMA DE GESTÃO</div>
       </div>
       <div class="home-version" id="home-version-display"></div>
@@ -290,7 +305,7 @@
     const PIN_COMPLETO  = '2248'; // todos os apps
     const PIN_PARCIAL   = '4512'; // todos visíveis, só 4 acessíveis
     const PIN_RESTRITO  = '3733'; // só Folha, Rel. Folha, Mapa, Funcionários, Almoxarifado, Ponto, Rel. Ponto
-    const VERSAO = '3.34';
+    const VERSAO = '3.35';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
