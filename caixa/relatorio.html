@@ -689,7 +689,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.65";
+  const VERSAO = "1.66";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1173,7 +1173,7 @@
   }
 
   // ── Previsão da Medição ──
-  let _locaisSnap = null, _servicosSnap = null;
+  let _locaisSnap = null, _servicosSnap = null, _folhaGrupos = null;
 
   function renderPrevisaoMedicao() {
     const el = document.getElementById('previsao-medicao');
@@ -1188,6 +1188,14 @@
       if (cat < 99 && !(cat in catFallback)) catFallback[cat] = { nome: nomeAbrev(s.nome), medicao: s.medicao || 0, mdo: s.mdo || 0 };
     });
 
+    // Valor realmente pago (já calculado/ajustado na Folha) por local+serviço
+    const valorPagoByKey = {};
+    (_folhaGrupos || []).forEach(g => {
+      (g.itens || []).forEach(item => {
+        if (item.firestoreLocalId) valorPagoByKey[`${item.firestoreLocalId}:${item.servico}`] = Number(item.valor) || 0;
+      });
+    });
+
     const sumsByCat = {};
     _locaisSnap.docs.forEach(d => {
       (d.data().servicos || []).forEach(s => {
@@ -1195,9 +1203,15 @@
           const cat = ordemServico(s.nome);
           if (cat >= 99) return;
           const valores = servByName[s.nome] || catFallback[cat] || { medicao: 0, mdo: 0 };
-          let custoApto = valores.mdo;
-          if (cat === 0 && s.funcionario && (s.funcionario.cargo || '').toLowerCase().includes('pintor')) {
-            custoApto += 10;
+          const chavePago = `${d.id}:${s.nome}`;
+          let custoApto;
+          if (chavePago in valorPagoByKey) {
+            custoApto = valorPagoByKey[chavePago];
+          } else {
+            custoApto = valores.mdo;
+            if (cat === 0 && s.funcionario && (s.funcionario.cargo || '').toLowerCase().includes('pintor')) {
+              custoApto += 10;
+            }
           }
           if (!sumsByCat[cat]) sumsByCat[cat] = { count: 0, subtotal: 0, custo: 0 };
           sumsByCat[cat].count++;
@@ -1263,6 +1277,13 @@
 
   db.collection('folhas').orderBy('criadoEm', 'desc').limit(1).onSnapshot(async snap => {
     const el = document.getElementById('previsao-folha');
+    if (snap.empty || snap.docs[0].data().status === 'paga') {
+      _folhaGrupos = null;
+    } else {
+      _folhaGrupos = snap.docs[0].data().grupos || [];
+    }
+    renderPrevisaoMedicao();
+
     if (!el) { _rlFontes.folhas = true; _verificarTudo(); return; }
     if (snap.empty) { el.innerHTML = ''; _rlFontes.folhas = true; _verificarTudo(); return; }
     const folha = snap.docs[0].data();
