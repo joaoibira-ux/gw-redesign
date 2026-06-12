@@ -473,20 +473,19 @@
       align-items: center;
       gap: 10px;
     }
-    .prev-titulo-logo { height: 34px; width: 34px; object-fit: contain; border-radius: 6px; flex-shrink: 0; }
     .prev-cols { grid-template-columns: 1fr 120px 120px 120px; }
     .prev-cols-med { grid-template-columns: 1fr 100px 100px 100px 100px; }
     .prev-header { display: grid; padding: 5px 16px; border-bottom: 1px solid rgba(165,214,167,0.15); }
     .prev-header span { font-size: 0.6rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #4a8a5a; text-align: right; white-space: nowrap; }
     .prev-header span:first-child { text-align: left; }
-    .prev-linha { display: grid; align-items: center; padding: 8px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.04); }
-    .prev-enc { background: rgba(255,255,255,0.04); }
-    .prev-nome { font-size: 0.88rem; font-weight: 600; color: #c8e6c9; }
+    .prev-linha { display: grid; align-items: center; padding: 8px 16px; border-bottom: 1px solid rgba(76,140,90,0.15); background: #ffffff; }
+    .prev-enc { background: rgba(165,214,167,0.18); }
+    .prev-nome { font-size: 0.88rem; font-weight: 600; color: #1b3a26; }
     .prev-cargo { font-size: 0.68rem; font-weight: 400; color: #4a8a5a; text-transform: capitalize; margin-left: 8px; }
-    .prev-valor { font-size: 0.85rem; font-weight: 700; color: #a5d6a7; white-space: nowrap; text-align: right; }
-    .prev-adiant { font-size: 0.85rem; font-weight: 700; color: #ef9a9a; white-space: nowrap; text-align: right; }
-    .prev-liq    { font-size: 0.85rem; font-weight: 700; color: #fff; white-space: nowrap; text-align: right; }
-    .prev-custo  { font-size: 0.85rem; font-weight: 700; color: #ffb74d; white-space: nowrap; text-align: right; }
+    .prev-valor { font-size: 0.85rem; font-weight: 700; color: #1b5e20; white-space: nowrap; text-align: right; }
+    .prev-adiant { font-size: 0.85rem; font-weight: 700; color: #c62828; white-space: nowrap; text-align: right; }
+    .prev-liq    { font-size: 0.85rem; font-weight: 700; color: #1b5e20; white-space: nowrap; text-align: right; }
+    .prev-custo  { font-size: 0.85rem; font-weight: 700; color: #e65100; white-space: nowrap; text-align: right; }
     .prev-total { display: grid; padding: 10px 16px; background: #0d2318; color: #a5d6a7; font-weight: 800; font-size: 0.9rem; }
     .prev-total span { text-align: right; white-space: nowrap; }
     .prev-total span:first-child { text-align: left; }
@@ -690,7 +689,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.60";
+  const VERSAO = "1.61";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1312,7 +1311,6 @@
     el.innerHTML = `
       <div class="previsao-card">
         <div class="prev-titulo">
-          <img src="./Logo-gw.png" alt="GW" class="prev-titulo-logo">
           <span>Previsão da Folha de Pagamento</span>
         </div>
         <div class="prev-header prev-cols">
