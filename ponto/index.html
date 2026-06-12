@@ -322,7 +322,7 @@ const FIREBASE_CONFIG = {
 };
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 const MATCH_THRESHOLD = 0.55;
-const VERSAO          = '2.10';
+const VERSAO          = '2.11';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let db;
@@ -397,17 +397,33 @@ window.addEventListener('load', async () => {
 
 // ── GEOLOCATION ────────────────────────────────────────────────────────────
 async function verificarLocalizacao() {
+  let snap;
   try {
-    const snap = await db.collection('config').doc('ponto').get();
-    if (!snap.exists) return;         // sem config → sem bloqueio
-    pontoConfig = snap.data();
-
-    const pos  = await getPosicao();
-    const dist = haversine(pos.lat, pos.lng, pontoConfig.latitude, pontoConfig.longitude);
-    if (dist > (pontoConfig.raio || 200)) showScreen('s-loc-error');
+    snap = await db.collection('config').doc('ponto').get();
   } catch (e) {
-    console.warn('Geoloc:', e);
+    console.warn('Geoloc config:', e);
+    return;                            // sem conseguir checar config → sem bloqueio
   }
+  if (!snap.exists) return;            // sem config → sem bloqueio
+  pontoConfig = snap.data();
+
+  let pos;
+  try {
+    pos = await getPosicao();
+  } catch (e) {
+    console.warn('Geoloc pos:', e);
+    mostrarErroLocalizacao('Não foi possível obter sua localização. Ative o GPS e a permissão de localização do navegador e tente novamente.');
+    return;
+  }
+
+  const dist = haversine(pos.lat, pos.lng, pontoConfig.latitude, pontoConfig.longitude);
+  if (dist > (pontoConfig.raio || 200)) mostrarErroLocalizacao();
+}
+
+function mostrarErroLocalizacao(msg) {
+  document.querySelector('#s-loc-error .err-msg').textContent =
+    msg || 'Você não está na localização de trabalho. O registro de ponto só está disponível no local da obra.';
+  showScreen('s-loc-error');
 }
 
 function getPosicao() {
