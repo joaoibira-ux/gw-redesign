@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.0";
+const VERSAO = "3.1";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -188,33 +188,37 @@ if (elCep) {
 function validarFormulario() {
   const v  = id => ((document.getElementById(id)||{}).value||"").trim();
   const rb = n  => !!document.querySelector(`input[name="${n}"]:checked`);
+  const editando = !!editandoId;
+  // Em edição, campos vazios são permitidos; se preenchidos, ainda precisam ser válidos.
+  const data = (val, msg, erros) => { if ((!editando || val) && !validarData(val)) erros.push(msg); };
   const erros = [];
   if (!v("f-nome"))           erros.push("Nome");
   if (!v("f-cargo"))          erros.push("Cargo");
-  if (!validarData(v("f-admissao"))) erros.push("Admissão (DD/MM/AAAA)");
-  if (!ehPorProducao(v("f-cargo")) && !parseMoeda(v("f-salario"))) erros.push("Salário / Diária");
-  if (!v("f-telefone"))       erros.push("Telefone");
-  if (!v("f-nacionalidade"))  erros.push("Nacionalidade");
-  if (!v("f-estadocivil"))    erros.push("Estado Civil");
-  if (!validarData(v("f-nascimento"))) erros.push("Data de Nascimento (DD/MM/AAAA)");
-  if (!v("f-localnasc"))      erros.push("Local de Nascimento");
-  if (!v("f-ufnasc"))         erros.push("UF Nascimento");
-  if (!v("f-nomemae"))        erros.push("Nome da Mãe");
-  if (!rb("instrucao"))       erros.push("Grau de Instrução");
-  if (!rb("instrucao_status"))erros.push("Grau de Instrução (Completo/Incompleto/Cursando)");
-  if (!validarCPF(v("f-cpf"))) erros.push("CPF inválido");
-  if (!v("f-rg"))             erros.push("Identidade (RG)");
-  if (!v("f-orgaoemissor"))   erros.push("Órgão Emissor");
-  if (!v("f-ufrg"))           erros.push("UF Identidade");
-  if (!validarData(v("f-emissaorg"))) erros.push("Data Emissão RG (DD/MM/AAAA)");
-  if (!v("f-ctps"))           erros.push("CTPS");
-  if (!v("f-seriectps"))      erros.push("Série CTPS");
-  if (!v("f-ufctps"))         erros.push("UF CTPS");
-  if (!validarData(v("f-emissaoctps"))) erros.push("Data Emissão CTPS (DD/MM/AAAA)");
-  if (!v("f-cep"))            erros.push("CEP");
-  if (!v("f-endereco"))       erros.push("Endereço");
-  if (!v("f-cidade"))         erros.push("Cidade");
-  if (!v("f-uf"))             erros.push("UF");
+  data(v("f-admissao"), "Admissão (DD/MM/AAAA)", erros);
+  if (!editando && !ehPorProducao(v("f-cargo")) && !parseMoeda(v("f-salario"))) erros.push("Salário / Diária");
+  if (!editando && !v("f-telefone"))       erros.push("Telefone");
+  if (!editando && !v("f-nacionalidade"))  erros.push("Nacionalidade");
+  if (!editando && !v("f-estadocivil"))    erros.push("Estado Civil");
+  data(v("f-nascimento"), "Data de Nascimento (DD/MM/AAAA)", erros);
+  if (!editando && !v("f-localnasc"))      erros.push("Local de Nascimento");
+  if (!editando && !v("f-ufnasc"))         erros.push("UF Nascimento");
+  if (!editando && !v("f-nomemae"))        erros.push("Nome da Mãe");
+  if (!editando && !rb("instrucao"))       erros.push("Grau de Instrução");
+  if (!editando && !rb("instrucao_status"))erros.push("Grau de Instrução (Completo/Incompleto/Cursando)");
+  const cpf = v("f-cpf");
+  if ((!editando || cpf) && !validarCPF(cpf)) erros.push("CPF inválido");
+  if (!editando && !v("f-rg"))             erros.push("Identidade (RG)");
+  if (!editando && !v("f-orgaoemissor"))   erros.push("Órgão Emissor");
+  if (!editando && !v("f-ufrg"))           erros.push("UF Identidade");
+  data(v("f-emissaorg"), "Data Emissão RG (DD/MM/AAAA)", erros);
+  if (!editando && !v("f-ctps"))           erros.push("CTPS");
+  if (!editando && !v("f-seriectps"))      erros.push("Série CTPS");
+  if (!editando && !v("f-ufctps"))         erros.push("UF CTPS");
+  data(v("f-emissaoctps"), "Data Emissão CTPS (DD/MM/AAAA)", erros);
+  if (!editando && !v("f-cep"))            erros.push("CEP");
+  if (!editando && !v("f-endereco"))       erros.push("Endereço");
+  if (!editando && !v("f-cidade"))         erros.push("Cidade");
+  if (!editando && !v("f-uf"))             erros.push("UF");
   return erros;
 }
 
