@@ -689,7 +689,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.66";
+  const VERSAO = "1.67";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1172,12 +1172,16 @@
       </div>`;
   }
 
-  // ── Previsão da Medição ──
-  let _locaisSnap = null, _servicosSnap = null, _folhaGrupos = null;
+  // ── Previsão da Medição / Previsão da Folha ──
+  let _locaisSnap = null, _servicosSnap = null, _porFuncProducao = null;
 
   function renderPrevisaoMedicao() {
     const el = document.getElementById('previsao-medicao');
-    if (!el || !_locaisSnap || !_servicosSnap) return;
+    if (!_locaisSnap || !_servicosSnap) {
+      _porFuncProducao = null;
+      renderPrevisaoFolha();
+      return;
+    }
 
     const servByName = {};
     const catFallback = {};
@@ -1188,39 +1192,37 @@
       if (cat < 99 && !(cat in catFallback)) catFallback[cat] = { nome: nomeAbrev(s.nome), medicao: s.medicao || 0, mdo: s.mdo || 0 };
     });
 
-    // Valor realmente pago (já calculado/ajustado na Folha) por local+serviço
-    const valorPagoByKey = {};
-    (_folhaGrupos || []).forEach(g => {
-      (g.itens || []).forEach(item => {
-        if (item.firestoreLocalId) valorPagoByKey[`${item.firestoreLocalId}:${item.servico}`] = Number(item.valor) || 0;
-      });
-    });
-
     const sumsByCat = {};
+    const porFunc = new Map();
     _locaisSnap.docs.forEach(d => {
       (d.data().servicos || []).forEach(s => {
-        if (s.status === 'em_pagamento') {
-          const cat = ordemServico(s.nome);
-          if (cat >= 99) return;
-          const valores = servByName[s.nome] || catFallback[cat] || { medicao: 0, mdo: 0 };
-          const chavePago = `${d.id}:${s.nome}`;
-          let custoApto;
-          if (chavePago in valorPagoByKey) {
-            custoApto = valorPagoByKey[chavePago];
-          } else {
-            custoApto = valores.mdo;
-            if (cat === 0 && s.funcionario && (s.funcionario.cargo || '').toLowerCase().includes('pintor')) {
-              custoApto += 10;
-            }
-          }
+        if (s.status !== 'em_pagamento') return;
+        const cat = ordemServico(s.nome);
+        const valores = servByName[s.nome] || catFallback[cat] || { medicao: 0, mdo: 0 };
+        let custoApto = valores.mdo;
+        if (cat === 0 && s.funcionario && (s.funcionario.cargo || '').toLowerCase().includes('pintor')) {
+          custoApto += 10;
+        }
+
+        if (cat < 99) {
           if (!sumsByCat[cat]) sumsByCat[cat] = { count: 0, subtotal: 0, custo: 0 };
           sumsByCat[cat].count++;
           sumsByCat[cat].subtotal += valores.medicao;
           sumsByCat[cat].custo    += custoApto;
         }
+
+        // Bruto real (atual) por funcionário, p/ Previsão da Folha
+        const func = s.funcionario;
+        if (func && !(func.cargo || '').toLowerCase().includes('ajudante')) {
+          const key = func.id || func.nome;
+          porFunc.set(key, (porFunc.get(key) || 0) + custoApto);
+        }
       });
     });
+    _porFuncProducao = porFunc;
+    renderPrevisaoFolha();
 
+    if (!el) return;
     const cats = Object.keys(sumsByCat).map(Number).sort((a, b) => a - b);
     if (!cats.length) { el.innerHTML = ''; return; }
 
@@ -1275,31 +1277,20 @@
     return String(s||'').toLowerCase().replace(/\s+/g,'').replace(/\d+/g,n=>String(parseInt(n))).normalize('NFC');
   }
 
-  db.collection('folhas').orderBy('criadoEm', 'desc').limit(1).onSnapshot(async snap => {
-    const el = document.getElementById('previsao-folha');
-    if (snap.empty || snap.docs[0].data().status === 'paga') {
-      _folhaGrupos = null;
-    } else {
-      _folhaGrupos = snap.docs[0].data().grupos || [];
-    }
-    renderPrevisaoMedicao();
+  // _ultimaFolha: undefined = ainda carregando, null = sem folha aberta, objeto = dados da folha
+  let _ultimaFolha = undefined, _diariasSnap = null, _adiantSnap = null;
 
-    if (!el) { _rlFontes.folhas = true; _verificarTudo(); return; }
-    if (snap.empty) { el.innerHTML = ''; _rlFontes.folhas = true; _verificarTudo(); return; }
-    const folha = snap.docs[0].data();
-    if (folha.status === 'paga') { el.innerHTML = ''; _rlFontes.folhas = true; _verificarTudo(); return; }
+  function renderPrevisaoFolha() {
+    const el = document.getElementById('previsao-folha');
+    if (!el || _ultimaFolha === undefined) return;
+    if (_ultimaFolha === null) { el.innerHTML = ''; return; }
+
     // Remove ajudantes do documento salvo — agora vêm da coleção 'diarias'
-    let grupos = (folha.grupos || []).filter(g =>
+    let grupos = (_ultimaFolha.grupos || []).filter(g =>
       g.isEncarregado || !(g.funcionario?.cargo || '').toLowerCase().includes('ajudante')
     );
 
-    // Busca diaristas e adiantamentos em paralelo
-    const [diarSnap, adSnap] = await Promise.all([
-      db.collection('diarias').get().catch(() => null),
-      db.collection('lancamentos').where('origem','==','ANE->ADIANTAMENTO').get().catch(() => null)
-    ]);
-
-    if (diarSnap) diarSnap.docs.forEach(d => {
+    if (_diariasSnap) _diariasSnap.docs.forEach(d => {
       const doc = d.data();
       const subtotal = (doc.dias || []).reduce((s, dia) => s + Number(dia.valor || 0), 0);
       if (subtotal > 0) grupos = [...grupos, {
@@ -1309,10 +1300,10 @@
       }];
     });
 
-    if (!grupos.length) { el.innerHTML = ''; _rlFontes.folhas = true; _verificarTudo(); return; }
+    if (!grupos.length) { el.innerHTML = ''; return; }
 
     const adiantMap = new Map();
-    if (adSnap) adSnap.docs.forEach(d => {
+    if (_adiantSnap) _adiantSnap.docs.forEach(d => {
       const r = d.data();
       const desc = r.descricao || '';
       if (!desc.startsWith('Adiantamento: ')) return;
@@ -1323,7 +1314,12 @@
 
     let totalBruto = 0, totalAdiant = 0;
     const linhas = grupos.map(g => {
-      const bruto  = g.subtotal || 0;
+      // Bruto recalculado a partir do estado atual de 'locais' (mais confiável que o subtotal salvo na folha)
+      let bruto = g.subtotal || 0;
+      if (!g.isEncarregado && _porFuncProducao) {
+        const key = g.funcionario.id || g.funcionario.nome;
+        if (_porFuncProducao.has(key)) bruto = _porFuncProducao.get(key);
+      }
       const adiant = adiantMap.get(normNome(g.funcionario.nome)) || 0;
       const liq    = bruto - adiant;
       totalBruto  += bruto;
@@ -1354,9 +1350,21 @@
           <span>${fmt(totalLiq)}</span>
         </div>
       </div>`;
+  }
+
+  db.collection('folhas').orderBy('criadoEm', 'desc').limit(1).onSnapshot(snap => {
+    if (snap.empty || snap.docs[0].data().status === 'paga') {
+      _ultimaFolha = null;
+    } else {
+      _ultimaFolha = snap.docs[0].data();
+    }
+    renderPrevisaoFolha();
     _rlFontes.folhas = true;
     _verificarTudo();
   });
+
+  db.collection('diarias').onSnapshot(snap => { _diariasSnap = snap; renderPrevisaoFolha(); });
+  db.collection('lancamentos').where('origem','==','ANE->ADIANTAMENTO').onSnapshot(snap => { _adiantSnap = snap; renderPrevisaoFolha(); });
 </script>
 <div class="rotate-overlay" id="rotate-overlay">
   <div class="rotate-icon">⟳</div>
