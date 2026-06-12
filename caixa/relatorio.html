@@ -689,7 +689,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.61";
+  const VERSAO = "1.62";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1179,32 +1179,37 @@
     const el = document.getElementById('previsao-medicao');
     if (!el || !_locaisSnap || !_servicosSnap) return;
 
-    const medicaoMap = {};
+    const servByName = {};
+    const catFallback = {};
     _servicosSnap.docs.forEach(d => {
       const s = d.data();
+      servByName[s.nome] = { medicao: s.medicao || 0, mdo: s.mdo || 0 };
       const cat = ordemServico(s.nome);
-      if (cat < 99) medicaoMap[cat] = { nome: nomeAbrev(s.nome), medicao: s.medicao || 0, mdo: s.mdo || 0 };
+      if (cat < 99 && !(cat in catFallback)) catFallback[cat] = { nome: nomeAbrev(s.nome), medicao: s.medicao || 0, mdo: s.mdo || 0 };
     });
 
-    const countMap = {};
+    const sumsByCat = {};
     _locaisSnap.docs.forEach(d => {
       (d.data().servicos || []).forEach(s => {
         if (s.status === 'em_pagamento') {
           const cat = ordemServico(s.nome);
-          countMap[cat] = (countMap[cat] || 0) + 1;
+          if (cat >= 99) return;
+          const valores = servByName[s.nome] || catFallback[cat] || { medicao: 0, mdo: 0 };
+          if (!sumsByCat[cat]) sumsByCat[cat] = { count: 0, subtotal: 0, custo: 0 };
+          sumsByCat[cat].count++;
+          sumsByCat[cat].subtotal += valores.medicao;
+          sumsByCat[cat].custo    += valores.mdo;
         }
       });
     });
 
-    const cats = Object.keys(countMap).map(Number).sort((a, b) => a - b);
+    const cats = Object.keys(sumsByCat).map(Number).sort((a, b) => a - b);
     if (!cats.length) { el.innerHTML = ''; return; }
 
     let totalMedicao = 0, totalRetencao = 0, totalAReceber = 0, totalCusto = 0;
     const linhas = cats.map(cat => {
-      const count = countMap[cat];
-      const { nome, medicao, mdo } = medicaoMap[cat] || { nome: `Tipo ${cat}`, medicao: 0, mdo: 0 };
-      const subtotal = count * medicao;
-      const custo    = count * mdo;
+      const { count, subtotal, custo } = sumsByCat[cat];
+      const nome = (catFallback[cat] || {}).nome || `Tipo ${cat}`;
       const retencao = subtotal * 0.05;
       const aReceber = subtotal - retencao;
       totalMedicao  += subtotal;
@@ -1213,7 +1218,7 @@
       totalAReceber += aReceber;
       return `
         <div class="prev-linha prev-cols-med">
-          <div class="prev-nome">${escHtml(nome)} <span class="prev-cargo">${count} apto${count !== 1 ? 's' : ''} × ${fmt(medicao)}</span></div>
+          <div class="prev-nome">${escHtml(nome)} <span class="prev-cargo">${count} apto${count !== 1 ? 's' : ''}</span></div>
           <div class="prev-custo">${fmt(custo)}</div>
           <div class="prev-valor">${fmt(subtotal)}</div>
           <div class="prev-adiant">${retencao > 0 ? '- '+fmt(retencao) : '—'}</div>
@@ -1221,7 +1226,7 @@
         </div>`;
     }).join('');
 
-    const liquidoBBS = totalMedicao * 0.965;
+    const liquidoBBS = totalAReceber * 0.965;
 
     el.innerHTML = `
       <div class="previsao-card">
