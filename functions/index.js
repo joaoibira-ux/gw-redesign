@@ -17,7 +17,7 @@ Regras:
 - Se não conseguir identificar nenhum item, retorne [].`;
 
 exports.extrairMedicoes = onCall(
-  { secrets: [anthropicApiKey], timeoutSeconds: 60, memory: "512MiB", cors: true },
+  { secrets: [anthropicApiKey], timeoutSeconds: 60, memory: "512MiB", cors: true, invoker: "public" },
   async (request) => {
     const { imageBase64, mimeType } = request.data || {};
 
