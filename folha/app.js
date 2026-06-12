@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.66";
+const VERSAO = "4.67";
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
 // ── Loading overlay ───────────────────────────────────────────
@@ -900,7 +900,7 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
     const liquidoEnc = valorEnc - adiantEnc;
     if (adiantEnc > 0) totalDeducoes += adiantEnc;
     const adiantEncHtml = adiantEnc > 0 ? `
-      <div class="cp-item" style="color:#ef9a9a">
+      <div class="cp-item" style="color:#c62828">
         <span>(-) Adiantamento</span>
         <span>- ${fmtMoeda(adiantEnc)}</span>
       </div>` : '';
@@ -925,7 +925,7 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
         <span>${fmtMoeda(e.valor)}</span>
       </div>`).join('');
     const adiantHtml = adiant > 0 ? `
-      <div class="cp-item" style="color:#ef9a9a">
+      <div class="cp-item" style="color:#c62828">
         <span>(-) Adiantamento</span>
         <span>- ${fmtMoeda(adiant)}</span>
       </div>` : '';
@@ -958,13 +958,13 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
       .cp-header{background:linear-gradient(160deg,#1e4d2e 0%,#1a3322 100%);padding:10px 12px 8px;flex-shrink:0;border-bottom:1px solid rgba(165,214,167,0.15)}
       .cp-title{font-size:0.75rem;font-weight:900;letter-spacing:1.5px;color:#a5d6a7}
       .cp-meta{font-size:0.58rem;color:#4a8a5a;margin-top:2px;display:flex;justify-content:space-between}
-      .cp-body{flex:1;overflow-y:auto;padding:7px 10px}
-      .cp-grupo{border:1px solid rgba(165,214,167,0.12);border-radius:5px;margin-bottom:6px;overflow:hidden}
-      .cp-enc{border-color:rgba(165,214,167,0.28)}
-      .cp-func{background:rgba(165,214,167,0.08);padding:4px 8px;font-weight:700;color:#a5d6a7;font-size:0.68rem}
+      .cp-body{flex:1;overflow-y:auto;padding:7px 10px;background:#ffffff}
+      .cp-grupo{border:1px solid rgba(76,140,90,0.35);border-radius:5px;margin-bottom:6px;overflow:hidden}
+      .cp-enc{border-color:rgba(76,140,90,0.6)}
+      .cp-func{background:rgba(165,214,167,0.18);padding:4px 8px;font-weight:700;color:#1b5e20;font-size:0.68rem}
       .cp-cargo{font-size:0.56rem;font-weight:400;color:#4a8a5a;text-transform:capitalize;margin-left:5px}
-      .cp-item{display:flex;justify-content:space-between;padding:3px 8px;border-top:1px solid rgba(165,214,167,0.06);color:#66bb6a}
-      .cp-sub{display:flex;justify-content:space-between;padding:4px 8px;border-top:1px solid rgba(165,214,167,0.18);font-weight:700;color:#a5d6a7}
+      .cp-item{display:flex;justify-content:space-between;padding:3px 8px;border-top:1px solid rgba(76,140,90,0.12);color:#2e6b3e}
+      .cp-sub{display:flex;justify-content:space-between;padding:4px 8px;border-top:1px solid rgba(76,140,90,0.25);font-weight:700;color:#1b5e20}
       .cp-footer{background:#0d1f14;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(165,214,167,0.2);flex-shrink:0}
       .cp-total-l{font-size:0.68rem;font-weight:700;letter-spacing:1px;color:#66bb6a}
       .cp-total-v{font-size:1rem;font-weight:900;color:#a5d6a7}
