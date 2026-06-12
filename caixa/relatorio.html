@@ -475,6 +475,7 @@
     }
     .prev-titulo-logo { height: 34px; width: 34px; object-fit: contain; border-radius: 6px; flex-shrink: 0; }
     .prev-cols { grid-template-columns: 1fr 120px 120px 120px; }
+    .prev-cols-med { grid-template-columns: 1fr 100px 100px 100px 100px; }
     .prev-header { display: grid; padding: 5px 16px; border-bottom: 1px solid rgba(165,214,167,0.15); }
     .prev-header span { font-size: 0.6rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #4a8a5a; text-align: right; white-space: nowrap; }
     .prev-header span:first-child { text-align: left; }
@@ -485,6 +486,7 @@
     .prev-valor { font-size: 0.85rem; font-weight: 700; color: #a5d6a7; white-space: nowrap; text-align: right; }
     .prev-adiant { font-size: 0.85rem; font-weight: 700; color: #ef9a9a; white-space: nowrap; text-align: right; }
     .prev-liq    { font-size: 0.85rem; font-weight: 700; color: #fff; white-space: nowrap; text-align: right; }
+    .prev-custo  { font-size: 0.85rem; font-weight: 700; color: #ffb74d; white-space: nowrap; text-align: right; }
     .prev-total { display: grid; padding: 10px 16px; background: #0d2318; color: #a5d6a7; font-weight: 800; font-size: 0.9rem; }
     .prev-total span { text-align: right; white-space: nowrap; }
     .prev-total span:first-child { text-align: left; }
@@ -688,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.59";
+  const VERSAO = "1.60";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1182,7 +1184,7 @@
     _servicosSnap.docs.forEach(d => {
       const s = d.data();
       const cat = ordemServico(s.nome);
-      if (cat < 99) medicaoMap[cat] = { nome: nomeAbrev(s.nome), medicao: s.medicao || 0 };
+      if (cat < 99) medicaoMap[cat] = { nome: nomeAbrev(s.nome), medicao: s.medicao || 0, mdo: s.mdo || 0 };
     });
 
     const countMap = {};
@@ -1198,19 +1200,22 @@
     const cats = Object.keys(countMap).map(Number).sort((a, b) => a - b);
     if (!cats.length) { el.innerHTML = ''; return; }
 
-    let totalMedicao = 0, totalRetencao = 0, totalAReceber = 0;
+    let totalMedicao = 0, totalRetencao = 0, totalAReceber = 0, totalCusto = 0;
     const linhas = cats.map(cat => {
       const count = countMap[cat];
-      const { nome, medicao } = medicaoMap[cat] || { nome: `Tipo ${cat}`, medicao: 0 };
+      const { nome, medicao, mdo } = medicaoMap[cat] || { nome: `Tipo ${cat}`, medicao: 0, mdo: 0 };
       const subtotal = count * medicao;
+      const custo    = count * mdo;
       const retencao = subtotal * 0.05;
       const aReceber = subtotal - retencao;
       totalMedicao  += subtotal;
+      totalCusto    += custo;
       totalRetencao += retencao;
       totalAReceber += aReceber;
       return `
-        <div class="prev-linha prev-cols">
+        <div class="prev-linha prev-cols-med">
           <div class="prev-nome">${escHtml(nome)} <span class="prev-cargo">${count} apto${count !== 1 ? 's' : ''} × ${fmt(medicao)}</span></div>
+          <div class="prev-custo">${fmt(custo)}</div>
           <div class="prev-valor">${fmt(subtotal)}</div>
           <div class="prev-adiant">${retencao > 0 ? '- '+fmt(retencao) : '—'}</div>
           <div class="prev-liq">${fmt(aReceber)}</div>
@@ -1222,18 +1227,19 @@
     el.innerHTML = `
       <div class="previsao-card">
         <div class="prev-titulo">Previsão da Medição</div>
-        <div class="prev-header prev-cols">
-          <span>Serviço</span><span>Medição</span><span>Retenção</span><span>A Receber</span>
+        <div class="prev-header prev-cols-med">
+          <span>Serviço</span><span>Custos</span><span>Medição</span><span>Retenção</span><span>A Receber</span>
         </div>
         ${linhas}
-        <div class="prev-total prev-cols">
+        <div class="prev-total prev-cols-med">
           <span>Total</span>
+          <span style="color:#ffb74d">${fmt(totalCusto)}</span>
           <span>${fmt(totalMedicao)}</span>
           <span style="color:#ef9a9a">${totalRetencao > 0 ? '- '+fmt(totalRetencao) : '—'}</span>
           <span>${fmt(totalAReceber)}</span>
         </div>
-        <div class="prev-bbs prev-cols">
-          <span style="grid-column:1/4">VALOR LÍQUIDO PREVISTO PRA ESSA MEDIÇÃO (BBS Fomento)</span>
+        <div class="prev-bbs prev-cols-med">
+          <span style="grid-column:1/5">VALOR LÍQUIDO PREVISTO PRA ESSA MEDIÇÃO (BBS Fomento)</span>
           <span>${fmt(liquidoBBS)}</span>
         </div>
       </div>`;
