@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.33";
+const VERSAO_CAIXA = "3.34";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -59,6 +59,19 @@ function nomeAbrev(nome) {
   if (n.includes("emassamento") || n.includes("massa")) return "Massa";
   if (n.includes("textura"))    return "Textura";
   return (nome || "").substring(0, 10);
+}
+
+function ordemServico(nome) {
+  const n = (nome || "").toLowerCase();
+  if (n.includes("tratamento"))                          return 0;
+  if (n.includes("pasta"))                               return 1;
+  if (n.includes("emassamento") || n.includes("massa"))  return 2;
+  if (n.includes("textura"))                             return 3;
+  return 99;
+}
+
+function normNome(s) {
+  return String(s || "").toLowerCase().replace(/\s+/g, "").replace(/\d+/g, n => String(parseInt(n))).normalize("NFC");
 }
 
 function render(docs) {
@@ -367,30 +380,88 @@ document.getElementById("f-origem").addEventListener("change", function() {
     saida.readOnly = true;
     Promise.all([
       db.collection("folhas").orderBy("criadoEm", "desc").limit(1).get(),
-      db.collection("lancamentos").where("origem", "==", "ANE->ADIANTAMENTO").get()
-    ]).then(([snap, adSnap]) => {
+      db.collection("lancamentos").where("origem", "==", "ANE->ADIANTAMENTO").get(),
+      db.collection("locais").get(),
+      db.collection("servicos").get(),
+      db.collection("diarias").get()
+    ]).then(([snap, adSnap, locaisSnap, servicosSnap, diariasSnap]) => {
       if (snap.empty) { alert("Nenhuma folha encontrada."); saida.value = ""; return; }
       const fdoc  = snap.docs[0];
       const folha = fdoc.data();
       if (folha.status === "paga") { alert("A última folha já foi paga."); saida.value = ""; return; }
       folhaParaPagar = { id: fdoc.id, folha };
 
-      const adiantamentosMap = new Map();
+      // Bruto real (atual) por funcionário de produção + total de serviços em pagamento
+      // (mesmo cálculo de _porFuncProducao/_nServTotal no relatorio.html)
+      const servByName = {};
+      const catFallback = {};
+      servicosSnap.docs.forEach(d => {
+        const s = d.data();
+        servByName[s.nome] = { medicao: s.medicao || 0, mdo: s.mdo || 0 };
+        const cat = ordemServico(s.nome);
+        if (cat < 99 && !(cat in catFallback)) catFallback[cat] = { medicao: s.medicao || 0, mdo: s.mdo || 0 };
+      });
+
+      const porFuncProducao = new Map();
+      let nServTotal = 0;
+      locaisSnap.docs.forEach(d => {
+        (d.data().servicos || []).forEach(s => {
+          if (s.status !== "em_pagamento") return;
+          nServTotal++;
+          const cat = ordemServico(s.nome);
+          const valores = servByName[s.nome] || catFallback[cat] || { medicao: 0, mdo: 0 };
+          let custoApto = valores.mdo;
+          if (cat === 0 && s.funcionario && (s.funcionario.cargo || "").toLowerCase().includes("pintor")) {
+            custoApto += 10;
+          }
+          const func = s.funcionario;
+          if (func && !(func.cargo || "").toLowerCase().includes("ajudante")) {
+            const key = func.id || func.nome;
+            porFuncProducao.set(key, (porFuncProducao.get(key) || 0) + custoApto);
+          }
+        });
+      });
+
+      // Grupos da folha (sem ajudantes) + diaristas vindos de 'diarias'
+      // (mesmo cálculo de renderPrevisaoFolha no relatorio.html)
+      let grupos = (folha.grupos || []).filter(g =>
+        g.isEncarregado || !(g.funcionario?.cargo || "").toLowerCase().includes("ajudante")
+      );
+      diariasSnap.docs.forEach(d => {
+        const doc = d.data();
+        const subtotal = (doc.dias || []).reduce((s, dia) => s + Number(dia.valor || 0), 0);
+        if (subtotal > 0) grupos = [...grupos, {
+          isEncarregado: false,
+          funcionario: { nome: doc.funcionarioNome, cargo: doc.cargo || "Ajudante" },
+          subtotal
+        }];
+      });
+
+      const adiantMap = new Map();
       adSnap.docs.forEach(d => {
         const r = d.data();
         const ddesc = r.descricao || "";
         if (!ddesc.startsWith("Adiantamento: ")) return;
         const nome = ddesc.slice("Adiantamento: ".length).split(/\s*[—–\-]/)[0].trim().normalize("NFC");
         if (!nome) return;
-        adiantamentosMap.set(nome, (adiantamentosMap.get(nome) || 0) + (r.saida || 0));
+        adiantMap.set(normNome(nome), (adiantMap.get(normNome(nome)) || 0) + (r.saida || 0));
       });
 
-      const totalAdiantamentos = (folha.grupos || []).reduce((soma, g) => {
-        const nome = (g.funcionario?.nome || "").normalize("NFC");
-        return soma + (adiantamentosMap.get(nome) || 0);
-      }, 0);
+      let totalBruto = 0, totalAdiant = 0;
+      grupos.forEach(g => {
+        let bruto = g.subtotal || 0;
+        if (g.isEncarregado) {
+          const quinzena = (g.itens || []).find(i => i.servico === "Quinzena 50%");
+          if (quinzena) bruto = Number(quinzena.valor || 0) + 5 * nServTotal;
+        } else {
+          const key = g.funcionario.id || g.funcionario.nome;
+          if (porFuncProducao.has(key)) bruto = porFuncProducao.get(key);
+        }
+        totalBruto  += bruto;
+        totalAdiant += adiantMap.get(normNome(g.funcionario.nome)) || 0;
+      });
 
-      const totalLiquido = (folha.totalGeral || 0) - totalAdiantamentos;
+      const totalLiquido = totalBruto - totalAdiant;
       saida.value = totalLiquido.toFixed(2).replace(".", ",");
     });
   } else if (autoDescs.includes(desc.value)) {
