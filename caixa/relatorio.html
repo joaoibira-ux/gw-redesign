@@ -619,19 +619,19 @@
     <div class="titulo-saldos">
       <div class="titulo-saldo-item">
         <span class="ts-label">CEF (ANE)</span>
-        <span class="ts-valor" id="r-cef">R$ 0,00</span>
+        <span class="ts-valor" id="r-cef">0,00</span>
       </div>
       <div class="titulo-saldo-item">
         <span class="ts-label">INTER (JOAO)</span>
-        <span class="ts-valor" id="r-inter">R$ 0,00</span>
+        <span class="ts-valor" id="r-inter">0,00</span>
       </div>
       <div class="titulo-saldo-item">
         <span class="ts-label">JOÃO ALBÉRICO</span>
-        <span class="ts-valor" id="r-joao">R$ 0,00</span>
+        <span class="ts-valor" id="r-joao">0,00</span>
       </div>
       <div class="titulo-saldo-item">
         <span class="ts-label">HORÁCIO FORTE</span>
-        <span class="ts-valor" id="r-horacio">R$ 0,00</span>
+        <span class="ts-valor" id="r-horacio">0,00</span>
       </div>
     </div>
   </div>
@@ -642,8 +642,8 @@
         <th>Data</th>
         <th>Origem</th>
         <th>Descrição</th>
-        <th class="col-entrada" style="text-align:right">Entrada (R$)</th>
-        <th class="col-saida" style="text-align:right">Saída (R$)</th>
+        <th class="col-entrada" style="text-align:right">Entrada</th>
+        <th class="col-saida" style="text-align:right">Saída</th>
         <th class="col-saldo" style="text-align:right">Saldo Acum.</th>
       </tr>
     </thead>
@@ -655,13 +655,13 @@
     <tbody id="tbody-totais">
       <tr class="row-totais">
         <td colspan="4" class="lbl">TOTAIS</td>
-        <td class="entrada-total" id="f-total-entrada">R$ 0,00</td>
-        <td class="saida-total"  id="f-total-saida">R$ 0,00</td>
-        <td class="saldo-total"  id="f-total-saldo">R$ 0,00</td>
+        <td class="entrada-total" id="f-total-entrada">0,00</td>
+        <td class="saida-total"  id="f-total-saida">0,00</td>
+        <td class="saldo-total"  id="f-total-saldo">0,00</td>
       </tr>
       <tr class="row-retencao">
         <td colspan="6" class="lbl">RETENÇÃO 5% PARADIGMA</td>
-        <td class="retencao-valor" id="r-retencao">R$ 0,00</td>
+        <td class="retencao-valor" id="r-retencao">0,00</td>
       </tr>
     </tbody>
   </table>
@@ -686,7 +686,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.69";
+  const VERSAO = "1.70";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -801,7 +801,7 @@
   const db = firebase.firestore();
 
   function fmt(v) {
-    return "R$ " + (v||0).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    return (v||0).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   }
 
   function parseDateBR(s) {
