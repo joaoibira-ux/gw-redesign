@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.32";
+const VERSAO_CAIXA = "3.33";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -365,13 +365,33 @@ document.getElementById("f-origem").addEventListener("change", function() {
     desc.value = "Folha de Pagamento da Produção";
     saida.value = "carregando...";
     saida.readOnly = true;
-    db.collection("folhas").orderBy("criadoEm", "desc").limit(1).get().then(snap => {
+    Promise.all([
+      db.collection("folhas").orderBy("criadoEm", "desc").limit(1).get(),
+      db.collection("lancamentos").where("origem", "==", "ANE->ADIANTAMENTO").get()
+    ]).then(([snap, adSnap]) => {
       if (snap.empty) { alert("Nenhuma folha encontrada."); saida.value = ""; return; }
       const fdoc  = snap.docs[0];
       const folha = fdoc.data();
       if (folha.status === "paga") { alert("A última folha já foi paga."); saida.value = ""; return; }
       folhaParaPagar = { id: fdoc.id, folha };
-      saida.value = (folha.totalGeral || 0).toFixed(2).replace(".", ",");
+
+      const adiantamentosMap = new Map();
+      adSnap.docs.forEach(d => {
+        const r = d.data();
+        const ddesc = r.descricao || "";
+        if (!ddesc.startsWith("Adiantamento: ")) return;
+        const nome = ddesc.slice("Adiantamento: ".length).split(/\s*[—–\-]/)[0].trim().normalize("NFC");
+        if (!nome) return;
+        adiantamentosMap.set(nome, (adiantamentosMap.get(nome) || 0) + (r.saida || 0));
+      });
+
+      const totalAdiantamentos = (folha.grupos || []).reduce((soma, g) => {
+        const nome = (g.funcionario?.nome || "").normalize("NFC");
+        return soma + (adiantamentosMap.get(nome) || 0);
+      }, 0);
+
+      const totalLiquido = (folha.totalGeral || 0) - totalAdiantamentos;
+      saida.value = totalLiquido.toFixed(2).replace(".", ",");
     });
   } else if (autoDescs.includes(desc.value)) {
     desc.value = "";
