@@ -1,8 +1,8 @@
-const VERSION = "medicoes-v3";
+const VERSION = "medicoes-v4";
 const ASSETS = [
   "./index.html",
   "./style.css?v=2",
-  "./app.js?v=1.2",
+  "./app.js?v=2.0",
   "./manifest.json",
   "./Logo-gw.png"
 ];

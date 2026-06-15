@@ -39,28 +39,82 @@
 
 <div class="overlay-revisao" id="overlay-revisao" style="display:none">
   <div class="revisao-card">
-    <h3>Itens identificados</h3>
-    <p class="revisao-sub">Confira e ajuste antes de salvar.</p>
+    <h3>Nova Medição</h3>
+    <p class="revisao-sub">Confira os valores e dê um nome pra essa medição.</p>
 
+    <div class="full">
+      <label for="rv-nome">Nome da Medição</label>
+      <input type="text" id="rv-nome" placeholder="Ex: Medição 01 - Junho/2026" />
+    </div>
     <div class="full">
       <label for="rv-data">Data</label>
       <input type="text" id="rv-data" placeholder="DD/MM/AAAA" />
     </div>
+    <div class="full">
+      <label for="rv-valor">Valor Medido (R$)</label>
+      <input type="text" inputmode="decimal" id="rv-valor" />
+    </div>
+    <div class="full">
+      <label for="rv-descontos">Descontos (R$)</label>
+      <input type="text" inputmode="decimal" id="rv-descontos" />
+    </div>
+    <div class="full">
+      <label for="rv-notafiscal">Valor Nota Fiscal (R$)</label>
+      <input type="text" inputmode="decimal" id="rv-notafiscal" />
+    </div>
 
+    <p class="revisao-sub">Itens identificados</p>
     <div id="revisao-lista"></div>
 
     <button type="button" class="btn-add-linha" onclick="adicionarLinhaRevisao()">+ Adicionar item</button>
 
     <div class="revisao-acoes">
       <button type="button" class="btn-cancelar" onclick="cancelarRevisao()">Cancelar</button>
-      <button type="button" class="btn-add" onclick="salvarRevisao()">Salvar Tudo</button>
+      <button type="button" class="btn-add" onclick="salvarRevisao()">Salvar Medição</button>
     </div>
+  </div>
+</div>
+
+<div class="overlay-revisao" id="overlay-detalhe" style="display:none">
+  <div class="revisao-card">
+    <h3>Detalhes da Medição</h3>
+    <p class="revisao-sub">Toque em Fechar pra voltar sem salvar.</p>
+
+    <div class="full">
+      <label for="dt-nome">Nome da Medição</label>
+      <input type="text" id="dt-nome" />
+    </div>
+    <div class="full">
+      <label for="dt-data">Data</label>
+      <input type="text" id="dt-data" placeholder="DD/MM/AAAA" />
+    </div>
+    <div class="full">
+      <label for="dt-valor">Valor Medido (R$)</label>
+      <input type="text" inputmode="decimal" id="dt-valor" />
+    </div>
+    <div class="full">
+      <label for="dt-descontos">Descontos (R$)</label>
+      <input type="text" inputmode="decimal" id="dt-descontos" />
+    </div>
+    <div class="full">
+      <label for="dt-notafiscal">Valor Nota Fiscal (R$)</label>
+      <input type="text" inputmode="decimal" id="dt-notafiscal" />
+    </div>
+
+    <p class="revisao-sub">Itens</p>
+    <div id="detalhe-itens"></div>
+
+    <div class="revisao-acoes">
+      <button type="button" class="btn-cancelar" onclick="excluirMedicaoAtual()">Excluir</button>
+      <button type="button" class="btn-add" onclick="salvarDetalhe()">Salvar</button>
+    </div>
+    <button type="button" class="btn-add-linha" style="margin-top:10px" onclick="fecharDetalhe()">Fechar</button>
   </div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
-<script src="./app.js?v=1.2"></script>
+<script src="./app.js?v=2.0"></script>
 </body>
 </html>

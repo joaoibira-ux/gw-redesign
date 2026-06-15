@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "1.2";
+const VERSAO = "2.0";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -62,19 +62,16 @@ function render(docs) {
 
   lista.innerHTML = docs.map(doc => {
     const m = doc.data();
-    const negativo = (m.valor || 0) < 0;
-    const badge = m.apartamento ? `<span class="card-item-badge">${escHtml(m.apartamento)}</span>` : "";
     return `
-      <div class="card${negativo ? " negativo" : ""}">
-        <div class="card-acoes">
-          <button class="btn-del" onclick="excluir('${doc.id}')" title="Excluir">✕</button>
-        </div>
+      <div class="card" onclick="abrirDetalhe('${doc.id}')">
         <div class="card-top">
-          <div class="card-desc">${badge}${escHtml(m.servico)}</div>
-          <div class="card-valor${negativo ? " negativo" : ""}">${fmtMoeda(m.valor)}</div>
+          <div class="card-desc">${escHtml(m.nome || "(sem nome)")}</div>
+          <div class="card-valor">${fmtMoeda(m.valorNotaFiscal)}</div>
         </div>
         <div class="card-meta">
           <span>${escHtml(m.data)}</span>
+          <span>Medido: ${fmtMoeda(m.valor)}</span>
+          ${m.descontos ? `<span class="card-valor negativo card-meta-desconto">- ${fmtMoeda(m.descontos)}</span>` : ""}
         </div>
       </div>`;
   }).join("");
@@ -87,16 +84,6 @@ col.orderBy("criadoEm", "desc").onSnapshot(snap => {
   document.getElementById("lista").innerHTML =
     '<p class="empty">Erro ao conectar. Verifique sua internet.</p>';
 });
-
-function excluir(id) {
-  const m = docsCache[id];
-  if (!m) return;
-  const titulo = m.apartamento ? (m.apartamento + " - " + m.servico) : m.servico;
-  const senha = prompt("EXCLUIR MEDIÇÃO?\n\n" + titulo + "\n" + fmtMoeda(m.valor) + "\n\nDigite a senha:");
-  if (senha === null) return;
-  if (senha !== "4512") { alert("Senha incorreta."); return; }
-  col.doc(id).delete();
-}
 
 // ---------- Importação por foto ----------
 
@@ -143,11 +130,11 @@ document.getElementById("input-foto").addEventListener("change", async function(
   try {
     const imageBase64 = await lerImagemComoBase64(file);
     const resp = await extrairMedicoesFn({ imageBase64, mimeType: "image/jpeg" });
-    const itens = (resp.data && resp.data.itens) || [];
-    if (itens.length === 0) {
+    const dados = resp.data || {};
+    if (!dados.itens || dados.itens.length === 0) {
       alert("Não foi possível identificar itens na imagem. Adicione manualmente na tela a seguir.");
     }
-    abrirRevisao(itens);
+    abrirRevisao(dados);
   } catch (err) {
     console.error(err);
     alert("Erro ao processar imagem: " + (err.message || err));
@@ -156,15 +143,21 @@ document.getElementById("input-foto").addEventListener("change", async function(
   }
 });
 
-// ---------- Tela de revisão ----------
+// ---------- Tela de revisão (nova medição) ----------
 
 let itensRevisao = [];
 
-function abrirRevisao(itens) {
-  itensRevisao = itens.length > 0
-    ? itens.map(it => ({ apartamento: it.apartamento || "", servico: it.servico || "", valor: it.valor || 0 }))
+function abrirRevisao(dados) {
+  itensRevisao = (dados.itens && dados.itens.length > 0)
+    ? dados.itens.map(it => ({ apartamento: it.apartamento || "", servico: it.servico || "", valor: it.valor || 0 }))
     : [{ apartamento: "", servico: "", valor: 0 }];
+
+  document.getElementById("rv-nome").value = "";
   document.getElementById("rv-data").value = hoje();
+  document.getElementById("rv-valor").value = String(dados.total || 0).replace(".", ",");
+  document.getElementById("rv-descontos").value = String(dados.descontos || 0).replace(".", ",");
+  document.getElementById("rv-notafiscal").value = String(dados.aPagar || 0).replace(".", ",");
+
   renderRevisao();
   document.getElementById("overlay-revisao").style.display = "flex";
 }
@@ -176,7 +169,7 @@ function renderRevisao() {
       <button type="button" class="btn-del-linha" onclick="removerLinhaRevisao(${i})" title="Remover">✕</button>
       <div class="revisao-campos">
         <div>
-          <label>Apartamento</label>
+          <label>Item</label>
           <input type="text" value="${escHtml(it.apartamento)}" oninput="itensRevisao[${i}].apartamento = this.value" />
         </div>
         <div>
@@ -208,35 +201,107 @@ function cancelarRevisao() {
 }
 
 function salvarRevisao() {
+  const nome = document.getElementById("rv-nome").value.trim();
   const data = document.getElementById("rv-data").value.trim();
+
+  if (!nome) {
+    alert("Informe o nome da medição.");
+    return;
+  }
   if (!data) {
     alert("Informe a data.");
     return;
   }
 
-  const validos = itensRevisao.filter(it =>
-    it.servico.trim() && it.valor !== 0
-  );
-
-  if (validos.length === 0) {
-    alert("Preencha serviço e valor (diferente de zero) de ao menos um item.");
-    return;
-  }
-
-  const batch = db.batch();
-  validos.forEach(it => {
-    batch.set(col.doc(), {
+  const itens = itensRevisao
+    .filter(it => it.servico.trim())
+    .map(it => ({
       apartamento: it.apartamento.trim(),
       servico: it.servico.trim(),
-      valor: it.valor,
-      data,
-      criadoEm: firebase.firestore.FieldValue.serverTimestamp()
-    });
+      valor: it.valor
+    }));
+
+  col.add({
+    nome,
+    data,
+    valor: parseMoeda(document.getElementById("rv-valor").value),
+    descontos: parseMoeda(document.getElementById("rv-descontos").value),
+    valorNotaFiscal: parseMoeda(document.getElementById("rv-notafiscal").value),
+    itens,
+    criadoEm: firebase.firestore.FieldValue.serverTimestamp()
   });
-  batch.commit();
 
   itensRevisao = [];
   document.getElementById("overlay-revisao").style.display = "none";
+}
+
+// ---------- Tela de detalhes ----------
+
+let detalheAtualId = null;
+
+function abrirDetalhe(id) {
+  const m = docsCache[id];
+  if (!m) return;
+  detalheAtualId = id;
+
+  document.getElementById("dt-nome").value = m.nome || "";
+  document.getElementById("dt-data").value = m.data || "";
+  document.getElementById("dt-valor").value = String(m.valor || 0).replace(".", ",");
+  document.getElementById("dt-descontos").value = String(m.descontos || 0).replace(".", ",");
+  document.getElementById("dt-notafiscal").value = String(m.valorNotaFiscal || 0).replace(".", ",");
+
+  const itens = m.itens || [];
+  const cont = document.getElementById("detalhe-itens");
+  cont.innerHTML = itens.length > 0
+    ? itens.map(it => {
+        const negativo = (it.valor || 0) < 0;
+        const badge = it.apartamento ? `<span class="card-item-badge">${escHtml(it.apartamento)}</span>` : "";
+        return `
+          <div class="detalhe-item">
+            <span>${badge}${escHtml(it.servico)}</span>
+            <span class="detalhe-item-valor${negativo ? " negativo" : ""}">${fmtMoeda(it.valor)}</span>
+          </div>`;
+      }).join("")
+    : '<p class="revisao-sub">Nenhum item.</p>';
+
+  document.getElementById("overlay-detalhe").style.display = "flex";
+}
+
+function fecharDetalhe() {
+  detalheAtualId = null;
+  document.getElementById("overlay-detalhe").style.display = "none";
+}
+
+function salvarDetalhe() {
+  if (!detalheAtualId) return;
+
+  const nome = document.getElementById("dt-nome").value.trim();
+  const data = document.getElementById("dt-data").value.trim();
+
+  if (!nome || !data) {
+    alert("Informe nome e data.");
+    return;
+  }
+
+  col.doc(detalheAtualId).update({
+    nome,
+    data,
+    valor: parseMoeda(document.getElementById("dt-valor").value),
+    descontos: parseMoeda(document.getElementById("dt-descontos").value),
+    valorNotaFiscal: parseMoeda(document.getElementById("dt-notafiscal").value)
+  });
+
+  fecharDetalhe();
+}
+
+function excluirMedicaoAtual() {
+  if (!detalheAtualId) return;
+  const m = docsCache[detalheAtualId];
+  const senha = prompt("EXCLUIR MEDIÇÃO?\n\n" + (m.nome || "(sem nome)") + "\n\nDigite a senha:");
+  if (senha === null) return;
+  if (senha !== "4512") { alert("Senha incorreta."); return; }
+  col.doc(detalheAtualId).delete();
+  fecharDetalhe();
 }
 
 if ("serviceWorker" in navigator) {

@@ -71,6 +71,7 @@ header {
   box-shadow: 0 1px 4px rgba(0,0,0,0.08);
   border-left: 4px solid #1a3322;
   position: relative;
+  cursor: pointer;
 }
 
 .card-top {
@@ -78,7 +79,6 @@ header {
   justify-content: space-between;
   align-items: flex-start;
   gap: 10px;
-  padding-right: 28px;
 }
 
 .card-desc {
@@ -122,24 +122,9 @@ header {
   color: #888;
 }
 
-.card-acoes {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  display: flex;
-  gap: 4px;
+.card-meta-desconto {
+  font-size: 0.78rem;
 }
-
-.btn-del {
-  background: none;
-  border: none;
-  font-size: 1rem;
-  color: #ccc;
-  cursor: pointer;
-  padding: 4px;
-  line-height: 1;
-}
-.btn-del:active { color: #f44336; }
 
 .fab {
   position: fixed;
@@ -326,3 +311,27 @@ header {
   cursor: pointer;
 }
 .btn-add:active { background: #2d5a2d; }
+
+/* ---------- Detalhes ---------- */
+
+.detalhe-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  background: #f7f9f7;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+
+.detalhe-item-valor {
+  font-weight: 700;
+  color: #1565c0;
+  white-space: nowrap;
+}
+
+.detalhe-item-valor.negativo {
+  color: #c62828;
+}
