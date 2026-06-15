@@ -686,7 +686,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.70";
+  const VERSAO = "1.71";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1309,6 +1309,7 @@
 
     let totalBruto = 0, totalAdiant = 0;
     const linhas = grupos.map(g => {
+      const isAjud = (g.funcionario?.cargo || '').toLowerCase().includes('ajudante');
       // Bruto recalculado a partir do estado atual de 'locais' (mais confiável que o subtotal salvo na folha)
       let bruto = g.subtotal || 0;
       if (g.isEncarregado) {
@@ -1316,22 +1317,25 @@
           const quinzena = (g.itens || []).find(i => i.servico === 'Quinzena 50%');
           if (quinzena) bruto = Number(quinzena.valor || 0) + 5 * _nServTotal;
         }
-      } else if (_porFuncProducao) {
+      } else if (_porFuncProducao && !isAjud) {
         const key = g.funcionario.id || g.funcionario.nome;
-        if (_porFuncProducao.has(key)) bruto = _porFuncProducao.get(key);
+        bruto = _porFuncProducao.get(key) || 0;
       }
       const adiant = adiantMap.get(normNome(g.funcionario.nome)) || 0;
-      const liq    = bruto - adiant;
-      totalBruto  += bruto;
-      totalAdiant += adiant;
-      return `
-        <div class="prev-linha prev-cols${g.isEncarregado ? ' prev-enc' : ''}">
-          <div class="prev-nome">${escHtml(g.funcionario.nome)} <span class="prev-cargo">${escHtml(g.funcionario.cargo||'')}</span></div>
-          <div class="prev-valor">${fmt(bruto)}</div>
-          <div class="prev-adiant">${adiant > 0 ? '- '+fmt(adiant) : '—'}</div>
-          <div class="prev-liq">${fmt(liq)}</div>
-        </div>`;
-    }).join('');
+      return { g, bruto, adiant };
+    }).filter(({ g, bruto, adiant }) => g.isEncarregado || bruto > 0 || adiant > 0)
+      .map(({ g, bruto, adiant }) => {
+        const liq = bruto - adiant;
+        totalBruto  += bruto;
+        totalAdiant += adiant;
+        return `
+          <div class="prev-linha prev-cols${g.isEncarregado ? ' prev-enc' : ''}">
+            <div class="prev-nome">${escHtml(g.funcionario.nome)} <span class="prev-cargo">${escHtml(g.funcionario.cargo||'')}</span></div>
+            <div class="prev-valor">${fmt(bruto)}</div>
+            <div class="prev-adiant">${adiant > 0 ? '- '+fmt(adiant) : '—'}</div>
+            <div class="prev-liq">${fmt(liq)}</div>
+          </div>`;
+      }).join('');
 
     const totalLiq = totalBruto - totalAdiant;
     el.innerHTML = `
