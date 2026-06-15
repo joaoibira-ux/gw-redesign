@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "2.0";
+const VERSAO = "2.1";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -64,6 +64,9 @@ function render(docs) {
     const m = doc.data();
     return `
       <div class="card" onclick="abrirDetalhe('${doc.id}')">
+        <div class="card-acoes">
+          <button class="btn-del" onclick="event.stopPropagation(); excluirMedicao('${doc.id}')" title="Excluir">✕</button>
+        </div>
         <div class="card-top">
           <div class="card-desc">${escHtml(m.nome || "(sem nome)")}</div>
           <div class="card-valor">${fmtMoeda(m.valorNotaFiscal)}</div>
@@ -75,6 +78,15 @@ function render(docs) {
         </div>
       </div>`;
   }).join("");
+}
+
+function excluirMedicao(id) {
+  const m = docsCache[id];
+  if (!m) return;
+  const senha = prompt("EXCLUIR MEDIÇÃO?\n\n" + (m.nome || "(sem nome)") + "\n\nDigite a senha:");
+  if (senha === null) return;
+  if (senha !== "4512") { alert("Senha incorreta."); return; }
+  col.doc(id).delete();
 }
 
 col.orderBy("criadoEm", "desc").onSnapshot(snap => {

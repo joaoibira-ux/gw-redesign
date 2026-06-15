@@ -79,6 +79,7 @@ header {
   justify-content: space-between;
   align-items: flex-start;
   gap: 10px;
+  padding-right: 28px;
 }
 
 .card-desc {
@@ -125,6 +126,25 @@ header {
 .card-meta-desconto {
   font-size: 0.78rem;
 }
+
+.card-acoes {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 4px;
+}
+
+.btn-del {
+  background: none;
+  border: none;
+  font-size: 1rem;
+  color: #ccc;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+}
+.btn-del:active { color: #f44336; }
 
 .fab {
   position: fixed;
