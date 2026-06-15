@@ -686,7 +686,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.71";
+  const VERSAO = "1.72";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1060,7 +1060,7 @@
         horacioSaidas += r.saida || 0;
       } else if (r.origem === "ANE->FOLHA DE PAGAMENTO") {
         cefS += r.saida || 0;
-      } else if (r.origem === "ANE->ADIANTAMENTO") {
+      } else if (r.origem === "ANE->ADIANTAMENTO" || r.origem === "ANE->ANTECIPACAO") {
         cefS += r.saida || 0;
       } else if (r.origem === "ANE") {
         cefE += r.entrada || 0;

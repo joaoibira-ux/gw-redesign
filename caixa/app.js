@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.34";
+const VERSAO_CAIXA = "3.35";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -113,7 +113,7 @@ function render(docs) {
         cefS += r.saida || 0;
       } else if (r.origem === "JOAO->RETENCAO PARADIGMA 5%") {
         interS += r.saida || 0;
-      } else if (r.origem === "ANE->ADIANTAMENTO") {
+      } else if (r.origem === "ANE->ADIANTAMENTO" || r.origem === "ANE->ANTECIPACAO") {
         cefS += r.saida || 0;
       } else if (r.origem === "JOAO->CTAS A RECEBER") {
         interS += r.saida || 0;
@@ -613,7 +613,11 @@ function pagarFolha(data, desc, saida) {
     });
   });
 
-  db.collection("locais").get().then(snap => {
+  Promise.all([
+    db.collection("locais").get(),
+    db.collection("diarias").get(),
+    db.collection("lancamentos").where("origem", "==", "ANE->ADIANTAMENTO").get()
+  ]).then(([locaisSnap, diariasSnap, adiantSnap]) => {
     const batch = db.batch();
 
     // Lançamento no caixa
@@ -630,7 +634,7 @@ function pagarFolha(data, desc, saida) {
     });
 
     // Marca cada serviço amarelo como concluido
-    snap.docs.forEach(doc => {
+    locaisSnap.docs.forEach(doc => {
       const servicos  = doc.data().servicos || [];
       const temAmarelo = servicos.some(s => s.status === "em_pagamento");
       if (!temAmarelo) return;
@@ -651,6 +655,12 @@ function pagarFolha(data, desc, saida) {
 
       batch.update(db.collection("locais").doc(doc.id), { servicos: novos });
     });
+
+    // Zera o crédito dos diaristas no calendário da folha (pago junto com esta folha)
+    diariasSnap.docs.forEach(doc => batch.delete(doc.ref));
+
+    // Adiantamentos já descontados nesta folha não entram na próxima
+    adiantSnap.docs.forEach(doc => batch.update(doc.ref, { origem: "ANE->ANTECIPACAO" }));
 
     batch.commit().catch(() => alert("Erro ao registrar pagamento. Tente novamente."));
   });

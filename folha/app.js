@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.68";
+const VERSAO = "4.69";
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
 // ── Loading overlay ───────────────────────────────────────────
@@ -878,10 +878,6 @@ async function fecharFolha() {
   } catch(e) {}
 
   entradas = [];
-  // Limpa diaristas do Firestore junto com o fechamento da folha
-  db.collection('diarias').get().then(snap => {
-    snap.docs.forEach(d => d.ref.delete());
-  }).catch(() => {});
   atualizarHeader();
   mostrarComprovante(gruposData, encarregadoCache, valorEncarregado, nServMapa, totalGeral, pagamentos, adiantamentosMap);
 }
