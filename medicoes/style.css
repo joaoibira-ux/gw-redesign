@@ -94,6 +94,14 @@ header {
   white-space: nowrap;
 }
 
+.card-valor.negativo {
+  color: #c62828;
+}
+
+.card.negativo {
+  border-left-color: #c62828;
+}
+
 .card-item-badge {
   display: inline-block;
   background: #e8f0e9;

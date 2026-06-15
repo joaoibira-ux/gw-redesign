@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "1.1";
+const VERSAO = "1.2";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -22,7 +22,9 @@ function escHtml(s) {
 }
 
 function fmtMoeda(v) {
-  return "R$ " + (v || 0).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  v = v || 0;
+  const sinal = v < 0 ? "- " : "";
+  return sinal + "R$ " + Math.abs(v).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 
 function parseMoeda(s) {
@@ -60,14 +62,16 @@ function render(docs) {
 
   lista.innerHTML = docs.map(doc => {
     const m = doc.data();
+    const negativo = (m.valor || 0) < 0;
+    const badge = m.apartamento ? `<span class="card-item-badge">${escHtml(m.apartamento)}</span>` : "";
     return `
-      <div class="card">
+      <div class="card${negativo ? " negativo" : ""}">
         <div class="card-acoes">
           <button class="btn-del" onclick="excluir('${doc.id}')" title="Excluir">✕</button>
         </div>
         <div class="card-top">
-          <div class="card-desc"><span class="card-item-badge">${escHtml(m.apartamento)}</span>${escHtml(m.servico)}</div>
-          <div class="card-valor">${fmtMoeda(m.valor)}</div>
+          <div class="card-desc">${badge}${escHtml(m.servico)}</div>
+          <div class="card-valor${negativo ? " negativo" : ""}">${fmtMoeda(m.valor)}</div>
         </div>
         <div class="card-meta">
           <span>${escHtml(m.data)}</span>
@@ -87,7 +91,8 @@ col.orderBy("criadoEm", "desc").onSnapshot(snap => {
 function excluir(id) {
   const m = docsCache[id];
   if (!m) return;
-  const senha = prompt("EXCLUIR MEDIÇÃO?\n\n" + m.apartamento + " - " + m.servico + "\n" + fmtMoeda(m.valor) + "\n\nDigite a senha:");
+  const titulo = m.apartamento ? (m.apartamento + " - " + m.servico) : m.servico;
+  const senha = prompt("EXCLUIR MEDIÇÃO?\n\n" + titulo + "\n" + fmtMoeda(m.valor) + "\n\nDigite a senha:");
   if (senha === null) return;
   if (senha !== "4512") { alert("Senha incorreta."); return; }
   col.doc(id).delete();
@@ -210,11 +215,11 @@ function salvarRevisao() {
   }
 
   const validos = itensRevisao.filter(it =>
-    it.apartamento.trim() && it.servico.trim() && it.valor > 0
+    it.servico.trim() && it.valor !== 0
   );
 
   if (validos.length === 0) {
-    alert("Preencha apartamento, serviço e valor de ao menos um item.");
+    alert("Preencha serviço e valor (diferente de zero) de ao menos um item.");
     return;
   }
 
