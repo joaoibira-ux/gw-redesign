@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.67";
+const VERSAO = "4.68";
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
 // ── Loading overlay ───────────────────────────────────────────
@@ -1057,6 +1057,20 @@ function mostrarSucesso(pagamentos, totalGeral) {
 async function verRelatorio() {
   let gruposData, nServMapa, totalGeral, valorEncarregado;
 
+  const adiantamentosMap = new Map();
+  try {
+    const adSnap = await db.collection('lancamentos').get();
+    adSnap.docs.forEach(d => {
+      const r = d.data();
+      if ((r.origem || '') !== 'ANE->ADIANTAMENTO') return;
+      const desc = r.descricao || '';
+      if (!desc.startsWith('Adiantamento: ')) return;
+      const nome = desc.slice('Adiantamento: '.length).split(/\s*[—–\-]/)[0].trim().normalize('NFC');
+      if (!nome) return;
+      adiantamentosMap.set(nome, (adiantamentosMap.get(nome) || 0) + (r.saida || 0));
+    });
+  } catch(e) {}
+
   const temProducao  = entradas.some(e => e.firestoreLocalId);
   const temDiaristas = _diariasCache.length > 0;
 
@@ -1090,18 +1104,34 @@ async function verRelatorio() {
     totalGeral       = totalProd + valorEncarregado;
     gruposData       = [...grupos.values()].map(g => ({ funcionario: g.funcionario, itens: g.itens }));
   } else {
-    // Sem folha aberta — lê o último documento salvo
+    // Sem folha aberta — lê o último documento salvo, descartando itens cujo serviço
+    // já não está mais em_pagamento em 'locais' (removido da folha após o fechamento)
     try {
       const fSnap = await db.collection('folhas').orderBy('criadoEm', 'desc').limit(1).get();
       if (fSnap.empty) { alert('Nenhuma folha encontrada.'); return; }
       const folha   = fSnap.docs[0].data();
       const gList   = folha.grupos || [];
-      const grupoEnc = gList.find(g => g.isEncarregado);
-      valorEncarregado = grupoEnc ? (grupoEnc.subtotal || 0) : 0;
-      nServMapa = grupoEnc
-        ? Math.round(((grupoEnc.itens || []).find(i => (i.servico || '').includes('serv')) || {}).valor / 5 || 0) : 0;
-      totalGeral = folha.totalGeral || 0;
-      gruposData = gList.filter(g => !g.isEncarregado).map(g => ({ funcionario: g.funcionario, itens: g.itens || [] }));
+
+      // Bônus do encarregado recalculado ao vivo (qtd. de serviços em_pagamento atuais)
+      nServMapa = Object.values(locaisCache).reduce((acc, local) =>
+        acc + (local.servicos || []).filter(s => s.status === 'em_pagamento').length, 0);
+      valorEncarregado = encarregadoCache
+        ? ((encarregadoCache.salario || 0) / 2) + (5 * nServMapa) : 0;
+
+      gruposData = gList.filter(g => !g.isEncarregado).map(g => {
+        const itensVivos = (g.itens || []).filter(item => {
+          if (!item.firestoreLocalId) return true; // diárias de ajudantes (sem local)
+          const local = locaisCache[item.firestoreLocalId];
+          if (!local) return false;
+          return (local.servicos || []).some(s =>
+            s.nome === item.servico && s.status === 'em_pagamento' &&
+            s.funcionario && (s.funcionario.id || s.funcionario.nome) === (g.funcionario.id || g.funcionario.nome));
+        });
+        return { funcionario: g.funcionario, itens: itensVivos };
+      }).filter(g => g.itens.length > 0 || adiantamentosMap.has((g.funcionario.nome || '').normalize('NFC')));
+
+      const totalProd = gruposData.reduce((acc, g) => acc + g.itens.reduce((s, e) => s + Number(e.valor), 0), 0);
+      totalGeral = totalProd + valorEncarregado;
     } catch(e) { alert('Erro ao carregar relatório.'); return; }
   }
 
@@ -1111,20 +1141,6 @@ async function verRelatorio() {
     const sub = g.itens.reduce((a, e) => a + Number(e.valor), 0);
     pagamentos.push({ nome: g.funcionario.nome, cargo: g.funcionario.cargo || '', valor: sub });
   });
-
-  const adiantamentosMap = new Map();
-  try {
-    const adSnap = await db.collection('lancamentos').get();
-    adSnap.docs.forEach(d => {
-      const r = d.data();
-      if ((r.origem || '') !== 'ANE->ADIANTAMENTO') return;
-      const desc = r.descricao || '';
-      if (!desc.startsWith('Adiantamento: ')) return;
-      const nome = desc.slice('Adiantamento: '.length).split(/\s*[—–\-]/)[0].trim().normalize('NFC');
-      if (!nome) return;
-      adiantamentosMap.set(nome, (adiantamentosMap.get(nome) || 0) + (r.saida || 0));
-    });
-  } catch(e) {}
 
   mostrarComprovante(gruposData, encarregadoCache, valorEncarregado, nServMapa, totalGeral, pagamentos, adiantamentosMap);
 }
