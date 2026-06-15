@@ -3,17 +3,20 @@ const { defineSecret } = require("firebase-functions/params");
 
 const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
 
-const PROMPT = `Esta imagem é uma foto ou print de uma planilha de medição de obra (construção civil).
-Cada linha relevante da planilha representa um item de medição com: o apartamento/unidade, o serviço executado (ex: Reboco, Massa, Textura, Pintura) e o valor em reais referente à medição daquele item.
+const PROMPT = `Esta imagem é um boletim/planilha de medição de obra (construção civil), com colunas como: ITEM, DESCRIÇÃO, UND, QUANTIDADES (Prevista no Contrato, Acumulado Anterior, Executado no Período, Acumulado) e PREÇOS (Unitário, Contratado, Acumulado Anterior, Executado no Período, Acumulado), além de % Executado.
+
+Para cada linha de item (ex: 1.1, 1.2, 1.12), extraia:
+- "apartamento": o número do item, exatamente como aparece na coluna ITEM (ex: "1.1", "1.12").
+- "servico": o texto da coluna DESCRIÇÃO.
+- "valor": o valor em reais da coluna PREÇOS > EXECUTADO NO PERÍODO (não confundir com Acumulado, Contratado ou Acumulado Anterior).
 
 Analise a imagem e retorne APENAS um array JSON (sem texto antes ou depois, sem markdown) no seguinte formato:
-[{"apartamento":"101","servico":"Textura","valor":350.00}, {"apartamento":"102","servico":"Massa","valor":280.50}]
+[{"apartamento":"1.1","servico":"Revestimento de gesso em pasta (Sala, área e quartos)","valor":14400.00}]
 
 Regras:
-- "apartamento": identificador do apartamento/unidade/local como texto, exatamente como aparece na planilha.
-- "servico": nome do serviço/etapa como texto.
 - "valor": número decimal (use ponto como separador decimal, sem o símbolo R$ e sem separador de milhar).
-- Ignore linhas de cabeçalho, totais, subtotais ou linhas vazias.
+- Ignore linhas de cabeçalho, totais, subtotais (ex: "TOTAL", "VALORES A DESCONTAR", "A PAGAR") ou linhas vazias.
+- Ignore itens cujo valor de "Executado no Período" (em Preços) seja "-", vazio ou igual a 0.
 - Se não conseguir identificar nenhum item, retorne [].`;
 
 exports.extrairMedicoes = onCall(
