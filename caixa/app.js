@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.35";
+const VERSAO_CAIXA = "3.36";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -220,9 +220,16 @@ function deletar(id) {
 }
 
 // Escuta em tempo real — atualiza os dois iPhones automaticamente
+const _reloadTimer = sessionStorage.getItem("caixa_reloaded")
+  ? null
+  : setTimeout(() => { sessionStorage.setItem("caixa_reloaded", "1"); location.reload(); }, 5000);
+
 col.orderBy("criadoEm", "asc").onSnapshot(snapshot => {
+  clearTimeout(_reloadTimer);
+  sessionStorage.removeItem("caixa_reloaded");
   render(snapshot.docs);
 }, err => {
+  clearTimeout(_reloadTimer);
   console.error(err);
   document.getElementById("lista").innerHTML =
     '<p class="empty">Erro ao conectar. Verifique sua internet.</p>';
