@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "2.1";
+const VERSAO = "2.2";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -166,9 +166,9 @@ function abrirRevisao(dados) {
 
   document.getElementById("rv-nome").value = "";
   document.getElementById("rv-data").value = hoje();
-  document.getElementById("rv-valor").value = String(dados.total || 0).replace(".", ",");
-  document.getElementById("rv-descontos").value = String(dados.descontos || 0).replace(".", ",");
-  document.getElementById("rv-notafiscal").value = String(dados.aPagar || 0).replace(".", ",");
+  document.getElementById("rv-valor").value = (dados.total || 0).toFixed(2).replace(".", ",");
+  document.getElementById("rv-descontos").value = (dados.descontos || 0).toFixed(2).replace(".", ",");
+  document.getElementById("rv-notafiscal").value = (dados.aPagar || 0).toFixed(2).replace(".", ",");
 
   renderRevisao();
   document.getElementById("overlay-revisao").style.display = "flex";
@@ -190,7 +190,7 @@ function renderRevisao() {
         </div>
         <div>
           <label>Valor (R$)</label>
-          <input type="text" inputmode="decimal" value="${String(it.valor).replace(".", ",")}" oninput="itensRevisao[${i}].valor = parseMoeda(this.value)" />
+          <input type="text" inputmode="decimal" value="${(it.valor || 0).toFixed(2).replace(".", ",")}" oninput="itensRevisao[${i}].valor = parseMoeda(this.value)" />
         </div>
       </div>
     </div>`).join("");
@@ -258,9 +258,9 @@ function abrirDetalhe(id) {
 
   document.getElementById("dt-nome").value = m.nome || "";
   document.getElementById("dt-data").value = m.data || "";
-  document.getElementById("dt-valor").value = String(m.valor || 0).replace(".", ",");
-  document.getElementById("dt-descontos").value = String(m.descontos || 0).replace(".", ",");
-  document.getElementById("dt-notafiscal").value = String(m.valorNotaFiscal || 0).replace(".", ",");
+  document.getElementById("dt-valor").value = (m.valor || 0).toFixed(2).replace(".", ",");
+  document.getElementById("dt-descontos").value = (m.descontos || 0).toFixed(2).replace(".", ",");
+  document.getElementById("dt-notafiscal").value = (m.valorNotaFiscal || 0).toFixed(2).replace(".", ",");
 
   const itens = m.itens || [];
   const cont = document.getElementById("detalhe-itens");
