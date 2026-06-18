@@ -75,6 +75,20 @@ const TOOLS_GW = [
     }
   },
   {
+    name: "consultar_caixa",
+    description: "Consulta lançamentos do caixa (entradas e saídas) com filtros opcionais por período, origem ou palavra-chave na descrição. Também calcula saldo.",
+    input_schema: {
+      type: "object",
+      properties: {
+        data_inicio: { type: "string", description: "Data inicial DD/MM/YYYY (opcional)" },
+        data_fim:    { type: "string", description: "Data final DD/MM/YYYY (opcional)" },
+        origem:      { type: "string", description: "Filtrar por origem (ex: JOAO, CEF, ANE) — opcional" },
+        busca:       { type: "string", description: "Palavra-chave para buscar na descrição — opcional" },
+        resumo:      { type: "boolean", description: "Se true, retorna apenas totais (entradas, saídas, saldo) sem listar cada lançamento" }
+      }
+    }
+  },
+  {
     name: "consultar_servicos_funcionario",
     description: "Consulta os serviços executados por um funcionário no Mapa de Obra",
     input_schema: {
@@ -124,6 +138,61 @@ async function executarFerramenta(nome, input) {
       const hora = ts.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
       return { tipo: dd.tipo, hora };
     });
+  }
+
+  if (nome === "consultar_caixa") {
+    const { data_inicio, data_fim, origem, busca, resumo } = input;
+
+    const parseDMY = (s) => {
+      if (!s) return null;
+      const [d, m, y] = s.split("/").map(Number);
+      return new Date(y, m - 1, d);
+    };
+
+    const snap = await db.collection("lancamentos").orderBy("criadoEm", "desc").get();
+    let itens = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    if (data_inicio || data_fim) {
+      const di = parseDMY(data_inicio);
+      const df = data_fim ? new Date(parseDMY(data_fim).setHours(23,59,59,999)) : null;
+      itens = itens.filter(l => {
+        const [dd, mm, yy] = (l.data || "").split("/").map(Number);
+        const ld = new Date(yy, mm - 1, dd);
+        if (di && ld < di) return false;
+        if (df && ld > df) return false;
+        return true;
+      });
+    }
+
+    if (origem) {
+      itens = itens.filter(l => (l.origem || "").toLowerCase().includes(origem.toLowerCase()));
+    }
+
+    if (busca) {
+      itens = itens.filter(l => (l.descricao || "").toLowerCase().includes(busca.toLowerCase()));
+    }
+
+    const totalEntradas = itens.reduce((s, l) => s + (Number(l.entrada) || 0), 0);
+    const totalSaidas   = itens.reduce((s, l) => s + (Number(l.saida)   || 0), 0);
+    const saldo = totalEntradas - totalSaidas;
+
+    if (resumo) {
+      return { totalEntradas, totalSaidas, saldo, quantidade: itens.length };
+    }
+
+    return {
+      lancamentos: itens.slice(0, 50).map(l => ({
+        data: l.data,
+        descricao: l.descricao,
+        entrada: Number(l.entrada) || 0,
+        saida:   Number(l.saida)   || 0,
+        origem:  l.origem || ""
+      })),
+      totalEntradas,
+      totalSaidas,
+      saldo,
+      quantidade: itens.length
+    };
   }
 
   if (nome === "consultar_servicos_funcionario") {
