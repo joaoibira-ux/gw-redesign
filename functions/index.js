@@ -1,5 +1,8 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
+const admin = require("firebase-admin");
+if (!admin.apps.length) admin.initializeApp();
+const db = admin.firestore();
 
 const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
 
@@ -36,6 +39,174 @@ Retorne APENAS um objeto JSON (sem texto antes ou depois, sem markdown) no segui
 {"itens":[{"apartamento":"1.1","servico":"Revestimento de gesso em pasta (Sala, área e quartos)","valor":14400.00}], "total":24959.70, "descontos":3352.00, "aPagar":21607.70}
 
 Se não conseguir identificar a tabela, retorne {"itens":[],"total":0,"descontos":0,"aPagar":0}.`;
+
+// ── AGENTE GW ──────────────────────────────────────────────────────────────
+
+const TOOLS_GW = [
+  {
+    name: "listar_funcionarios",
+    description: "Lista todos os funcionários cadastrados no sistema GW",
+    input_schema: { type: "object", properties: {} }
+  },
+  {
+    name: "registrar_ponto",
+    description: "Registra entrada ou saída de um funcionário no ponto eletrônico",
+    input_schema: {
+      type: "object",
+      properties: {
+        funcionarioId:   { type: "string", description: "ID do funcionário" },
+        funcionarioNome: { type: "string", description: "Nome completo do funcionário" },
+        tipo:            { type: "string", enum: ["entrada", "saida"] },
+        horario:         { type: "string", description: "Horário HH:MM (horário de Brasília). Se omitido, usa a hora atual." }
+      },
+      required: ["funcionarioId", "funcionarioNome", "tipo"]
+    }
+  },
+  {
+    name: "consultar_ponto",
+    description: "Consulta registros de ponto de um funcionário em uma data",
+    input_schema: {
+      type: "object",
+      properties: {
+        funcionarioId: { type: "string" },
+        data: { type: "string", description: "Data YYYY-MM-DD (padrão: hoje)" }
+      },
+      required: ["funcionarioId"]
+    }
+  },
+  {
+    name: "consultar_servicos_funcionario",
+    description: "Consulta os serviços executados por um funcionário no Mapa de Obra",
+    input_schema: {
+      type: "object",
+      properties: {
+        funcionarioNome: { type: "string", description: "Nome (parcial ou completo) do funcionário" },
+        status: { type: "string", enum: ["concluido", "em_pagamento", "todos"], description: "Filtro de status (padrão: concluido)" }
+      },
+      required: ["funcionarioNome"]
+    }
+  }
+];
+
+async function executarFerramenta(nome, input) {
+  if (nome === "listar_funcionarios") {
+    const snap = await db.collection("funcionarios").orderBy("nome").get();
+    return snap.docs.map(d => ({ id: d.id, nome: d.data().nome }));
+  }
+
+  if (nome === "registrar_ponto") {
+    const { funcionarioId, funcionarioNome, tipo, horario } = input;
+    let timestamp;
+    if (horario) {
+      const [h, m] = horario.split(":").map(Number);
+      const agora = new Date();
+      agora.setUTCHours(h + 3, m, 0, 0);
+      timestamp = agora;
+    } else {
+      timestamp = new Date();
+    }
+    const ref = await db.collection("pontos").add({ funcionarioId, funcionarioNome, tipo, timestamp, localizacao: null });
+    return { sucesso: true, id: ref.id, funcionarioNome, tipo, horario: horario || "hora atual" };
+  }
+
+  if (nome === "consultar_ponto") {
+    const { funcionarioId, data } = input;
+    const dataRef = data ? new Date(data + "T00:00:00-03:00") : new Date(new Date().toLocaleDateString("en-CA") + "T00:00:00-03:00");
+    const dataFim = new Date(dataRef); dataFim.setHours(23, 59, 59, 999);
+    const snap = await db.collection("pontos")
+      .where("funcionarioId", "==", funcionarioId)
+      .where("timestamp", ">=", dataRef)
+      .where("timestamp", "<=", dataFim)
+      .orderBy("timestamp").get();
+    return snap.docs.map(d => {
+      const dd = d.data();
+      const ts = dd.timestamp.toDate();
+      const hora = ts.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+      return { tipo: dd.tipo, hora };
+    });
+  }
+
+  if (nome === "consultar_servicos_funcionario") {
+    const { funcionarioNome, status = "concluido" } = input;
+    const snap = await db.collection("locais").get();
+    const resultados = [];
+    snap.docs.forEach(doc => {
+      const ident = doc.data().identificacao || doc.id;
+      const servicos = doc.data().servicos || [];
+      servicos.forEach(s => {
+        const execNome = s.executor && s.executor.nome ? s.executor.nome : (s.funcionario && s.funcionario.nome ? s.funcionario.nome : "");
+        if (!execNome.toLowerCase().includes(funcionarioNome.toLowerCase())) return;
+        if (status !== "todos" && s.status !== status) return;
+        resultados.push({ local: ident, servico: s.nome, status: s.status, dataPagamento: s.dataPagamento || "", valorPago: s.valorPago || 0 });
+      });
+    });
+    return resultados;
+  }
+
+  return { erro: "ferramenta desconhecida" };
+}
+
+exports.agenteGW = onCall(
+  { secrets: [anthropicApiKey], timeoutSeconds: 120, memory: "512MiB", cors: true, invoker: "public" },
+  async (request) => {
+    const { mensagem, historico = [] } = request.data || {};
+    if (!mensagem) throw new HttpsError("invalid-argument", "mensagem é obrigatória.");
+
+    const hoje = new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+    const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+
+    const systemPrompt = `Você é o assistente do Sistema GW Revestimentos, empresa de gesso e revestimento.
+Hoje é ${hoje} (${hojeISO}).
+Responda sempre em português brasileiro, de forma direta e confirmando o que foi feito.
+Quando o usuário mencionar um nome incompleto de funcionário, use listar_funcionarios primeiro para encontrar o ID correto.`;
+
+    const messages = [
+      ...historico.slice(-8),
+      { role: "user", content: mensagem }
+    ];
+
+    const chamarClaude = (msgs) => fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": anthropicApiKey.value(),
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1024, system: systemPrompt, tools: TOOLS_GW, messages: msgs })
+    }).then(r => r.json());
+
+    let msgs = [...messages];
+    let resposta = "";
+
+    for (let rodada = 0; rodada < 5; rodada++) {
+      const data = await chamarClaude(msgs);
+
+      if (data.stop_reason === "end_turn") {
+        resposta = (data.content.find(b => b.type === "text") || {}).text || "Feito.";
+        break;
+      }
+
+      if (data.stop_reason === "tool_use") {
+        const toolUseBlocks = data.content.filter(b => b.type === "tool_use");
+        msgs.push({ role: "assistant", content: data.content });
+
+        const toolResults = await Promise.all(toolUseBlocks.map(async b => {
+          const resultado = await executarFerramenta(b.name, b.input);
+          return { type: "tool_result", tool_use_id: b.id, content: JSON.stringify(resultado) };
+        }));
+
+        msgs.push({ role: "user", content: toolResults });
+        continue;
+      }
+
+      resposta = (data.content && data.content.find(b => b.type === "text") || {}).text || "Não entendi.";
+      break;
+    }
+
+    const novoHistorico = [...messages, { role: "assistant", content: resposta }];
+    return { resposta, historico: novoHistorico };
+  }
+);
 
 exports.extrairMedicoes = onCall(
   { secrets: [anthropicApiKey], timeoutSeconds: 60, memory: "512MiB", cors: true, invoker: "public" },
