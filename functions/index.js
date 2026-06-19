@@ -90,17 +90,24 @@ const TOOLS_GW = [
   },
   {
     name: "consultar_servicos_funcionario",
-    description: "Consulta os serviços executados por um funcionário no Mapa de Obra",
+    description: "Consulta os serviços executados por um funcionário no Mapa de Obra. Também pode filtrar por local/apartamento.",
     input_schema: {
       type: "object",
       properties: {
-        funcionarioNome: { type: "string", description: "Nome (parcial ou completo) do funcionário" },
+        funcionarioNome: { type: "string", description: "Nome (parcial ou completo) do funcionário. Opcional se local for informado." },
+        local: { type: "string", description: "Identificação do local/apartamento (ex: BM 06, BM06, BM006 — todas as variações funcionam)" },
         status: { type: "string", enum: ["concluido", "em_pagamento", "todos"], description: "Filtro de status (padrão: concluido)" }
-      },
-      required: ["funcionarioNome"]
+      }
     }
   }
 ];
+
+function normCodigo(s) {
+  // normaliza "BM 06", "BM06", "BM006", "Bm 06" → "bm6"
+  return String(s).toLowerCase()
+    .replace(/\s+/g, "")                      // remove espaços
+    .replace(/([a-z]+)0*(\d+)/g, "$1$2");     // remove zeros à esquerda do número
+}
 
 async function executarFerramenta(nome, input) {
   if (nome === "listar_funcionarios") {
@@ -169,7 +176,13 @@ async function executarFerramenta(nome, input) {
     }
 
     if (busca) {
-      itens = itens.filter(l => (l.descricao || "").toLowerCase().includes(busca.toLowerCase()));
+      const buscaNorm = normCodigo(busca);
+      itens = itens.filter(l => {
+        const desc = l.descricao || "";
+        if (desc.toLowerCase().includes(busca.toLowerCase())) return true;
+        if (normCodigo(desc).includes(buscaNorm)) return true;
+        return false;
+      });
     }
 
     const totalEntradas = itens.reduce((s, l) => s + (Number(l.entrada) || 0), 0);
@@ -196,15 +209,17 @@ async function executarFerramenta(nome, input) {
   }
 
   if (nome === "consultar_servicos_funcionario") {
-    const { funcionarioNome, status = "concluido" } = input;
+    const { funcionarioNome, local, status = "concluido" } = input;
+    const localNorm = local ? normCodigo(local) : null;
     const snap = await db.collection("locais").get();
     const resultados = [];
     snap.docs.forEach(doc => {
       const ident = doc.data().identificacao || doc.id;
+      if (localNorm && normCodigo(ident) !== localNorm) return;
       const servicos = doc.data().servicos || [];
       servicos.forEach(s => {
         const execNome = s.executor && s.executor.nome ? s.executor.nome : (s.funcionario && s.funcionario.nome ? s.funcionario.nome : "");
-        if (!execNome.toLowerCase().includes(funcionarioNome.toLowerCase())) return;
+        if (funcionarioNome && !execNome.toLowerCase().includes(funcionarioNome.toLowerCase())) return;
         if (status !== "todos" && s.status !== status) return;
         resultados.push({ local: ident, servico: s.nome, status: s.status, dataPagamento: s.dataPagamento || "", valorPago: s.valorPago || 0 });
       });
@@ -227,7 +242,8 @@ exports.agenteGW = onCall(
     const systemPrompt = `Você é o assistente do Sistema GW Revestimentos, empresa de gesso e revestimento.
 Hoje é ${hoje} (${hojeISO}).
 Responda sempre em português brasileiro, de forma direta e confirmando o que foi feito.
-Quando o usuário mencionar um nome incompleto de funcionário, use listar_funcionarios primeiro para encontrar o ID correto.`;
+Quando o usuário mencionar um nome incompleto de funcionário, use listar_funcionarios primeiro para encontrar o ID correto.
+Códigos de locais/apartamentos (ex: BM 06, BM06, BM006, BM 006, Bm 06) são equivalentes — passe o código exatamente como o usuário digitou, o sistema normaliza automaticamente.`;
 
     const messages = [
       ...historico.slice(-8),
