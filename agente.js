@@ -256,9 +256,24 @@
     input.focus();
   }
 
+  function verificarRelatorioPontoDiario() {
+    const agora = new Date();
+    const hojeBR = agora.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const horaBR = agora.toLocaleTimeString("en-GB", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+    if (horaBR < "09:30") return;
+
+    const chave = "gw_relatorio_ponto_" + hojeBR;
+    if (localStorage.getItem(chave)) return;
+    localStorage.setItem(chave, "1");
+
+    if (typeof firebase === "undefined" || !firebase.functions) return;
+    firebase.functions().httpsCallable("relatorioPontoWhatsApp")().catch(() => {});
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     injetarCSS();
     criarHTML();
     adicionarBotaoNoHeader();
+    verificarRelatorioPontoDiario();
   });
 })();

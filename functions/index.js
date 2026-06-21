@@ -5,6 +5,9 @@ if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 
 const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
+const whatsappToken = defineSecret("WHATSAPP_TOKEN");
+const WHATSAPP_PHONE_ID = "1090526494154821";
+const WHATSAPP_DESTINO = "5581992114764";
 
 const PROMPT = `Esta imagem é um boletim/planilha de medição de obra (construção civil).
 
@@ -366,5 +369,63 @@ exports.extrairMedicoes = onCall(
       descontos: Number(resultado.descontos) || 0,
       aPagar: Number(resultado.aPagar) || 0
     };
+  }
+);
+
+exports.relatorioPontoWhatsApp = onCall(
+  { secrets: [whatsappToken], cors: true },
+  async () => {
+    const hoje = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const statusRef = db.collection("relatoriosPonto").doc(hoje);
+    const statusDoc = await statusRef.get();
+    if (statusDoc.exists && statusDoc.data().enviado) {
+      return { enviado: false, motivo: "ja_enviado" };
+    }
+
+    const dataInicio = new Date(hoje + "T00:00:00-03:00");
+    const dataFim = new Date(hoje + "T23:59:59-03:00");
+    const snap = await db.collection("pontos")
+      .where("tipo", "==", "entrada")
+      .where("timestamp", ">=", dataInicio)
+      .where("timestamp", "<=", dataFim)
+      .orderBy("timestamp")
+      .get();
+
+    if (snap.empty) {
+      return { enviado: false, motivo: "sem_entradas" };
+    }
+
+    const texto = snap.docs.map(d => {
+      const x = d.data();
+      const hora = x.timestamp.toDate().toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+      return `${x.funcionarioNome} - Entrada ${hora}`;
+    }).join("\n");
+
+    const resp = await fetch(`https://graph.facebook.com/v25.0/${WHATSAPP_PHONE_ID}/messages`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${whatsappToken.value()}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: WHATSAPP_DESTINO,
+        type: "template",
+        template: {
+          name: "relatorio_ponto_diario",
+          language: { code: "pt_BR" },
+          components: [{ type: "body", parameters: [{ type: "text", text: texto }] }]
+        }
+      })
+    });
+
+    const result = await resp.json();
+    if (!resp.ok) {
+      console.error("Erro ao enviar WhatsApp:", JSON.stringify(result));
+      throw new HttpsError("internal", "Falha ao enviar WhatsApp: " + (result.error?.message || resp.status));
+    }
+
+    await statusRef.set({ enviado: true, enviadoEm: admin.firestore.FieldValue.serverTimestamp(), totalEntradas: snap.size });
+    return { enviado: true, total: snap.size };
   }
 );
