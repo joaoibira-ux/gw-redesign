@@ -134,8 +134,24 @@ async function executarFerramenta(nome, input) {
     } else {
       timestamp = new Date();
     }
+
+    const hojeInicio = new Date(); hojeInicio.setHours(0, 0, 0, 0);
+    const hojeFim = new Date(); hojeFim.setHours(23, 59, 59, 999);
+    const existente = await db.collection("pontos")
+      .where("funcionarioId", "==", funcionarioId)
+      .where("tipo", "==", tipo)
+      .where("timestamp", ">=", hojeInicio)
+      .where("timestamp", "<=", hojeFim)
+      .limit(1).get();
+
+    if (!existente.empty) {
+      const docId = existente.docs[0].id;
+      await db.collection("pontos").doc(docId).update({ timestamp });
+      return { sucesso: true, id: docId, funcionarioNome, tipo, horario: horario || "hora atual", acao: "atualizado" };
+    }
+
     const ref = await db.collection("pontos").add({ funcionarioId, funcionarioNome, tipo, timestamp, localizacao: null });
-    return { sucesso: true, id: ref.id, funcionarioNome, tipo, horario: horario || "hora atual" };
+    return { sucesso: true, id: ref.id, funcionarioNome, tipo, horario: horario || "hora atual", acao: "criado" };
   }
 
   if (nome === "consultar_ponto") {
