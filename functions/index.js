@@ -8,6 +8,7 @@ const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
 const whatsappToken = defineSecret("WHATSAPP_TOKEN");
 const WHATSAPP_PHONE_ID = "1090526494154821";
 const WHATSAPP_DESTINO = "5581992114764";
+const SENHA_ALTERACAO_BANCO = "6535";
 
 const PROMPT = `Esta imagem é um boletim/planilha de medição de obra (construção civil).
 
@@ -53,16 +54,17 @@ const TOOLS_GW = [
   },
   {
     name: "registrar_ponto",
-    description: "Registra entrada ou saída de um funcionário no ponto eletrônico",
+    description: "Registra entrada ou saída de um funcionário no ponto eletrônico. ALTERA O BANCO DE DADOS: exige o campo senha, que deve ser pedido ao usuário antes de chamar esta ferramenta.",
     input_schema: {
       type: "object",
       properties: {
         funcionarioId:   { type: "string", description: "ID do funcionário" },
         funcionarioNome: { type: "string", description: "Nome completo do funcionário" },
         tipo:            { type: "string", enum: ["entrada", "saida"] },
-        horario:         { type: "string", description: "Horário HH:MM (horário de Brasília). Se omitido, usa a hora atual." }
+        horario:         { type: "string", description: "Horário HH:MM (horário de Brasília). Se omitido, usa a hora atual." },
+        senha:           { type: "string", description: "Senha de autorização para alterar o banco de dados. Deve ser pedida ao usuário antes de chamar esta ferramenta." }
       },
-      required: ["funcionarioId", "funcionarioNome", "tipo"]
+      required: ["funcionarioId", "funcionarioNome", "tipo", "senha"]
     }
   },
   {
@@ -119,7 +121,10 @@ async function executarFerramenta(nome, input) {
   }
 
   if (nome === "registrar_ponto") {
-    const { funcionarioId, funcionarioNome, tipo, horario } = input;
+    const { funcionarioId, funcionarioNome, tipo, horario, senha } = input;
+    if (senha !== SENHA_ALTERACAO_BANCO) {
+      return { sucesso: false, erro: "senha_invalida", mensagem: "Senha incorreta. Peça a senha de autorização ao usuário para alterar o banco de dados." };
+    }
     let timestamp;
     if (horario) {
       const [h, m] = horario.split(":").map(Number);
@@ -246,7 +251,8 @@ exports.agenteGW = onCall(
 Hoje é ${hoje} (${hojeISO}).
 Responda sempre em português brasileiro, de forma direta e confirmando o que foi feito.
 Quando o usuário mencionar um nome incompleto de funcionário, use listar_funcionarios primeiro para encontrar o ID correto.
-Códigos de locais/apartamentos (ex: BM 06, BM06, BM006, BM 006, Bm 06) são equivalentes — passe o código exatamente como o usuário digitou, o sistema normaliza automaticamente.`;
+Códigos de locais/apartamentos (ex: BM 06, BM06, BM006, BM 006, Bm 06) são equivalentes — passe o código exatamente como o usuário digitou, o sistema normaliza automaticamente.
+IMPORTANTE: qualquer ferramenta que altere o banco de dados (ex: registrar_ponto) exige uma senha de autorização. Antes de chamar essa ferramenta, sempre pergunte ao usuário "Qual a senha de autorização para alterar o banco de dados?" e só prossiga depois que ele informar a senha. Nunca invente, sugira ou revele a senha.`;
 
     const messages = [
       ...historico.slice(-8),
