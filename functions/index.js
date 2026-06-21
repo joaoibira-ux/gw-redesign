@@ -94,6 +94,51 @@ const TOOLS_GW = [
     }
   },
   {
+    name: "criar_lancamento_caixa",
+    description: "Cria um novo lançamento no caixa (entrada ou saída). ALTERA O BANCO DE DADOS: exige o campo senha, que deve ser pedido ao usuário antes de chamar esta ferramenta.",
+    input_schema: {
+      type: "object",
+      properties: {
+        data:      { type: "string", description: "Data do lançamento no formato DD/MM/YYYY" },
+        origem:    { type: "string", description: "Origem do lançamento (ex: JOAO, ANE, CEF)" },
+        descricao: { type: "string", description: "Descrição do lançamento" },
+        entrada:   { type: "number", description: "Valor de entrada (0 se for uma saída)" },
+        saida:     { type: "number", description: "Valor de saída (0 se for uma entrada)" },
+        senha:     { type: "string", description: "Senha de autorização para alterar o banco de dados. Deve ser pedida ao usuário antes de chamar esta ferramenta." }
+      },
+      required: ["data", "origem", "descricao", "senha"]
+    }
+  },
+  {
+    name: "editar_lancamento_caixa",
+    description: "Edita um lançamento do caixa já existente. Use consultar_caixa antes para obter o id do lançamento correto. ALTERA O BANCO DE DADOS: exige o campo senha, que deve ser pedido ao usuário antes de chamar esta ferramenta.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id:        { type: "string", description: "ID do lançamento (obtido via consultar_caixa)" },
+        data:      { type: "string", description: "Nova data DD/MM/YYYY (opcional, mantém se omitido)" },
+        origem:    { type: "string", description: "Nova origem (opcional)" },
+        descricao: { type: "string", description: "Nova descrição (opcional)" },
+        entrada:   { type: "number", description: "Novo valor de entrada (opcional)" },
+        saida:     { type: "number", description: "Novo valor de saída (opcional)" },
+        senha:     { type: "string", description: "Senha de autorização para alterar o banco de dados. Deve ser pedida ao usuário antes de chamar esta ferramenta." }
+      },
+      required: ["id", "senha"]
+    }
+  },
+  {
+    name: "excluir_lancamento_caixa",
+    description: "Exclui um lançamento do caixa já existente. Use consultar_caixa antes para obter o id do lançamento correto. ALTERA O BANCO DE DADOS: exige o campo senha, que deve ser pedido ao usuário antes de chamar esta ferramenta.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id:    { type: "string", description: "ID do lançamento (obtido via consultar_caixa)" },
+        senha: { type: "string", description: "Senha de autorização para alterar o banco de dados. Deve ser pedida ao usuário antes de chamar esta ferramenta." }
+      },
+      required: ["id", "senha"]
+    }
+  },
+  {
     name: "consultar_servicos_funcionario",
     description: "Consulta os serviços executados por um funcionário no Mapa de Obra. Também pode filtrar por local/apartamento.",
     input_schema: {
@@ -219,6 +264,7 @@ async function executarFerramenta(nome, input) {
 
     return {
       lancamentos: itens.slice(0, 50).map(l => ({
+        id: l.id,
         data: l.data,
         descricao: l.descricao,
         entrada: Number(l.entrada) || 0,
@@ -230,6 +276,55 @@ async function executarFerramenta(nome, input) {
       saldo,
       quantidade: itens.length
     };
+  }
+
+  if (nome === "criar_lancamento_caixa") {
+    const { data, origem, descricao, entrada, saida, senha } = input;
+    if (senha !== SENHA_ALTERACAO_BANCO) {
+      return { sucesso: false, erro: "senha_invalida", mensagem: "Senha incorreta. Peça a senha de autorização ao usuário para alterar o banco de dados." };
+    }
+    const ref = await db.collection("lancamentos").add({
+      data,
+      origem: (origem || "").toUpperCase(),
+      descricao: descricao || "",
+      entrada: Number(entrada) || 0,
+      saida: Number(saida) || 0,
+      criadoEm: admin.firestore.FieldValue.serverTimestamp()
+    });
+    return { sucesso: true, id: ref.id };
+  }
+
+  if (nome === "editar_lancamento_caixa") {
+    const { id, data, origem, descricao, entrada, saida, senha } = input;
+    if (senha !== SENHA_ALTERACAO_BANCO) {
+      return { sucesso: false, erro: "senha_invalida", mensagem: "Senha incorreta. Peça a senha de autorização ao usuário para alterar o banco de dados." };
+    }
+    const ref = db.collection("lancamentos").doc(id);
+    const doc = await ref.get();
+    if (!doc.exists) return { sucesso: false, erro: "nao_encontrado", mensagem: "Lançamento não encontrado." };
+
+    const updates = {};
+    if (data !== undefined) updates.data = data;
+    if (origem !== undefined) updates.origem = origem.toUpperCase();
+    if (descricao !== undefined) updates.descricao = descricao;
+    if (entrada !== undefined) updates.entrada = Number(entrada) || 0;
+    if (saida !== undefined) updates.saida = Number(saida) || 0;
+
+    await ref.update(updates);
+    return { sucesso: true, id };
+  }
+
+  if (nome === "excluir_lancamento_caixa") {
+    const { id, senha } = input;
+    if (senha !== SENHA_ALTERACAO_BANCO) {
+      return { sucesso: false, erro: "senha_invalida", mensagem: "Senha incorreta. Peça a senha de autorização ao usuário para alterar o banco de dados." };
+    }
+    const ref = db.collection("lancamentos").doc(id);
+    const doc = await ref.get();
+    if (!doc.exists) return { sucesso: false, erro: "nao_encontrado", mensagem: "Lançamento não encontrado." };
+
+    await ref.delete();
+    return { sucesso: true, id };
   }
 
   if (nome === "consultar_servicos_funcionario") {
@@ -268,7 +363,8 @@ Hoje é ${hoje} (${hojeISO}).
 Responda sempre em português brasileiro, de forma direta e confirmando o que foi feito.
 Quando o usuário mencionar um nome incompleto de funcionário, use listar_funcionarios primeiro para encontrar o ID correto.
 Códigos de locais/apartamentos (ex: BM 06, BM06, BM006, BM 006, Bm 06) são equivalentes — passe o código exatamente como o usuário digitou, o sistema normaliza automaticamente.
-IMPORTANTE: qualquer ferramenta que altere o banco de dados (ex: registrar_ponto) exige uma senha de autorização. Antes de chamar essa ferramenta, sempre pergunte ao usuário "Qual a senha de autorização para alterar o banco de dados?" e só prossiga depois que ele informar a senha. Nunca invente, sugira ou revele a senha.`;
+IMPORTANTE: qualquer ferramenta que altere o banco de dados (ex: registrar_ponto, criar_lancamento_caixa, editar_lancamento_caixa, excluir_lancamento_caixa) exige uma senha de autorização. Antes de chamar essa ferramenta, sempre pergunte ao usuário "Qual a senha de autorização para alterar o banco de dados?" e só prossiga depois que ele informar a senha. Nunca invente, sugira ou revele a senha.
+Para editar ou excluir um lançamento do caixa, use consultar_caixa primeiro para encontrar o id correto e confirme com o usuário qual lançamento é (data, descrição e valor) antes de aplicar a alteração.`;
 
     const messages = [
       ...historico.slice(-8),
