@@ -10,7 +10,8 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.69";
+const VERSAO = "4.70";
+const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
 // ── Loading overlay ───────────────────────────────────────────
@@ -159,8 +160,9 @@ function sincronizarDiaristas() {
         funcionario:      { id: doc.funcionarioId || '', nome: doc.funcionarioNome, cargo: doc.cargo || '' },
         firestoreLocalId: '',
         localId:          d.localId,
-        servico:          'Diária',
-        valor:            d.valor
+        servico:          d.horas ? `Diária (${d.horas}h)` : 'Diária',
+        valor:            d.valor,
+        horas:            d.horas || null
       });
     });
   });
@@ -189,8 +191,9 @@ function agendarSave() {
 }
 let calAno           = new Date().getFullYear();
 let calMesAtual      = new Date().getMonth();
-let diasSelecionados  = new Map(); // key → 'full' | 'half'
+let diasSelecionados  = new Map(); // key → 'full' | 'half' (ajudante) ou número de horas (pintor)
 let diasPreCarregados = new Set(); // dias já salvos na folha (exigem senha para remover)
+let modoDiariaHoras   = false; // true quando o calendário está sendo usado por um pintor em modo Diária
 
 function ehAjudante(cargo) {
   return (cargo || '').toLowerCase().includes('ajudante');
@@ -209,6 +212,14 @@ function abrirCalendario(func) {
   entradas.forEach(e => {
     if ((e.funcionario.id || e.funcionario.nome) !== funcKey) return;
     if (e.firestoreLocalId !== '') return;
+    if (modoDiariaHoras) {
+      const [dia, mes] = e.localId.trim().split('/');
+      if (!dia || !mes) return;
+      const key = `${anoAtual}-${mes.padStart(2,'0')}-${dia.padStart(2,'0')}`;
+      diasSelecionados.set(key, e.horas || 0);
+      diasPreCarregados.add(key);
+      return;
+    }
     const meio     = e.localId.includes('½');
     const dataPart = e.localId.replace(' ½', '').trim();
     const [dia, mes] = dataPart.split('/');
@@ -253,14 +264,45 @@ function renderCalendario() {
   for (let d = 1; d <= totalDias; d++) {
     const key   = `${calAno}-${String(calMesAtual + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const state = diasSelecionados.get(key);
-    const cls   = state === 'full' ? ' selecionado' : state === 'half' ? ' meio-periodo' : '';
     const isHj  = (d === hoje.getDate() && calMesAtual === hoje.getMonth() && calAno === hoje.getFullYear()) ? ' hoje' : '';
-    html += `<div class="cal-dia${cls}${isHj}" onclick="toggleDia('${key}')">${d}</div>`;
+    let cls, label;
+    if (modoDiariaHoras) {
+      cls   = state ? ' selecionado' : '';
+      label = state ? `${d}<br><span style="font-size:0.5rem">${state}h</span>` : `${d}`;
+    } else {
+      cls   = state === 'full' ? ' selecionado' : state === 'half' ? ' meio-periodo' : '';
+      label = `${d}`;
+    }
+    html += `<div class="cal-dia${cls}${isHj}" onclick="toggleDia('${key}')">${label}</div>`;
   }
   document.getElementById('cal-grid').innerHTML = html;
 }
 
 function toggleDia(key) {
+  if (modoDiariaHoras) {
+    const jaSelecionado = diasSelecionados.has(key);
+    if (!jaSelecionado) {
+      const horasStr = prompt('Quantas horas trabalhadas neste dia?');
+      if (horasStr === null) return;
+      const horas = parseFloat(horasStr.replace(',', '.'));
+      if (isNaN(horas) || horas <= 0) { alert('Valor inválido.'); return; }
+      diasSelecionados.set(key, horas);
+    } else {
+      if (diasPreCarregados.has(key)) {
+        const senha = prompt('Remover este dia da folha?\n\nDigite a senha:');
+        if (senha === null) return;
+        if (senha !== '3733') { alert('Senha incorreta.'); return; }
+        diasPreCarregados.delete(key);
+      }
+      diasSelecionados.delete(key);
+    }
+    renderCalendario();
+    const n2  = diasSelecionados.size;
+    const btn2 = document.getElementById('btn-ok-cal');
+    btn2.disabled    = false;
+    btn2.textContent = n2 > 0 ? `OK (${n2})` : 'OK';
+    return;
+  }
   const state = diasSelecionados.get(key);
   if (!state) {
     diasSelecionados.set(key, 'full');
@@ -283,15 +325,28 @@ function toggleDia(key) {
 }
 
 async function confirmarDias() {
-  const diaria  = funcionarioAtual.salario || 0;
-  const docId   = funcionarioAtual.id || funcionarioAtual.nome;
-  const dias = [...diasSelecionados.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([key, state]) => {
-      const [, mes, dia] = key.split('-');
-      const meio = state === 'half';
-      return { localId: `${dia}/${mes}${meio ? ' ½' : ''}`, valor: meio ? diaria / 2 : diaria };
-    });
+  const docId = funcionarioAtual.id || funcionarioAtual.nome;
+  let dias, diaria;
+
+  if (modoDiariaHoras) {
+    diaria = 0;
+    dias = [...diasSelecionados.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([key, horas]) => {
+        const [, mes, dia] = key.split('-');
+        const valor = Math.round(horas * VALOR_HORA_PINTOR * 100) / 100;
+        return { localId: `${dia}/${mes}`, valor, horas };
+      });
+  } else {
+    diaria = funcionarioAtual.salario || 0;
+    dias = [...diasSelecionados.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([key, state]) => {
+        const [, mes, dia] = key.split('-');
+        const meio = state === 'half';
+        return { localId: `${dia}/${mes}${meio ? ' ½' : ''}`, valor: meio ? diaria / 2 : diaria };
+      });
+  }
 
   const docRef = db.collection('diarias').doc(docId);
   if (dias.length === 0) {
@@ -345,9 +400,30 @@ function selecionarFuncionario(func) {
   servicosSelecionados.clear();
   document.getElementById('func-atual').textContent = func.nome;
   atualizarBtnOk();
+  const cargo = (func.cargo || '').toLowerCase();
   if (ehAjudante(func.cargo)) {
+    modoDiariaHoras = false;
     abrirCalendario(func);
+  } else if (cargo.includes('pintor')) {
+    document.getElementById('modal-tipo-nome').textContent = func.nome;
+    document.getElementById('modal-tipo-pintor').classList.add('ativa');
   } else {
+    modoDiariaHoras = false;
+    mostrarView('view-mapa');
+  }
+}
+
+function fecharModalTipoPintor() {
+  document.getElementById('modal-tipo-pintor').classList.remove('ativa');
+}
+
+function escolherTipoPintor(tipo) {
+  fecharModalTipoPintor();
+  if (tipo === 'diaria') {
+    modoDiariaHoras = true;
+    abrirCalendario(funcionarioAtual);
+  } else {
+    modoDiariaHoras = false;
     mostrarView('view-mapa');
   }
 }
@@ -656,11 +732,13 @@ function renderizarFolha() {
       </div>`;
   }
 
-  // ── Grupos de produção ──
+  // ── Grupos de produção ── (diárias e produção ficam em tabelas separadas,
+  // já que um pintor pode ter os dois tipos de lançamento na mesma folha)
   const grupos = new Map();
   entradas.forEach((e, idx) => {
-    const key = e.funcionario.id || e.funcionario.nome;
-    if (!grupos.has(key)) grupos.set(key, { funcionario: e.funcionario, itens: [] });
+    const ehDiaria = !e.firestoreLocalId;
+    const key = `${e.funcionario.id || e.funcionario.nome}::${ehDiaria ? 'diaria' : 'prod'}`;
+    if (!grupos.has(key)) grupos.set(key, { funcionario: e.funcionario, itens: [], isDiaria: ehDiaria });
     grupos.get(key).itens.push({ ...e, _idx: idx });
   });
 
@@ -668,7 +746,7 @@ function renderizarFolha() {
   const totalGeral    = totalProducao + valorEncarregado;
 
   const gruposHtml = [...grupos.values()].map(g => {
-    const isAjud   = ehAjudante(g.funcionario.cargo);
+    const isAjud   = g.isDiaria;
     const subtotal = g.itens.reduce((acc, e) => acc + Number(e.valor), 0);
     const linhas   = g.itens.map(e => isAjud ? `
       <tr>
@@ -758,7 +836,8 @@ async function salvarFolha(silencioso = false, completarAjudantes = true) {
           entradas.filter(e => !e.firestoreLocalId).map(e => e.funcionario.id || e.funcionario.nome)
         );
         (fDoc.data().grupos || []).forEach(g => {
-          if (g.isEncarregado || !ehAjudante(g.funcionario.cargo)) return;
+          const ehGrupoDiarista = (g.itens || []).length > 0 && (g.itens || []).every(it => !it.firestoreLocalId);
+          if (g.isEncarregado || !ehGrupoDiarista) return;
           const key = g.funcionario.id || g.funcionario.nome;
           if (ajudantesJaCarregados.has(key)) return;
           (g.itens || []).forEach(item => {
@@ -914,12 +993,14 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
     const adiant = adiantamentosMap.get((g.funcionario.nome || '').normalize('NFC')) || 0;
     const liquido = sub - adiant;
     if (adiant > 0) totalDeducoes += adiant;
-    const isAjud = ehAjudante(g.funcionario.cargo);
-    const itens  = g.itens.map(e => `
+    const itens  = g.itens.map(e => {
+      const isProd = !!e.firestoreLocalId;
+      return `
       <div class="cp-item">
-        <span>${escHtml(e.localId)} · ${escHtml(isAjud ? e.servico : nomeExibicaoServico(e.servico))}${!isAjud && e.dataRegistro ? `<span style="color:#4a8a5a;font-size:0.65rem;margin-left:4px">${escHtml(e.dataRegistro)}</span>` : ''}</span>
+        <span>${escHtml(e.localId)} · ${escHtml(isProd ? nomeExibicaoServico(e.servico) : e.servico)}${isProd && e.dataRegistro ? `<span style="color:#4a8a5a;font-size:0.65rem;margin-left:4px">${escHtml(e.dataRegistro)}</span>` : ''}</span>
         <span>${fmtMoeda(e.valor)}</span>
-      </div>`).join('');
+      </div>`;
+    }).join('');
     const adiantHtml = adiant > 0 ? `
       <div class="cp-item" style="color:#c62828">
         <span>(-) Adiantamento</span>
@@ -1088,7 +1169,8 @@ async function verRelatorio() {
       if (!grupos.has(key)) grupos.set(key, { funcionario: func, itens: [] });
       (doc.dias || []).forEach(d => {
         grupos.get(key).itens.push({
-          funcionario: func, firestoreLocalId: '', localId: d.localId, servico: 'Diária', valor: d.valor
+          funcionario: func, firestoreLocalId: '', localId: d.localId,
+          servico: d.horas ? `Diária (${d.horas}h)` : 'Diária', valor: d.valor
         });
       });
     });

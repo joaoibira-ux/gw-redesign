@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Folha de Pagamento da Produção</title>
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <link rel="stylesheet" href="style.css?v=4.20">
+  <link rel="stylesheet" href="style.css?v=4.21">
   <style>
     html.gw-blocked body > *:not(#aviso-instalacao) { display: none !important; }
     #aviso-instalacao {
@@ -131,6 +131,17 @@
     <div id="cal-grid" class="cal-grid"></div>
   </div>
 
+  <!-- Modal: tipo de registro do pintor -->
+  <div id="modal-tipo-pintor" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-titulo">Como deseja registrar?</div>
+      <div class="modal-nome" id="modal-tipo-nome"></div>
+      <button class="modal-btn modal-btn-diaria" onclick="escolherTipoPintor('diaria')">Diária</button>
+      <button class="modal-btn modal-btn-producao" onclick="escolherTipoPintor('producao')">Produção</button>
+      <button class="modal-btn modal-btn-cancelar" onclick="fecharModalTipoPintor()">Cancelar</button>
+    </div>
+  </div>
+
   <!-- View 4: Folha Preview -->
   <div id="view-folha" class="view">
     <div id="folha-documento"></div>
@@ -145,7 +156,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
-  <script src="app.js?v=4.69"></script>
+  <script src="app.js?v=4.70"></script>
   <script>
     if (document.documentElement.classList.contains('gw-blocked')) {
       (function() {
