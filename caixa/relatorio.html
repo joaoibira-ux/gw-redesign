@@ -833,22 +833,6 @@
       return;
     }
 
-    const ontem = new Date(agora);
-    ontem.setDate(ontem.getDate() - 1);
-    const dd   = String(ontem.getDate()).padStart(2, "0");
-    const mm   = String(ontem.getMonth() + 1).padStart(2, "0");
-    const yyyy = String(ontem.getFullYear());
-    const dataBR       = `${dd}/${mm}/${yyyy}`;
-    const dataSemBarra = `${dd}${mm}${yyyy}`;
-
-    const temLancamentosOntem = todosOsDocs.some(r => r.data === dataBR || r.data === dataSemBarra);
-    if (!temLancamentosOntem) {
-      // Nada para enviar hoje — marca como feito para não verificar de novo
-      try { await configRef.set({ ultimaData: chave }); } catch(e) {}
-      marcarFeito();
-      return;
-    }
-
     setTimeout(async () => {
       const ok = await capturarEEnviarTelegram();
       if (ok) {
