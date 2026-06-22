@@ -491,7 +491,7 @@ exports.extrairMedicoes = onCall(
 );
 
 exports.relatorioPontoWhatsApp = onCall(
-  { secrets: [whatsappToken], cors: true },
+  { secrets: [whatsappToken], cors: true, invoker: "public" },
   async () => {
     const hoje = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
     const statusRef = db.collection("relatoriosPonto").doc(hoje);
