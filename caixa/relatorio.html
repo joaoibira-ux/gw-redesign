@@ -814,8 +814,8 @@
   }
 
   // Backup diário automático: disparado pelo menu GW ao acessar o sistema (?autobackup=1)
-  // Importante: só marca como "feito" (Firestore + localStorage) DEPOIS de confirmar o envio.
-  // Assim, se o app for fechado/trocado antes de terminar, tenta de novo na próxima abertura.
+  // Usa transação no Firestore para reservar o envio do dia de forma atômica — evita que
+  // dois dispositivos abrindo o sistema quase ao mesmo tempo disparem o envio duplicado.
   async function verificarBackupDiario() {
     const agora = new Date();
     const chave = `${agora.getFullYear()}-${String(agora.getMonth()+1).padStart(2,"0")}-${String(agora.getDate()).padStart(2,"0")}`;
@@ -824,22 +824,31 @@
       try { localStorage.setItem('gw_backup_disparado', chave); } catch(e) {}
     }
 
-    // Controle no Firestore — compartilhado entre todos os dispositivos
+    if (localStorage.getItem('gw_backup_disparado') === chave) return;
+
     const configRef = db.collection("config").doc("backupDiario");
+    let reservado = false;
     try {
-      const snap = await configRef.get();
-      if (snap.exists && snap.data().ultimaData === chave) { marcarFeito(); return; }
+      await db.runTransaction(async tx => {
+        const snap = await tx.get(configRef);
+        if (snap.exists && snap.data().ultimaData === chave) return;
+        tx.set(configRef, { ultimaData: chave });
+        reservado = true;
+      });
     } catch(e) {
       return;
     }
 
+    if (!reservado) { marcarFeito(); return; }
+
     setTimeout(async () => {
       const ok = await capturarEEnviarTelegram();
       if (ok) {
-        try { await configRef.set({ ultimaData: chave }); } catch(e) {}
         marcarFeito();
+      } else {
+        // falhou depois de reservar — libera a reserva pra tentar de novo na próxima abertura
+        try { await configRef.delete(); } catch(e) {}
       }
-      // se falhar, não marca nada — tenta de novo na próxima abertura do sistema
     }, 3000);
   }
 
