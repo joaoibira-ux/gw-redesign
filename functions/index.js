@@ -532,15 +532,17 @@ exports.relatorioPontoWhatsApp = onCall(
         template: {
           name: "relatorio_ponto_diario",
           language: { code: "pt_BR" },
-          components: [{ type: "body", parameters: [{ type: "text", text: texto }] }]
+          components: [{ type: "body", parameters: [{ type: "text", parameter_name: "relatorio", text: texto }] }]
         }
       })
     });
 
-    const result = await resp.json();
-    if (!resp.ok) {
-      console.error("Erro ao enviar WhatsApp:", JSON.stringify(result));
-      throw new HttpsError("internal", "Falha ao enviar WhatsApp: " + (result.error?.message || resp.status));
+    const respText = await resp.text();
+    let result;
+    try { result = JSON.parse(respText); } catch { result = null; }
+    if (!resp.ok || !result) {
+      console.error("Erro ao enviar WhatsApp:", resp.status, respText.slice(0, 500));
+      throw new HttpsError("internal", "Falha ao enviar WhatsApp: " + (result?.error?.message || `status ${resp.status}`));
     }
 
     await statusRef.set({ enviado: true, enviadoEm: admin.firestore.FieldValue.serverTimestamp(), totalEntradas: snap.size });
