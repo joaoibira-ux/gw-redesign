@@ -80,6 +80,18 @@ const TOOLS_GW = [
     }
   },
   {
+    name: "cancelar_ponto",
+    description: "Cancela (exclui) um registro de ponto já existente. Use consultar_ponto antes para obter o id do registro correto. ALTERA O BANCO DE DADOS: exige o campo senha, que deve ser pedido ao usuário antes de chamar esta ferramenta.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id:    { type: "string", description: "ID do registro de ponto (obtido via consultar_ponto)" },
+        senha: { type: "string", description: "Senha de autorização para alterar o banco de dados. Deve ser pedida ao usuário antes de chamar esta ferramenta." }
+      },
+      required: ["id", "senha"]
+    }
+  },
+  {
     name: "consultar_caixa",
     description: "Consulta lançamentos do caixa (entradas e saídas) com filtros opcionais por período, origem ou palavra-chave na descrição. Também calcula saldo.",
     input_schema: {
@@ -212,8 +224,21 @@ async function executarFerramenta(nome, input) {
       const dd = d.data();
       const ts = dd.timestamp.toDate();
       const hora = ts.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
-      return { tipo: dd.tipo, hora };
+      return { id: d.id, tipo: dd.tipo, hora };
     });
+  }
+
+  if (nome === "cancelar_ponto") {
+    const { id, senha } = input;
+    if (senha !== SENHA_ALTERACAO_BANCO) {
+      return { sucesso: false, erro: "senha_invalida", mensagem: "Senha incorreta. Peça a senha de autorização ao usuário para alterar o banco de dados." };
+    }
+    const ref = db.collection("pontos").doc(id);
+    const doc = await ref.get();
+    if (!doc.exists) return { sucesso: false, erro: "nao_encontrado", mensagem: "Registro de ponto não encontrado." };
+
+    await ref.delete();
+    return { sucesso: true, id };
   }
 
   if (nome === "consultar_caixa") {
@@ -363,8 +388,9 @@ Hoje é ${hoje} (${hojeISO}).
 Responda sempre em português brasileiro, de forma direta e confirmando o que foi feito.
 Quando o usuário mencionar um nome incompleto de funcionário, use listar_funcionarios primeiro para encontrar o ID correto.
 Códigos de locais/apartamentos (ex: BM 06, BM06, BM006, BM 006, Bm 06) são equivalentes — passe o código exatamente como o usuário digitou, o sistema normaliza automaticamente.
-IMPORTANTE: qualquer ferramenta que altere o banco de dados (ex: registrar_ponto, criar_lancamento_caixa, editar_lancamento_caixa, excluir_lancamento_caixa) exige uma senha de autorização. Antes de chamar essa ferramenta, sempre pergunte ao usuário "Qual a senha de autorização para alterar o banco de dados?" e só prossiga depois que ele informar a senha. Nunca invente, sugira ou revele a senha.
-Para editar ou excluir um lançamento do caixa, use consultar_caixa primeiro para encontrar o id correto e confirme com o usuário qual lançamento é (data, descrição e valor) antes de aplicar a alteração.`;
+IMPORTANTE: qualquer ferramenta que altere o banco de dados (ex: registrar_ponto, cancelar_ponto, criar_lancamento_caixa, editar_lancamento_caixa, excluir_lancamento_caixa) exige uma senha de autorização. Antes de chamar essa ferramenta, sempre pergunte ao usuário "Qual a senha de autorização para alterar o banco de dados?" e só prossiga depois que ele informar a senha. Nunca invente, sugira ou revele a senha.
+Para editar ou excluir um lançamento do caixa, use consultar_caixa primeiro para encontrar o id correto e confirme com o usuário qual lançamento é (data, descrição e valor) antes de aplicar a alteração.
+Para cancelar um registro de ponto, use consultar_ponto primeiro para encontrar o id correto e confirme com o usuário qual registro é (funcionário, tipo e horário) antes de cancelar.`;
 
     const messages = [
       ...historico.slice(-8),
