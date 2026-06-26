@@ -543,7 +543,7 @@ exports.relatorioPontoWhatsApp = onCall(
       const x = d.data();
       const hora = x.timestamp.toDate().toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
       return `${x.funcionarioNome} - Entrada ${hora}`;
-    }).join("\n");
+    }).join(" "); // WhatsApp rejeita quebra de linha literal em parametros de template
 
     const resp = await fetch(`https://graph.facebook.com/v25.0/${WHATSAPP_PHONE_ID}/messages`, {
       method: "POST",
