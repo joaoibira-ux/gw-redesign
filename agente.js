@@ -41,6 +41,9 @@
       border-radius: 20px 20px 0 0;
       display: flex;
       flex-direction: column;
+      width: 100%;
+      max-width: 420px;
+      margin: 0 auto;
       max-height: 70dvh;
       box-shadow: 0 -4px 24px rgba(0,0,0,0.25);
       transform: translateY(100%);
@@ -77,20 +80,23 @@
     #agente-msgs {
       flex: 1;
       overflow-y: auto;
+      overflow-x: hidden;
       padding: 12px 14px;
       display: flex;
       flex-direction: column;
       gap: 10px;
+      min-width: 0;
     }
 
     .ag-msg {
       max-width: 88%;
+      min-width: 0;
       padding: 9px 13px;
       border-radius: 14px;
       font-size: 0.88rem;
       line-height: 1.5;
       white-space: pre-wrap;
-      word-break: break-word;
+      overflow-wrap: anywhere;
     }
     .ag-msg.usuario {
       background: #1a6635;
