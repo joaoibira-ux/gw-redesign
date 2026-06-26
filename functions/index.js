@@ -69,14 +69,13 @@ const TOOLS_GW = [
   },
   {
     name: "consultar_ponto",
-    description: "Consulta registros de ponto de um funcionário em uma data",
+    description: "Consulta registros de ponto em uma data. Se funcionarioId for omitido, retorna os registros de TODOS os funcionários naquela data (use para perguntas como 'quem bateu ponto hoje' ou 'ponto de todos').",
     input_schema: {
       type: "object",
       properties: {
-        funcionarioId: { type: "string" },
+        funcionarioId: { type: "string", description: "ID do funcionário. Omita para consultar todos os funcionários." },
         data: { type: "string", description: "Data YYYY-MM-DD (padrão: hoje)" }
-      },
-      required: ["funcionarioId"]
+      }
     }
   },
   {
@@ -215,6 +214,21 @@ async function executarFerramenta(nome, input) {
     const { funcionarioId, data } = input;
     const dataRef = data ? new Date(data + "T00:00:00-03:00") : new Date(new Date().toLocaleDateString("en-CA") + "T00:00:00-03:00");
     const dataFim = new Date(dataRef); dataFim.setHours(23, 59, 59, 999);
+
+    if (!funcionarioId) {
+      const snapTodos = await db.collection("pontos")
+        .where("timestamp", ">=", dataRef)
+        .where("timestamp", "<=", dataFim)
+        .orderBy("timestamp").get();
+      if (snapTodos.empty) return { registros: [], mensagem: "Nenhum registro de ponto nessa data." };
+      return snapTodos.docs.map(d => {
+        const dd = d.data();
+        const ts = dd.timestamp.toDate();
+        const hora = ts.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+        return { id: d.id, funcionarioNome: dd.funcionarioNome, tipo: dd.tipo, hora };
+      });
+    }
+
     const snap = await db.collection("pontos")
       .where("funcionarioId", "==", funcionarioId)
       .where("timestamp", ">=", dataRef)
@@ -390,7 +404,8 @@ Quando o usuário mencionar um nome incompleto de funcionário, use listar_funci
 Códigos de locais/apartamentos (ex: BM 06, BM06, BM006, BM 006, Bm 06) são equivalentes — passe o código exatamente como o usuário digitou, o sistema normaliza automaticamente.
 IMPORTANTE: qualquer ferramenta que altere o banco de dados (ex: registrar_ponto, cancelar_ponto, criar_lancamento_caixa, editar_lancamento_caixa, excluir_lancamento_caixa) exige uma senha de autorização. Antes de chamar essa ferramenta, sempre pergunte ao usuário "Qual a senha de autorização para alterar o banco de dados?" e só prossiga depois que ele informar a senha. Nunca invente, sugira ou revele a senha.
 Para editar ou excluir um lançamento do caixa, use consultar_caixa primeiro para encontrar o id correto e confirme com o usuário qual lançamento é (data, descrição e valor) antes de aplicar a alteração.
-Para cancelar um registro de ponto, use consultar_ponto primeiro para encontrar o id correto e confirme com o usuário qual registro é (funcionário, tipo e horário) antes de cancelar.`;
+Para cancelar um registro de ponto, use consultar_ponto primeiro para encontrar o id correto e confirme com o usuário qual registro é (funcionário, tipo e horário) antes de cancelar.
+Quando o usuário pedir o ponto de "todos", "todos os funcionários" ou não especificar um funcionário, chame consultar_ponto UMA ÚNICA VEZ sem o campo funcionarioId — essa ferramenta já retorna os registros de todos de uma vez. NUNCA chame consultar_ponto repetidamente por funcionário para montar essa lista.`;
 
     const messages = [
       ...historico.slice(-8),
