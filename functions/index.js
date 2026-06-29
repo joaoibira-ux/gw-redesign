@@ -92,6 +92,21 @@ const TOOLS_GW = [
     }
   },
   {
+    name: "editar_ponto",
+    description: "Edita um registro de ponto já existente (tipo, data e/ou horário). Use consultar_ponto antes para obter o id do registro correto e confirme com o usuário o que vai mudar antes de aplicar. Internamente substitui o registro antigo por um novo e mantém um histórico da alteração. ALTERA O BANCO DE DADOS: exige o campo senha, que deve ser pedido ao usuário antes de chamar esta ferramenta.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id:      { type: "string", description: "ID do registro de ponto a editar (obtido via consultar_ponto)" },
+        tipo:    { type: "string", enum: ["entrada", "saida"], description: "Novo tipo (omita para manter o atual)" },
+        data:    { type: "string", description: "Nova data YYYY-MM-DD (omita para manter a atual)" },
+        horario: { type: "string", description: "Novo horário HH:MM (omita para manter o atual)" },
+        senha:   { type: "string", description: "Senha de autorização para alterar o banco de dados. Deve ser pedida ao usuário antes de chamar esta ferramenta." }
+      },
+      required: ["id", "senha"]
+    }
+  },
+  {
     name: "consultar_caixa",
     description: "Consulta lançamentos do caixa (entradas e saídas) com filtros opcionais por período, origem ou palavra-chave na descrição. Também calcula saldo.",
     input_schema: {
@@ -231,7 +246,7 @@ async function executarFerramenta(nome, input) {
         const dd = d.data();
         const ts = dd.timestamp.toDate();
         const hora = ts.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
-        return { id: d.id, funcionarioNome: dd.funcionarioNome, tipo: dd.tipo, hora };
+        return { id: d.id, funcionarioId: dd.funcionarioId, funcionarioNome: dd.funcionarioNome, tipo: dd.tipo, hora };
       });
     }
 
@@ -259,6 +274,51 @@ async function executarFerramenta(nome, input) {
 
     await ref.delete();
     return { sucesso: true, id };
+  }
+
+  if (nome === "editar_ponto") {
+    const { id, tipo, data, horario, senha } = input;
+    if (senha !== SENHA_ALTERACAO_BANCO) {
+      return { sucesso: false, erro: "senha_invalida", mensagem: "Senha incorreta. Peça a senha de autorização ao usuário para alterar o banco de dados." };
+    }
+    const ref = db.collection("pontos").doc(id);
+    const doc = await ref.get();
+    if (!doc.exists) return { sucesso: false, erro: "nao_encontrado", mensagem: "Registro de ponto não encontrado." };
+    const antigo = doc.data();
+
+    const dataBase = data
+      ? new Date(data + "T00:00:00-03:00")
+      : new Date(antigo.timestamp.toDate().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }) + "T00:00:00-03:00");
+
+    let horaRef = horario;
+    if (!horaRef) {
+      horaRef = antigo.timestamp.toDate().toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+    }
+    const [h, m] = horaRef.split(":").map(Number);
+    const novoTimestamp = new Date(dataBase.getTime() + h * 3600000 + m * 60000);
+    const novoTipo = tipo || antigo.tipo;
+
+    await db.collection("pontosHistorico").add({
+      acao: "editado",
+      funcionarioId: antigo.funcionarioId,
+      funcionarioNome: antigo.funcionarioNome,
+      registroAnterior: { tipo: antigo.tipo, timestamp: antigo.timestamp },
+      registroNovo: { tipo: novoTipo, timestamp: novoTimestamp },
+      realizadoEm: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    await ref.delete();
+    const novoRef = await db.collection("pontos").add({
+      funcionarioId: antigo.funcionarioId,
+      funcionarioNome: antigo.funcionarioNome,
+      tipo: novoTipo,
+      timestamp: novoTimestamp,
+      localizacao: antigo.localizacao || null
+    });
+
+    const novaHora = novoTimestamp.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+    const novaData = novoTimestamp.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+    return { sucesso: true, idAntigo: id, idNovo: novoRef.id, funcionarioNome: antigo.funcionarioNome, tipo: novoTipo, data: novaData, horario: novaHora };
   }
 
   if (nome === "consultar_caixa") {
@@ -407,10 +467,12 @@ exports.agenteGW = onCall(
 Hoje é ${hoje} (${hojeISO}).
 Responda sempre em português brasileiro, de forma direta e confirmando o que foi feito.
 Quando o usuário mencionar um nome incompleto de funcionário, use listar_funcionarios primeiro para encontrar o ID correto.
+CRÍTICO: funcionarioId é sempre o ID real gerado pelo Firestore (retornado por listar_funcionarios), nunca um valor inventado a partir do nome (ex: "lucas.cristiano" ou "3" NÃO são funcionarioId válidos). Antes de chamar registrar_ponto ou editar_ponto, sempre confirme o funcionarioId real chamando listar_funcionarios — a menos que esse ID já tenha sido retornado por listar_funcionarios nesta mesma conversa. Nunca presuma ou monte um ID.
 Códigos de locais/apartamentos (ex: BM 06, BM06, BM006, BM 006, Bm 06) são equivalentes — passe o código exatamente como o usuário digitou, o sistema normaliza automaticamente.
-IMPORTANTE: qualquer ferramenta que altere o banco de dados (ex: registrar_ponto, cancelar_ponto, criar_lancamento_caixa, editar_lancamento_caixa, excluir_lancamento_caixa) exige uma senha de autorização. Antes de chamar essa ferramenta, sempre pergunte ao usuário "Qual a senha de autorização para alterar o banco de dados?" e só prossiga depois que ele informar a senha. Nunca invente, sugira ou revele a senha.
+IMPORTANTE: qualquer ferramenta que altere o banco de dados (ex: registrar_ponto, editar_ponto, cancelar_ponto, criar_lancamento_caixa, editar_lancamento_caixa, excluir_lancamento_caixa) exige uma senha de autorização. Antes de chamar essa ferramenta, sempre pergunte ao usuário "Qual a senha de autorização para alterar o banco de dados?" e só prossiga depois que ele informar a senha. Nunca invente, sugira ou revele a senha.
 Para editar ou excluir um lançamento do caixa, use consultar_caixa primeiro para encontrar o id correto e confirme com o usuário qual lançamento é (data, descrição e valor) antes de aplicar a alteração.
 Para cancelar um registro de ponto, use consultar_ponto primeiro para encontrar o id correto e confirme com o usuário qual registro é (funcionário, tipo e horário) antes de cancelar.
+Para corrigir um registro de ponto já existente (mudar data, horário ou tipo), use editar_ponto com o id obtido via consultar_ponto — NÃO cancele e registre de novo manualmente em duas chamadas separadas; editar_ponto já faz isso internamente (substitui o registro e guarda um histórico da alteração).
 Quando o usuário pedir para registrar ponto em uma data diferente de hoje (ex: "registre a saída de fulano dia 27/06"), SEMPRE preencha o campo "data" de registrar_ponto com essa data — nunca deixe em branco, senão o registro cai na data de hoje por engano.
 Quando o usuário pedir o ponto de "todos", "todos os funcionários" ou não especificar um funcionário, chame consultar_ponto UMA ÚNICA VEZ sem o campo funcionarioId — essa ferramenta já retorna os registros de todos de uma vez. NUNCA chame consultar_ponto repetidamente por funcionário para montar essa lista.`;
 
