@@ -61,6 +61,7 @@ const TOOLS_GW = [
         funcionarioId:   { type: "string", description: "ID do funcionário" },
         funcionarioNome: { type: "string", description: "Nome completo do funcionário" },
         tipo:            { type: "string", enum: ["entrada", "saida"] },
+        data:            { type: "string", description: "Data YYYY-MM-DD (horário de Brasília). Se omitida, usa a data de hoje." },
         horario:         { type: "string", description: "Horário HH:MM (horário de Brasília). Se omitido, usa a hora atual." },
         senha:           { type: "string", description: "Senha de autorização para alterar o banco de dados. Deve ser pedida ao usuário antes de chamar esta ferramenta." }
       },
@@ -177,27 +178,32 @@ async function executarFerramenta(nome, input) {
   }
 
   if (nome === "registrar_ponto") {
-    const { funcionarioId, funcionarioNome, tipo, horario, senha } = input;
+    const { funcionarioId, funcionarioNome, tipo, data, horario, senha } = input;
     if (senha !== SENHA_ALTERACAO_BANCO) {
       return { sucesso: false, erro: "senha_invalida", mensagem: "Senha incorreta. Peça a senha de autorização ao usuário para alterar o banco de dados." };
     }
+    const dataBase = data
+      ? new Date(data + "T00:00:00-03:00")
+      : new Date(new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }) + "T00:00:00-03:00");
+
     let timestamp;
     if (horario) {
       const [h, m] = horario.split(":").map(Number);
+      timestamp = new Date(dataBase.getTime() + h * 3600000 + m * 60000);
+    } else if (data) {
       const agora = new Date();
-      agora.setUTCHours(h + 3, m, 0, 0);
-      timestamp = agora;
+      timestamp = new Date(dataBase.getTime() + (agora.getUTCHours() * 3600000 + agora.getUTCMinutes() * 60000 + agora.getUTCSeconds() * 1000));
     } else {
       timestamp = new Date();
     }
 
-    const hojeInicio = new Date(); hojeInicio.setHours(0, 0, 0, 0);
-    const hojeFim = new Date(); hojeFim.setHours(23, 59, 59, 999);
+    const diaInicio = dataBase;
+    const diaFim = new Date(dataBase.getTime() + 24 * 3600000 - 1);
     const existente = await db.collection("pontos")
       .where("funcionarioId", "==", funcionarioId)
       .where("tipo", "==", tipo)
-      .where("timestamp", ">=", hojeInicio)
-      .where("timestamp", "<=", hojeFim)
+      .where("timestamp", ">=", diaInicio)
+      .where("timestamp", "<=", diaFim)
       .limit(1).get();
 
     if (!existente.empty) {
@@ -405,6 +411,7 @@ Códigos de locais/apartamentos (ex: BM 06, BM06, BM006, BM 006, Bm 06) são equ
 IMPORTANTE: qualquer ferramenta que altere o banco de dados (ex: registrar_ponto, cancelar_ponto, criar_lancamento_caixa, editar_lancamento_caixa, excluir_lancamento_caixa) exige uma senha de autorização. Antes de chamar essa ferramenta, sempre pergunte ao usuário "Qual a senha de autorização para alterar o banco de dados?" e só prossiga depois que ele informar a senha. Nunca invente, sugira ou revele a senha.
 Para editar ou excluir um lançamento do caixa, use consultar_caixa primeiro para encontrar o id correto e confirme com o usuário qual lançamento é (data, descrição e valor) antes de aplicar a alteração.
 Para cancelar um registro de ponto, use consultar_ponto primeiro para encontrar o id correto e confirme com o usuário qual registro é (funcionário, tipo e horário) antes de cancelar.
+Quando o usuário pedir para registrar ponto em uma data diferente de hoje (ex: "registre a saída de fulano dia 27/06"), SEMPRE preencha o campo "data" de registrar_ponto com essa data — nunca deixe em branco, senão o registro cai na data de hoje por engano.
 Quando o usuário pedir o ponto de "todos", "todos os funcionários" ou não especificar um funcionário, chame consultar_ponto UMA ÚNICA VEZ sem o campo funcionarioId — essa ferramenta já retorna os registros de todos de uma vez. NUNCA chame consultar_ponto repetidamente por funcionário para montar essa lista.`;
 
     const messages = [
