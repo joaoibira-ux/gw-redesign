@@ -115,6 +115,8 @@ function render(docs) {
         interS += r.saida || 0;
       } else if (r.origem === "ANE->ADIANTAMENTO" || r.origem === "ANE->ANTECIPACAO") {
         cefS += r.saida || 0;
+      } else if (r.origem === "JOAO->ADIANTAMENTO" || r.origem === "JOAO->ANTECIPACAO") {
+        interS += r.saida || 0;
       } else if (r.origem === "JOAO->CTAS A RECEBER") {
         interS += r.saida || 0;
       } else if (r.origem === "JOAO->BAIXA CTAS A RECEBER") {
@@ -313,7 +315,8 @@ const ORIGEM_GRUPOS = {
     { value: "JOAO->CTAS A RECEBER", label: "JOÃO → CTAS A RECEBER" },
     { value: "JOAO->BAIXA CTAS A RECEBER", label: "JOÃO → BAIXA CTAS A RECEBER" },
     { value: "JOAO->CTAS A PAGAR", label: "JOÃO → CTAS A PAGAR" },
-    { value: "JOAO->BAIXA CTAS A PAGAR", label: "JOÃO → BAIXA CTAS A PAGAR" }
+    { value: "JOAO->BAIXA CTAS A PAGAR", label: "JOÃO → BAIXA CTAS A PAGAR" },
+    { value: "JOAO->ADIANTAMENTO", label: "ADIANTAMENTO DE SALÁRIO (Debita do Inter)" }
   ]
 };
 
@@ -349,7 +352,7 @@ document.getElementById("f-origem").addEventListener("change", function() {
   contaReceberSelecionada = null;
   contaPagarSelecionada = null;
 
-  if (this.value === "ANE->ADIANTAMENTO") {
+  if (this.value === "ANE->ADIANTAMENTO" || this.value === "JOAO->ADIANTAMENTO") {
     if (autoDescs.includes(desc.value)) desc.value = "";
     abrirPickerFuncionario();
     return;
@@ -387,7 +390,7 @@ document.getElementById("f-origem").addEventListener("change", function() {
     saida.readOnly = true;
     Promise.all([
       db.collection("folhas").orderBy("criadoEm", "desc").limit(1).get(),
-      db.collection("lancamentos").where("origem", "==", "ANE->ADIANTAMENTO").get(),
+      db.collection("lancamentos").where("origem", "in", ["ANE->ADIANTAMENTO", "JOAO->ADIANTAMENTO"]).get(),
       db.collection("locais").get(),
       db.collection("servicos").get(),
       db.collection("diarias").get()
@@ -623,7 +626,7 @@ function pagarFolha(data, desc, saida) {
   Promise.all([
     db.collection("locais").get(),
     db.collection("diarias").get(),
-    db.collection("lancamentos").where("origem", "==", "ANE->ADIANTAMENTO").get()
+    db.collection("lancamentos").where("origem", "in", ["ANE->ADIANTAMENTO", "JOAO->ADIANTAMENTO"]).get()
   ]).then(([locaisSnap, diariasSnap, adiantSnap]) => {
     const batch = db.batch();
 
@@ -666,8 +669,11 @@ function pagarFolha(data, desc, saida) {
     // Zera o crédito dos diaristas no calendário da folha (pago junto com esta folha)
     diariasSnap.docs.forEach(doc => batch.delete(doc.ref));
 
-    // Adiantamentos já descontados nesta folha não entram na próxima
-    adiantSnap.docs.forEach(doc => batch.update(doc.ref, { origem: "ANE->ANTECIPACAO" }));
+    // Adiantamentos já descontados nesta folha não entram na próxima (preserva a origem ANE/JOAO)
+    adiantSnap.docs.forEach(doc => {
+      const novaOrigem = doc.data().origem === "JOAO->ADIANTAMENTO" ? "JOAO->ANTECIPACAO" : "ANE->ANTECIPACAO";
+      batch.update(doc.ref, { origem: novaOrigem });
+    });
 
     batch.commit().catch(() => alert("Erro ao registrar pagamento. Tente novamente."));
   });

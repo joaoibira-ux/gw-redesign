@@ -1055,6 +1055,8 @@
         cefS += r.saida || 0;
       } else if (r.origem === "ANE->ADIANTAMENTO" || r.origem === "ANE->ANTECIPACAO") {
         cefS += r.saida || 0;
+      } else if (r.origem === "JOAO->ADIANTAMENTO" || r.origem === "JOAO->ANTECIPACAO") {
+        interS += r.saida || 0;
       } else if (r.origem === "ANE") {
         cefE += r.entrada || 0;
         cefS += r.saida   || 0;
@@ -1361,7 +1363,7 @@
   });
 
   db.collection('diarias').onSnapshot(snap => { _diariasSnap = snap; renderPrevisaoFolha(); });
-  db.collection('lancamentos').where('origem','==','ANE->ADIANTAMENTO').onSnapshot(snap => { _adiantSnap = snap; renderPrevisaoFolha(); });
+  db.collection('lancamentos').where('origem','in',['ANE->ADIANTAMENTO','JOAO->ADIANTAMENTO']).onSnapshot(snap => { _adiantSnap = snap; renderPrevisaoFolha(); });
 </script>
 <div class="rotate-overlay" id="rotate-overlay">
   <div class="rotate-icon">⟳</div>
