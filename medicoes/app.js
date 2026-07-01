@@ -7,13 +7,22 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "2.2";
+const VERSAO = "2.3";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
 const db  = firebase.firestore();
 const col = db.collection("medicoes");
 const extrairMedicoesFn = firebase.functions().httpsCallable("extrairMedicoes");
+const storage = firebase.storage();
+
+let currentImagemUrl = null;
+
+async function uploadImagemMedicao(file) {
+  const ref = storage.ref(`medicoes/${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`);
+  await ref.put(file);
+  return await ref.getDownloadURL();
+}
 
 function escHtml(s) {
   return String(s || "")
@@ -140,7 +149,11 @@ document.getElementById("input-foto").addEventListener("change", async function(
 
   mostrarLoading(true);
   try {
-    const imageBase64 = await lerImagemComoBase64(file);
+    const [imageBase64, imagemUrl] = await Promise.all([
+      lerImagemComoBase64(file),
+      uploadImagemMedicao(file)
+    ]);
+    currentImagemUrl = imagemUrl;
     const resp = await extrairMedicoesFn({ imageBase64, mimeType: "image/jpeg" });
     const dados = resp.data || {};
     if (!dados.itens || dados.itens.length === 0) {
@@ -150,6 +163,7 @@ document.getElementById("input-foto").addEventListener("change", async function(
   } catch (err) {
     console.error(err);
     alert("Erro ao processar imagem: " + (err.message || err));
+    currentImagemUrl = null;
   } finally {
     mostrarLoading(false);
   }
@@ -209,6 +223,7 @@ function removerLinhaRevisao(i) {
 
 function cancelarRevisao() {
   itensRevisao = [];
+  currentImagemUrl = null;
   document.getElementById("overlay-revisao").style.display = "none";
 }
 
@@ -240,10 +255,12 @@ function salvarRevisao() {
     descontos: parseMoeda(document.getElementById("rv-descontos").value),
     valorNotaFiscal: parseMoeda(document.getElementById("rv-notafiscal").value),
     itens,
+    imagemUrl: currentImagemUrl || null,
     criadoEm: firebase.firestore.FieldValue.serverTimestamp()
   });
 
   itensRevisao = [];
+  currentImagemUrl = null;
   document.getElementById("overlay-revisao").style.display = "none";
 }
 
@@ -275,6 +292,10 @@ function abrirDetalhe(id) {
           </div>`;
       }).join("")
     : '<p class="revisao-sub">Nenhum item.</p>';
+
+  const btnVerFoto = document.getElementById("btn-ver-foto");
+  btnVerFoto.style.display = m.imagemUrl ? "block" : "none";
+  btnVerFoto.onclick = () => window.open(m.imagemUrl, "_blank");
 
   document.getElementById("overlay-detalhe").style.display = "flex";
 }
