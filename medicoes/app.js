@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "2.5";
+const VERSAO = "2.6";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -41,6 +41,11 @@ function fmtQtd(v) {
   return v % 1 === 0 ? String(v) : v.toFixed(2).replace(".", ",");
 }
 
+function ehTratamento(m) {
+  if ((m.itens || []).some(it => it.apartamento === "1.0")) return true;
+  return /^bmt/i.test(m.nome || "");
+}
+
 function parseMoeda(s) {
   const v = parseFloat(String(s).replace(/[^\d,.-]/g, "").replace(",", "."));
   return isNaN(v) ? 0 : v;
@@ -65,7 +70,7 @@ function render(docs) {
   docs.forEach(doc => {
     const m = doc.data();
     docsCache[doc.id] = m;
-    totalMedido += m.valor || 0;
+    if (!ehTratamento(m)) totalMedido += m.valor || 0;
   });
   document.getElementById("tot-medido").textContent = fmtMoeda(totalMedido);
 
@@ -76,6 +81,7 @@ function render(docs) {
 
   lista.innerHTML = docs.map(doc => {
     const m = doc.data();
+    const trat = ehTratamento(m);
     return `
       <div class="card" onclick="abrirDetalhe('${doc.id}')">
         <div class="card-acoes">
@@ -83,7 +89,7 @@ function render(docs) {
         </div>
         <div class="card-top">
           <div class="card-desc">${escHtml(m.nome || "(sem nome)")}</div>
-          <div class="card-valor">${fmtMoeda(m.valorNotaFiscal)}</div>
+          <div class="card-valor${trat ? " trat" : ""}">${fmtMoeda(m.valorNotaFiscal)}</div>
         </div>
         <div class="card-meta">
           <span>${escHtml(m.data)}</span>

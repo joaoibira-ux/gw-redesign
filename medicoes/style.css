@@ -99,6 +99,10 @@ header {
   color: #c62828;
 }
 
+.card-valor.trat {
+  color: #2e7d32;
+}
+
 .card.negativo {
   border-left-color: #c62828;
 }
