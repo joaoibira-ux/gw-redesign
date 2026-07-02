@@ -40,10 +40,12 @@ Extraia um objeto JSON com 4 campos:
 
 Todos os valores numéricos devem ser números decimais positivos (ponto como separador decimal, sem R$ e sem separador de milhar).
 
-Retorne APENAS um objeto JSON (sem texto antes ou depois, sem markdown) no seguinte formato:
-{"itens":[{"apartamento":"1.1","servico":"Revestimento de gesso em pasta (Sala, área e quartos)","quantidade":80.00,"valor":14400.00}], "total":24959.70, "descontos":3352.00, "aPagar":21607.70}
+5. "descricaoBoletim": o valor do campo DESCRIÇÃO do cabeçalho do boletim (aparece no topo da folha junto com CNO, EMAIL, MÊS DA MEDIÇÃO). Ex: "Tratamento de superfície". Se não houver, use "".
 
-Se não conseguir identificar a tabela, retorne {"itens":[],"total":0,"descontos":0,"aPagar":0}.`;
+Retorne APENAS um objeto JSON (sem texto antes ou depois, sem markdown) no seguinte formato:
+{"descricaoBoletim":"Tratamento de superfície","itens":[{"apartamento":"1.1","servico":"Revestimento de gesso em pasta (Sala, área e quartos)","quantidade":80.00,"valor":14400.00}], "total":24959.70, "descontos":3352.00, "aPagar":21607.70}
+
+Se não conseguir identificar a tabela, retorne {"descricaoBoletim":"","itens":[],"total":0,"descontos":0,"aPagar":0}.`;
 
 // ── AGENTE GW ──────────────────────────────────────────────────────────────
 
@@ -672,13 +674,20 @@ exports.extrairMedicoes = onCall(
       throw new HttpsError("internal", "A IA retornou um formato inválido.");
     }
 
+    const ehTratamento = String(resultado.descricaoBoletim || "")
+      .toLowerCase().includes("tratamento de superf");
+
     const itens = (resultado.itens || [])
-      .map(it => ({
-        apartamento: String(it.apartamento || "").trim(),
-        servico: String(it.servico || "").trim(),
-        quantidade: Number(it.quantidade) || 0,
-        valor: Number(it.valor) || 0
-      }))
+      .map(it => {
+        let ap = String(it.apartamento || "").trim();
+        if (ehTratamento && ap === "1.1") ap = "1.0";
+        return {
+          apartamento: ap,
+          servico: String(it.servico || "").trim(),
+          quantidade: Number(it.quantidade) || 0,
+          valor: Number(it.valor) || 0
+        };
+      })
       .filter(it => it.apartamento && it.servico && it.valor !== 0);
 
     return {
