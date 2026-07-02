@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "2.4";
+const VERSAO = "2.5";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -291,11 +291,18 @@ function abrirDetalhe(id) {
   document.getElementById("dt-descontos").value = (m.descontos || 0).toFixed(2).replace(".", ",");
   document.getElementById("dt-notafiscal").value = (m.valorNotaFiscal || 0).toFixed(2).replace(".", ",");
 
+  // Apenas romaneios até o atual (inclusive), por ordem cronológica
+  const currentTs = m.criadoEm ? m.criadoEm.toMillis() : 0;
+  const docsAte = Object.values(docsCache).filter(d => {
+    const ts = d.criadoEm ? d.criadoEm.toMillis() : 0;
+    return ts <= currentTs;
+  });
+
   // Valores computados
   const valorMedido = m.valor || 0;
   const retencao = valorMedido * 0.05;
   const nf95 = valorMedido * 0.95;
-  const retencaoAcum = Object.values(docsCache).reduce((s, d) => s + (d.valor || 0) * 0.05, 0);
+  const retencaoAcum = docsAte.reduce((s, d) => s + (d.valor || 0) * 0.05, 0);
 
   document.getElementById("dt-info-grid").innerHTML = `
     <div class="dt-info-item">
@@ -311,9 +318,9 @@ function abrirDetalhe(id) {
       <span class="dt-info-valor dt-info-ret">${fmtMoeda(retencaoAcum)}</span>
     </div>`;
 
-  // Qtd acumulada por item (código apartamento)
+  // Qtd acumulada por item — só romaneios até o atual
   const qtdAcumMap = {};
-  Object.values(docsCache).forEach(d => {
+  docsAte.forEach(d => {
     (d.itens || []).forEach(it => {
       if (it.apartamento && it.quantidade) {
         qtdAcumMap[it.apartamento] = (qtdAcumMap[it.apartamento] || 0) + (it.quantidade || 0);
