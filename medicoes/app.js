@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "2.3";
+const VERSAO = "2.4";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -34,6 +34,11 @@ function fmtMoeda(v) {
   v = v || 0;
   const sinal = v < 0 ? "- " : "";
   return sinal + "R$ " + Math.abs(v).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+function fmtQtd(v) {
+  if (!v) return "0";
+  return v % 1 === 0 ? String(v) : v.toFixed(2).replace(".", ",");
 }
 
 function parseMoeda(s) {
@@ -175,8 +180,8 @@ let itensRevisao = [];
 
 function abrirRevisao(dados) {
   itensRevisao = (dados.itens && dados.itens.length > 0)
-    ? dados.itens.map(it => ({ apartamento: it.apartamento || "", servico: it.servico || "", valor: it.valor || 0 }))
-    : [{ apartamento: "", servico: "", valor: 0 }];
+    ? dados.itens.map(it => ({ apartamento: it.apartamento || "", servico: it.servico || "", quantidade: it.quantidade || 0, valor: it.valor || 0 }))
+    : [{ apartamento: "", servico: "", quantidade: 0, valor: 0 }];
 
   document.getElementById("rv-nome").value = "";
   document.getElementById("rv-data").value = hoje();
@@ -202,22 +207,28 @@ function renderRevisao() {
           <label>Serviço</label>
           <input type="text" value="${escHtml(it.servico)}" oninput="itensRevisao[${i}].servico = this.value" />
         </div>
-        <div>
-          <label>Valor (R$)</label>
-          <input type="text" inputmode="decimal" value="${(it.valor || 0).toFixed(2).replace(".", ",")}" oninput="itensRevisao[${i}].valor = parseMoeda(this.value)" />
+        <div style="display:flex;gap:8px">
+          <div style="flex:1">
+            <label>Qtd</label>
+            <input type="text" inputmode="decimal" value="${fmtQtd(it.quantidade || 0)}" oninput="itensRevisao[${i}].quantidade = parseMoeda(this.value)" />
+          </div>
+          <div style="flex:2">
+            <label>Valor (R$)</label>
+            <input type="text" inputmode="decimal" value="${(it.valor || 0).toFixed(2).replace(".", ",")}" oninput="itensRevisao[${i}].valor = parseMoeda(this.value)" />
+          </div>
         </div>
       </div>
     </div>`).join("");
 }
 
 function adicionarLinhaRevisao() {
-  itensRevisao.push({ apartamento: "", servico: "", valor: 0 });
+  itensRevisao.push({ apartamento: "", servico: "", quantidade: 0, valor: 0 });
   renderRevisao();
 }
 
 function removerLinhaRevisao(i) {
   itensRevisao.splice(i, 1);
-  if (itensRevisao.length === 0) itensRevisao.push({ apartamento: "", servico: "", valor: 0 });
+  if (itensRevisao.length === 0) itensRevisao.push({ apartamento: "", servico: "", quantidade: 0, valor: 0 });
   renderRevisao();
 }
 
@@ -245,6 +256,7 @@ function salvarRevisao() {
     .map(it => ({
       apartamento: it.apartamento.trim(),
       servico: it.servico.trim(),
+      quantidade: it.quantidade || 0,
       valor: it.valor
     }));
 
@@ -279,15 +291,51 @@ function abrirDetalhe(id) {
   document.getElementById("dt-descontos").value = (m.descontos || 0).toFixed(2).replace(".", ",");
   document.getElementById("dt-notafiscal").value = (m.valorNotaFiscal || 0).toFixed(2).replace(".", ",");
 
+  // Valores computados
+  const valorMedido = m.valor || 0;
+  const retencao = valorMedido * 0.05;
+  const nf95 = valorMedido * 0.95;
+  const retencaoAcum = Object.values(docsCache).reduce((s, d) => s + (d.valor || 0) * 0.05, 0);
+
+  document.getElementById("dt-info-grid").innerHTML = `
+    <div class="dt-info-item">
+      <span class="dt-info-label">NF (95%)</span>
+      <span class="dt-info-valor">${fmtMoeda(nf95)}</span>
+    </div>
+    <div class="dt-info-item">
+      <span class="dt-info-label">Retenção (5%)</span>
+      <span class="dt-info-valor dt-info-ret">${fmtMoeda(retencao)}</span>
+    </div>
+    <div class="dt-info-item">
+      <span class="dt-info-label">Ret. Acumulada</span>
+      <span class="dt-info-valor dt-info-ret">${fmtMoeda(retencaoAcum)}</span>
+    </div>`;
+
+  // Qtd acumulada por item (código apartamento)
+  const qtdAcumMap = {};
+  Object.values(docsCache).forEach(d => {
+    (d.itens || []).forEach(it => {
+      if (it.apartamento && it.quantidade) {
+        qtdAcumMap[it.apartamento] = (qtdAcumMap[it.apartamento] || 0) + (it.quantidade || 0);
+      }
+    });
+  });
+
   const itens = m.itens || [];
   const cont = document.getElementById("detalhe-itens");
   cont.innerHTML = itens.length > 0
     ? itens.map(it => {
         const negativo = (it.valor || 0) < 0;
         const badge = it.apartamento ? `<span class="card-item-badge">${escHtml(it.apartamento)}</span>` : "";
+        const qtd = it.quantidade || 0;
+        const qtdAcum = qtdAcumMap[it.apartamento] || 0;
+        const mostraQtd = qtd > 0 || qtdAcum > 0;
         return `
           <div class="detalhe-item">
-            <span>${badge}${escHtml(it.servico)}</span>
+            <div class="detalhe-item-info">
+              <span>${badge}${escHtml(it.servico)}</span>
+              ${mostraQtd ? `<span class="detalhe-item-qtd">Qtd: ${fmtQtd(qtd)} · Acum: ${fmtQtd(qtdAcum)}</span>` : ""}
+            </div>
             <span class="detalhe-item-valor${negativo ? " negativo" : ""}">${fmtMoeda(it.valor)}</span>
           </div>`;
       }).join("")

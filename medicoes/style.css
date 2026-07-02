@@ -337,7 +337,7 @@ header {
 .detalhe-item {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   background: #f7f9f7;
   border-radius: 10px;
@@ -346,12 +346,93 @@ header {
   font-size: 0.9rem;
 }
 
+.detalhe-item-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.detalhe-item-qtd {
+  font-size: 0.72rem;
+  color: #888;
+  margin-top: 3px;
+}
+
 .detalhe-item-valor {
   font-weight: 700;
   color: #1565c0;
   white-space: nowrap;
+  padding-top: 1px;
 }
 
 .detalhe-item-valor.negativo {
+  color: #c62828;
+}
+
+/* ---------- Campos compactos do detalhe ---------- */
+
+.dt-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.dt-label {
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #888;
+  margin-bottom: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dt-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.dt-input:focus { border-color: #1a3322; }
+
+/* ---------- Grid de valores computados ---------- */
+
+.dt-info-grid {
+  background: #f0f5f1;
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+.dt-info-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.dt-info-label {
+  font-size: 0.60rem;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 2px;
+}
+
+.dt-info-valor {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #1a3322;
+}
+
+.dt-info-ret {
   color: #c62828;
 }

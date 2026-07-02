@@ -78,33 +78,43 @@
 <div class="overlay-revisao" id="overlay-detalhe" style="display:none">
   <div class="revisao-card">
     <h3>Detalhes da Medição</h3>
-    <p class="revisao-sub">Toque em Fechar pra voltar sem salvar.</p>
 
-    <div class="full">
-      <label for="dt-nome">Nome da Medição</label>
-      <input type="text" id="dt-nome" />
-    </div>
-    <div class="full">
-      <label for="dt-data">Data</label>
-      <input type="text" id="dt-data" placeholder="DD/MM/AAAA" />
-    </div>
-    <div class="full">
-      <label for="dt-valor">Valor Medido (R$)</label>
-      <input type="text" inputmode="decimal" id="dt-valor" />
-    </div>
-    <div class="full">
-      <label for="dt-descontos">Descontos (R$)</label>
-      <input type="text" inputmode="decimal" id="dt-descontos" />
-    </div>
-    <div class="full">
-      <label for="dt-notafiscal">Valor Nota Fiscal (R$)</label>
-      <input type="text" inputmode="decimal" id="dt-notafiscal" />
+    <div class="dt-row">
+      <div style="flex:2">
+        <label class="dt-label" for="dt-nome">Nome</label>
+        <input type="text" id="dt-nome" class="dt-input" />
+      </div>
+      <div style="flex:1">
+        <label class="dt-label" for="dt-data">Data</label>
+        <input type="text" id="dt-data" class="dt-input" placeholder="DD/MM/AAAA" />
+      </div>
     </div>
 
-    <p class="revisao-sub">Itens</p>
+    <div class="dt-row">
+      <div style="flex:1">
+        <label class="dt-label" for="dt-valor">Medido (R$)</label>
+        <input type="text" inputmode="decimal" id="dt-valor" class="dt-input" />
+      </div>
+      <div style="flex:1">
+        <label class="dt-label" for="dt-descontos">Descontos (R$)</label>
+        <input type="text" inputmode="decimal" id="dt-descontos" class="dt-input" />
+      </div>
+    </div>
+
+    <div class="dt-row">
+      <div style="flex:1">
+        <label class="dt-label" for="dt-notafiscal">A Pagar (R$)</label>
+        <input type="text" inputmode="decimal" id="dt-notafiscal" class="dt-input" />
+      </div>
+      <div style="flex:1"></div>
+    </div>
+
+    <div class="dt-info-grid" id="dt-info-grid"></div>
+
+    <p class="revisao-sub" style="margin-top:12px;margin-bottom:6px">Itens</p>
     <div id="detalhe-itens"></div>
 
-    <button type="button" id="btn-ver-foto" class="btn-add-linha" style="margin-top:10px;display:none">Ver Foto Original</button>
+    <button type="button" id="btn-ver-foto" class="btn-add-linha" style="margin-top:8px;display:none">Ver Foto Original</button>
 
     <div class="revisao-acoes">
       <button type="button" class="btn-cancelar" onclick="excluirMedicaoAtual()">Excluir</button>
@@ -118,6 +128,6 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
-<script src="./app.js?v=2.3"></script>
+<script src="./app.js?v=2.4"></script>
 </body>
 </html>

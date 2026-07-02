@@ -22,12 +22,13 @@ Extraia um objeto JSON com 4 campos:
 1. "itens": para cada linha de item (ex: 1.1, 1.2, 1.12), extraia:
    - "apartamento": o número do item, exatamente como aparece na coluna ITEM (ex: "1.1", "1.12").
    - "servico": o texto da coluna DESCRIÇÃO.
+   - "quantidade": o valor da coluna "Executado no Período" DENTRO DO BLOCO QUANTIDADES (m², unidades etc.) — é a 3ª das 4 colunas do bloco QUANTIDADES. Use ponto como separador decimal. Se não houver valor, use 0.
    - "valor": o valor em reais da coluna "Executado no Período" DENTRO DO BLOCO PREÇOS — é a 3ª das 4 colunas do bloco PREÇOS, vem logo depois de "Preços Unitários" e antes da última coluna "Acumulado" do bloco PREÇOS.
 
-   ATENÇÃO: existem DUAS colunas chamadas "Executado no Período" — uma no bloco QUANTIDADES (números pequenos, m²/unidades) e outra no bloco PREÇOS (valores em R$). Use SEMPRE a do bloco PREÇOS. Não confunda com "Acumulado" (última coluna de cada bloco) nem com "Contratado".
+   ATENÇÃO: existem DUAS colunas chamadas "Executado no Período" — uma no bloco QUANTIDADES (números pequenos, m²/unidades) e outra no bloco PREÇOS (valores em R$). "quantidade" vem do bloco QUANTIDADES, "valor" vem do bloco PREÇOS. Não confunda com "Acumulado" (última coluna de cada bloco) nem com "Contratado".
 
    Regras para "itens":
-   - "valor": número decimal (use ponto como separador decimal, sem o símbolo R$ e sem separador de milhar).
+   - "valor" e "quantidade": números decimais (use ponto como separador decimal, sem símbolos e sem separador de milhar).
    - Ignore linhas de cabeçalho e a linha de totais do "ITEM" pai (em negrito, sem descrição própria).
    - Ignore itens cujo "Executado no Período" (no bloco PREÇOS) seja "-", vazio ou igual a 0.
 
@@ -40,7 +41,7 @@ Extraia um objeto JSON com 4 campos:
 Todos os valores numéricos devem ser números decimais positivos (ponto como separador decimal, sem R$ e sem separador de milhar).
 
 Retorne APENAS um objeto JSON (sem texto antes ou depois, sem markdown) no seguinte formato:
-{"itens":[{"apartamento":"1.1","servico":"Revestimento de gesso em pasta (Sala, área e quartos)","valor":14400.00}], "total":24959.70, "descontos":3352.00, "aPagar":21607.70}
+{"itens":[{"apartamento":"1.1","servico":"Revestimento de gesso em pasta (Sala, área e quartos)","quantidade":80.00,"valor":14400.00}], "total":24959.70, "descontos":3352.00, "aPagar":21607.70}
 
 Se não conseguir identificar a tabela, retorne {"itens":[],"total":0,"descontos":0,"aPagar":0}.`;
 
@@ -587,6 +588,7 @@ exports.extrairMedicoes = onCall(
       .map(it => ({
         apartamento: String(it.apartamento || "").trim(),
         servico: String(it.servico || "").trim(),
+        quantidade: Number(it.quantidade) || 0,
         valor: Number(it.valor) || 0
       }))
       .filter(it => it.apartamento && it.servico && it.valor !== 0);
