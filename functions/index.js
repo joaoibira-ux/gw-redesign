@@ -108,6 +108,27 @@ const TOOLS_GW = [
     }
   },
   {
+    name: "listar_servicos",
+    description: "Lista todos os serviços cadastrados no sistema GW com seus preços (M.d.o, Medição, Material). Use antes de editar_servico para obter o id do serviço correto.",
+    input_schema: { type: "object", properties: {} }
+  },
+  {
+    name: "editar_servico",
+    description: "Edita os preços (mdo, medicao, material) ou observação de um serviço cadastrado. Use listar_servicos antes para obter o id correto. Atualiza também os valores da folha de pagamento aberta, se houver. ALTERA O BANCO DE DADOS: exige o campo senha, que deve ser pedido ao usuário antes de chamar esta ferramenta.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id:       { type: "string", description: "ID do serviço (obtido via listar_servicos)" },
+        mdo:      { type: "number", description: "Novo valor de M.d.o / Apt. em reais (omita para não alterar)" },
+        medicao:  { type: "number", description: "Novo valor de Medição / Apt. em reais (omita para não alterar)" },
+        material: { type: "number", description: "Novo valor de Material / Apt. em reais (omita para não alterar)" },
+        obs:      { type: "string", description: "Nova observação (omita para não alterar)" },
+        senha:    { type: "string", description: "Senha de autorização para alterar o banco de dados. Deve ser pedida ao usuário antes de chamar esta ferramenta." }
+      },
+      required: ["id", "senha"]
+    }
+  },
+  {
     name: "consultar_caixa",
     description: "Consulta lançamentos do caixa (entradas e saídas) com filtros opcionais por período, origem ou palavra-chave na descrição. Também calcula saldo.",
     input_schema: {
@@ -320,6 +341,73 @@ async function executarFerramenta(nome, input) {
     const novaHora = novoTimestamp.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
     const novaData = novoTimestamp.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
     return { sucesso: true, idAntigo: id, idNovo: novoRef.id, funcionarioNome: antigo.funcionarioNome, tipo: novoTipo, data: novaData, horario: novaHora };
+  }
+
+  if (nome === "listar_servicos") {
+    const snap = await db.collection("servicos").get();
+    return snap.docs
+      .map(d => {
+        const s = d.data();
+        return { id: d.id, item: s.item || "", nome: s.nome || "", mdo: s.mdo || 0, medicao: s.medicao || 0, material: s.material || 0, obs: s.obs || "" };
+      })
+      .sort((a, b) => (parseFloat(a.item) || 999) - (parseFloat(b.item) || 999));
+  }
+
+  if (nome === "editar_servico") {
+    const { id, mdo, medicao, material, obs, senha } = input;
+    if (senha !== SENHA_ALTERACAO_BANCO) {
+      return { sucesso: false, erro: "senha_invalida", mensagem: "Senha incorreta. Peça a senha de autorização ao usuário para alterar o banco de dados." };
+    }
+    const ref = db.collection("servicos").doc(id);
+    const doc = await ref.get();
+    if (!doc.exists) return { sucesso: false, erro: "nao_encontrado", mensagem: "Serviço não encontrado com esse id." };
+
+    const atual = doc.data();
+    const updates = {};
+    if (mdo      !== undefined) updates.mdo      = mdo;
+    if (medicao  !== undefined) updates.medicao  = medicao;
+    if (material !== undefined) updates.material = material;
+    if (obs      !== undefined) updates.obs      = obs;
+    if (!Object.keys(updates).length) {
+      return { sucesso: false, erro: "nada_alterado", mensagem: "Nenhum campo para atualizar foi fornecido." };
+    }
+
+    await ref.update(updates);
+
+    // Se o mdo mudou, atualiza entradas correspondentes na folha aberta mais recente
+    let folhaAtualizada = false;
+    if (mdo !== undefined && mdo !== atual.mdo) {
+      const nomeServico = atual.nome || "";
+      const fSnap = await db.collection("folhas").orderBy("criadoEm", "desc").limit(1).get();
+      if (!fSnap.empty) {
+        const fDoc = fSnap.docs[0];
+        const grupos = (fDoc.data().grupos || []).map(g => {
+          const novosItens = (g.itens || []).map(item => {
+            if (!item.firestoreLocalId) return item;
+            if (item.servico !== nomeServico) return item;
+            folhaAtualizada = true;
+            return { ...item, valor: mdo };
+          });
+          const novoSubtotal = novosItens.reduce((s, it) => s + Number(it.valor || 0), 0);
+          return { ...g, itens: novosItens, subtotal: novoSubtotal };
+        });
+        if (folhaAtualizada) {
+          const totalGeral = grupos.reduce((s, g) => s + (g.subtotal || 0), 0);
+          await fDoc.ref.update({ grupos, totalGeral });
+        }
+      }
+    }
+
+    return {
+      sucesso: true,
+      id,
+      nome: atual.nome,
+      alteracoes: updates,
+      folhaAtualizada,
+      mensagem: folhaAtualizada
+        ? `"${atual.nome}" atualizado. A folha aberta também foi ajustada com o novo valor.`
+        : `"${atual.nome}" atualizado com sucesso.`
+    };
   }
 
   if (nome === "consultar_caixa") {
