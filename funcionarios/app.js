@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.2";
+const VERSAO = "3.3";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -38,6 +38,18 @@ function hoje() {
 function ehServente(cargo) { return (cargo||"").toLowerCase().includes("ajudante"); }
 function ehPorProducao(cargo) { return CARGOS_POR_PRODUCAO.includes((cargo||"").toUpperCase()); }
 
+function diasDoMes() {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+}
+function calcLiquido(salario, descontos) {
+  return (salario || 0) * (1 - (descontos || 0) / 100);
+}
+function calcDiaria(salario) {
+  const dias = diasDoMes();
+  return dias > 0 ? (salario || 0) / dias : 0;
+}
+
 let funcionariosCache = {};
 let editandoId = null;
 let modelsLoaded = false;
@@ -65,7 +77,11 @@ function render(docs) {
         <div class="card-info">
           <span class="badge">${escHtml(f.cargo)}</span>
           <span class="card-salario ${porProd ? 'por-producao' : ''}">
-            ${porProd ? 'Por produção' : ehServente(f.cargo) ? 'Diária: '+fmtMoeda(f.salario) : fmtMoeda(f.salario)}
+            ${porProd ? 'Por produção' : (() => {
+              const liq = calcLiquido(f.salario, f.descontos);
+              const dia = calcDiaria(f.salario);
+              return `${fmtMoeda(f.salario)}${f.descontos ? ` · Desc: ${f.descontos}%` : ''} · Líq: ${fmtMoeda(liq)} · Diária: ${fmtMoeda(dia)}`;
+            })()}
           </span>
           <button class="btn-ativo ${ativo ? 'ativo' : 'inativo'}" onclick="toggleAtivo('${doc.id}')">
             ${ativo ? '● Ativo' : '○ Inativo'}
@@ -91,7 +107,7 @@ function abrirFormulario() {
   document.getElementById("form").reset();
   document.getElementById("f-admissao").value = hoje();
   document.getElementById("wrap-salario").style.display = "";
-  document.getElementById("lbl-salario").textContent = "Salário (R$)";
+  document.getElementById("wrap-descontos").style.display = "";
   document.getElementById("form-overlay").style.display = "flex";
   document.getElementById("fab").classList.add("open");
   document.getElementById("f-nome").focus();
@@ -109,13 +125,19 @@ function fecharFormulario() {
 
 // Cargo
 document.getElementById("f-cargo").addEventListener("change", function() {
-  document.getElementById("wrap-salario").style.display = ehPorProducao(this.value) ? "none" : "";
-  document.getElementById("lbl-salario").textContent = ehServente(this.value) ? "Diária (R$)" : "Salário (R$)";
+  const porProd = ehPorProducao(this.value);
+  document.getElementById("wrap-salario").style.display = porProd ? "none" : "";
+  document.getElementById("wrap-descontos").style.display = porProd ? "none" : "";
 });
 
 document.getElementById("f-salario").addEventListener("blur", function() {
   const v = parseMoeda(this.value);
   if (v > 0) this.value = v.toFixed(2).replace(".",",");
+});
+
+document.getElementById("f-descontos").addEventListener("blur", function() {
+  const v = parseFloat(this.value.replace(",","."));
+  if (!isNaN(v) && v > 0) this.value = v.toFixed(2).replace(".",",");
 });
 
 // ── Auto-formato datas ─────────────────────────────────────
@@ -231,6 +253,7 @@ function lerCampos() {
     cargo:        v("f-cargo"),
     admissao:     v("f-admissao").trim(),
     salario:      ehPorProducao(v("f-cargo")) ? 0 : parseMoeda(v("f-salario")),
+    descontos:    ehPorProducao(v("f-cargo")) ? 0 : (parseFloat((v("f-descontos")||"0").replace(",",".")) || 0),
     telefone:     v("f-telefone").trim(),
     obs:          v("f-obs").trim(),
     // Pessoais
@@ -272,6 +295,7 @@ function editarFuncionario(id) {
   const set = (fid, val) => { const el = document.getElementById(fid); if (el) el.value = val || ""; };
   set("f-nome", f.nome); set("f-cargo", f.cargo); set("f-admissao", f.admissao);
   set("f-salario", f.salario > 0 ? f.salario.toFixed(2).replace(".",",") : "");
+  set("f-descontos", f.descontos > 0 ? f.descontos.toFixed(2).replace(".",",") : "");
   set("f-telefone", f.telefone); set("f-obs", f.obs);
   set("f-nacionalidade", f.nacionalidade); set("f-estadocivil", f.estadocivil);
   set("f-nascimento", f.nascimento); set("f-conjuge", f.conjuge);
@@ -289,7 +313,7 @@ function editarFuncionario(id) {
 
   const porProd = ehPorProducao(f.cargo);
   document.getElementById("wrap-salario").style.display = porProd ? "none" : "";
-  document.getElementById("lbl-salario").textContent = ehServente(f.cargo) ? "Diária (R$)" : "Salário (R$)";
+  document.getElementById("wrap-descontos").style.display = porProd ? "none" : "";
   document.getElementById("form-overlay").style.display = "flex";
   document.getElementById("fab").classList.add("open");
 
@@ -422,7 +446,12 @@ function consultarFuncionario(id) {
   document.getElementById('consultar-body').innerHTML = `
     ${sec('Identificação')}
       ${c('Nome', f.nome)}${c('Cargo', f.cargo)}${c('Admissão', f.admissao)}
-      ${c(ehServente(f.cargo) ? 'Diária' : 'Salário', f.salario > 0 ? fmtMoeda(f.salario) : 'Por produção')}
+      ${ehPorProducao(f.cargo) ? c('Remuneração', 'Por produção') : `
+        ${c('Salário Bruto', fmtMoeda(f.salario))}
+        ${f.descontos > 0 ? c('Descontos', f.descontos.toFixed(2).replace('.',',') + '%') : ''}
+        ${c('Valor Líquido', fmtMoeda(calcLiquido(f.salario, f.descontos)))}
+        ${c('Diária ('+diasDoMes()+' dias)', fmtMoeda(calcDiaria(f.salario)))}
+      `}
       ${c('Telefone', f.telefone)}${c('Observações', f.obs)}
     </div>
     ${sec('Dados Pessoais')}
