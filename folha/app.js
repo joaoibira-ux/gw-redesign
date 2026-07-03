@@ -55,6 +55,7 @@ let servicosCache        = [];
 let locaisData           = [];
 let folhaAbertaId        = null;
 let encarregadoCache     = null;
+let _pendingClick        = null; // serviço clicado antes de ter funcionário
 
 // Flags para o link #relatorio — aguarda as 3 fontes de dados
 const _isRelatorioLink    = window.location.hash === '#relatorio';
@@ -395,6 +396,16 @@ db.collection('funcionarios').orderBy('nome').onSnapshot(snap => {
   renderFuncionarios();
 });
 
+function _aplicarPendingClick() {
+  if (!_pendingClick) return;
+  const { key, local, servico, localid, svidx } = _pendingClick;
+  _pendingClick = null;
+  servicosSelecionados.set(key, { local, servico });
+  const el = document.querySelector(`.apt-serv[data-localid="${localid}"][data-svidx="${svidx}"]`);
+  if (el) el.classList.add('selecionado');
+  atualizarBtnOk();
+}
+
 function selecionarFuncionario(func) {
   funcionarioAtual = func;
   servicosSelecionados.clear();
@@ -402,6 +413,7 @@ function selecionarFuncionario(func) {
   atualizarBtnOk();
   const cargo = (func.cargo || '').toLowerCase();
   if (ehAjudante(func.cargo)) {
+    _pendingClick = null;
     modoDiariaHoras = false;
     abrirCalendario(func);
   } else if (cargo.includes('pintor')) {
@@ -410,6 +422,7 @@ function selecionarFuncionario(func) {
   } else {
     modoDiariaHoras = false;
     mostrarView('view-mapa');
+    _aplicarPendingClick();
   }
 }
 
@@ -420,11 +433,13 @@ function fecharModalTipoPintor() {
 function escolherTipoPintor(tipo) {
   fecharModalTipoPintor();
   if (tipo === 'diaria') {
+    _pendingClick = null;
     modoDiariaHoras = true;
     abrirCalendario(funcionarioAtual);
   } else {
     modoDiariaHoras = false;
     mostrarView('view-mapa');
+    _aplicarPendingClick();
   }
 }
 
@@ -631,7 +646,12 @@ function onServicoClick(el) {
 
   const key = `${el.dataset.localid}::${el.dataset.svidx}`;
   if (!servicosSelecionados.has(key)) {
-    if (!funcionarioAtual) { apenasProducao = true; mostrarView('view-funcionarios'); return; }
+    if (!funcionarioAtual) {
+      _pendingClick = { key, local, servico, localid: el.dataset.localid, svidx: el.dataset.svidx };
+      apenasProducao = true;
+      mostrarView('view-funcionarios');
+      return;
+    }
     servicosSelecionados.set(key, { local, servico });
   } else {
     servicosSelecionados.delete(key);
