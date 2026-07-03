@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.70";
+const VERSAO = "4.71";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -339,7 +339,8 @@ async function confirmarDias() {
         return { localId: `${dia}/${mes}`, valor, horas };
       });
   } else {
-    diaria = funcionarioAtual.salario || 0;
+    const totalDiasMes = new Date(calAno, calMesAtual + 1, 0).getDate();
+    diaria = totalDiasMes > 0 ? (funcionarioAtual.salario || 0) / totalDiasMes : 0;
     dias = [...diasSelecionados.entries()]
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([key, state]) => {
