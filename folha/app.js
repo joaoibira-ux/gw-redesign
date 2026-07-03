@@ -967,7 +967,7 @@ async function fecharFolha() {
     const adSnap = await db.collection('lancamentos').get();
     adSnap.docs.forEach(d => {
       const r = d.data();
-      if ((r.origem || '') !== 'ANE->ADIANTAMENTO') return;
+      if (r.origem !== 'ANE->ADIANTAMENTO' && r.origem !== 'JOAO->ADIANTAMENTO') return;
       const desc = r.descricao || '';
       if (!desc.startsWith('Adiantamento: ')) return;
       const nome = desc.slice('Adiantamento: '.length).split(/\s*[—–\-]/)[0].trim().normalize('NFC');
@@ -1159,7 +1159,7 @@ async function verRelatorio() {
     const adSnap = await db.collection('lancamentos').get();
     adSnap.docs.forEach(d => {
       const r = d.data();
-      if ((r.origem || '') !== 'ANE->ADIANTAMENTO') return;
+      if (r.origem !== 'ANE->ADIANTAMENTO' && r.origem !== 'JOAO->ADIANTAMENTO') return;
       const desc = r.descricao || '';
       if (!desc.startsWith('Adiantamento: ')) return;
       const nome = desc.slice('Adiantamento: '.length).split(/\s*[—–\-]/)[0].trim().normalize('NFC');
