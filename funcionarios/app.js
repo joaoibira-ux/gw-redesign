@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.3";
+const VERSAO = "3.4";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -91,6 +91,8 @@ function render(docs) {
           <span>Admissão: ${escHtml(f.admissao||'')}</span>
           ${f.telefone ? `<span>📞 ${escHtml(f.telefone)}</span>` : ""}
           ${f.cpf ? `<span>CPF: ${escHtml(f.cpf)}</span>` : ""}
+          ${f.cafe === 'sim' ? '<span>☕ Café</span>' : ''}
+          ${f.almoco === 'sim' ? '<span>🍽️ Almoço</span>' : ''}
         </div>
         ${f.obs ? `<div class="card-obs">${escHtml(f.obs)}</div>` : ""}
       </div>`;
@@ -254,6 +256,8 @@ function lerCampos() {
     admissao:     v("f-admissao").trim(),
     salario:      ehPorProducao(v("f-cargo")) ? 0 : parseMoeda(v("f-salario")),
     descontos:    ehPorProducao(v("f-cargo")) ? 0 : (parseFloat((v("f-descontos")||"0").replace(",",".")) || 0),
+    cafe:         v("f-cafe"),
+    almoco:       v("f-almoco"),
     telefone:     v("f-telefone").trim(),
     obs:          v("f-obs").trim(),
     // Pessoais
@@ -296,6 +300,8 @@ function editarFuncionario(id) {
   set("f-nome", f.nome); set("f-cargo", f.cargo); set("f-admissao", f.admissao);
   set("f-salario", f.salario > 0 ? f.salario.toFixed(2).replace(".",",") : "");
   set("f-descontos", f.descontos > 0 ? f.descontos.toFixed(2).replace(".",",") : "");
+  set("f-cafe",   f.cafe   || "");
+  set("f-almoco", f.almoco || "");
   set("f-telefone", f.telefone); set("f-obs", f.obs);
   set("f-nacionalidade", f.nacionalidade); set("f-estadocivil", f.estadocivil);
   set("f-nascimento", f.nascimento); set("f-conjuge", f.conjuge);
@@ -453,6 +459,8 @@ function consultarFuncionario(id) {
         ${c('Diária ('+diasDoMes()+' dias)', fmtMoeda(calcDiaria(f.salario)))}
       `}
       ${c('Telefone', f.telefone)}${c('Observações', f.obs)}
+      ${c('Café', f.cafe === 'sim' ? '✅ Sim' : f.cafe === 'nao' ? '❌ Não' : '')}
+      ${c('Almoço', f.almoco === 'sim' ? '✅ Sim' : f.almoco === 'nao' ? '❌ Não' : '')}
     </div>
     ${sec('Dados Pessoais')}
       ${c('Nacionalidade', f.nacionalidade)}${c('Estado Civil', f.estadocivil)}

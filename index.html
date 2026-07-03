@@ -284,45 +284,53 @@
   </div>
 
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
   <script>
     // iOS Safari restaura do bfcache sem redesenhar os backgrounds (ficam em branco) — força reload
     window.addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
 
+    // Firebase — inicializado uma vez globalmente
+    firebase.initializeApp({
+      apiKey: "AIzaSyBaqROPsywPgtKjQU7cs1ke1WaqDFhWwn0",
+      authDomain: "sistema-gw-36566.firebaseapp.com",
+      projectId: "sistema-gw-36566",
+      storageBucket: "sistema-gw-36566.firebasestorage.app",
+      messagingSenderId: "472820177992",
+      appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
+    });
+
+    // Carrega PINs do Firestore (Configurações); fallback nos valores abaixo
+    let PIN_COMPLETO = '2248';
+    let PIN_PARCIAL  = '4512';
+    let PIN_RESTRITO = '3733';
+    firebase.firestore().collection('configuracoes').doc('geral').get()
+      .then(doc => {
+        if (!doc.exists) return;
+        const d = doc.data();
+        if (d.pinCompleto) PIN_COMPLETO = d.pinCompleto;
+        if (d.pinParcial)  PIN_PARCIAL  = d.pinParcial;
+        if (d.pinRestrito) PIN_RESTRITO = d.pinRestrito;
+      }).catch(() => {});
+
     // Relatório de ponto via WhatsApp: dispara no 1º acesso ao sistema após 9:30, seg a sex.
-    // A função no backend já controla duplicidade (1 envio por dia); aqui só evitamos
-    // tentar de novo a cada acesso se já confirmou sucesso nesta mesma aba/dispositivo.
     (function dispararRelatorioPontoWhatsApp() {
       const agora = new Date();
-      const diaSemana = agora.getDay(); // 0=domingo ... 6=sábado
+      const diaSemana = agora.getDay();
       if (diaSemana === 0 || diaSemana === 6) return;
       if (agora.getHours() < 9 || (agora.getHours() === 9 && agora.getMinutes() < 30)) return;
-
       const chave = `${agora.getFullYear()}-${String(agora.getMonth()+1).padStart(2,"0")}-${String(agora.getDate()).padStart(2,"0")}`;
       if (localStorage.getItem('gw_relatorio_ponto_disparado') === chave) return;
-
-      firebase.initializeApp({
-        apiKey: "AIzaSyBaqROPsywPgtKjQU7cs1ke1WaqDFhWwn0",
-        authDomain: "sistema-gw-36566.firebaseapp.com",
-        projectId: "sistema-gw-36566",
-        storageBucket: "sistema-gw-36566.firebasestorage.app",
-        messagingSenderId: "472820177992",
-        appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
-      });
-
       firebase.functions().httpsCallable('relatorioPontoWhatsApp')()
         .then(() => localStorage.setItem('gw_relatorio_ponto_disparado', chave))
         .catch(e => console.error('Falha ao disparar relatório de ponto:', e));
     })();
 
-    // Backup diário automático (Telegram): dispara ao acessar o sistema pela 1ª vez no dia.
-    // O iframe (mesma origem) só marca gw_backup_disparado DEPOIS de confirmar o envio —
-    // se o usuário sair antes de terminar, tenta de novo na próxima abertura.
+    // Backup diário automático (Telegram)
     (function dispararBackupDiario() {
       const hoje = new Date();
       const chave = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,"0")}-${String(hoje.getDate()).padStart(2,"0")}`;
       if (localStorage.getItem('gw_backup_disparado') === chave) return;
-
       const iframe = document.createElement('iframe');
       iframe.src = './caixa/relatorio.html?autobackup=1';
       iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:1200px;height:900px;border:none;visibility:hidden;';
@@ -330,10 +338,7 @@
       setTimeout(() => { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); }, 90000);
     })();
 
-    const PIN_COMPLETO  = '2248'; // todos os apps
-    const PIN_PARCIAL   = '4512'; // todos visíveis, só 4 acessíveis
-    const PIN_RESTRITO  = '3733'; // só Folha, Rel. Folha, Mapa, Funcionários, Almoxarifado, Ponto, Rel. Ponto
-    const VERSAO = '3.80';
+    const VERSAO = '3.81';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -357,6 +362,7 @@
       { icon: '🔧', name: 'Serviços',            desc: 'Cadastro de serviços',      url: 'https://sistema.gwrevestimentos.com.br/servicos/' },
       { icon: '🕐', name: 'Ponto',              desc: 'Registro de presença',       url: 'https://sistema.gwrevestimentos.com.br/ponto/?menu=1' },
       { icon: '📅', name: 'Rel. Ponto',        desc: 'Relatório de presença',      url: 'https://sistema.gwrevestimentos.com.br/relatorio-ponto/' },
+      { icon: '⚙️', name: 'Configurações',    desc: 'Senhas e valores do sistema',url: 'https://sistema.gwrevestimentos.com.br/configuracoes/' },
     ];
 
     // Fora do modo app (instalado pelo ícone): mostra aviso de instalação direto, sem pedir PIN
