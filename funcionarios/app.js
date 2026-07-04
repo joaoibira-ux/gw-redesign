@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.8";
+const VERSAO = "3.9";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -49,6 +49,9 @@ function calcDiaria(salario) {
   const dias = diasDoMes();
   return dias > 0 ? (salario || 0) / dias : 0;
 }
+function calcDescontoPassagens(salario) {
+  return (salario || 0) * 0.06;
+}
 
 let funcionariosCache = {};
 let editandoId = null;
@@ -80,7 +83,8 @@ function render(docs) {
             ${porProd ? 'Por produção' : (() => {
               const liq = calcLiquido(f.salario, f.descontos);
               const dia = calcDiaria(f.salario);
-              return `${fmtMoeda(f.salario)}${f.descontos ? ` · Desc: ${f.descontos}%` : ''} · Líq: ${fmtMoeda(liq)} · Diária: ${fmtMoeda(dia)}`;
+              const descPass = calcDescontoPassagens(f.salario);
+              return `${fmtMoeda(f.salario)}${f.descontos ? ` · Desc: ${f.descontos}%` : ''} · Desc. Passagens: ${fmtMoeda(descPass)} · Líq: ${fmtMoeda(liq)} · Diária: ${fmtMoeda(dia)}`;
             })()}
           </span>
           <button class="btn-ativo ${ativo ? 'ativo' : 'inativo'}" onclick="toggleAtivo('${doc.id}')">
@@ -457,6 +461,7 @@ function consultarFuncionario(id) {
       ${ehPorProducao(f.cargo) ? c('Remuneração', 'Por produção') : `
         ${c('Salário Bruto', fmtMoeda(f.salario))}
         ${f.descontos > 0 ? c('Descontos', f.descontos.toFixed(2).replace('.',',') + '%') : ''}
+        ${c('Desconto Passagens (6%)', fmtMoeda(calcDescontoPassagens(f.salario)))}
         ${c('Valor Líquido', fmtMoeda(calcLiquido(f.salario, f.descontos)))}
         ${c('Diária ('+diasDoMes()+' dias)', fmtMoeda(calcDiaria(f.salario)))}
       `}
