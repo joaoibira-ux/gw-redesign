@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.5";
+const VERSAO = "3.6";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -91,7 +91,7 @@ function render(docs) {
           <span>Admissão: ${escHtml(f.admissao||'')}</span>
           ${f.telefone ? `<span>📞 ${escHtml(f.telefone)}</span>` : ""}
           ${f.cpf ? `<span>CPF: ${escHtml(f.cpf)}</span>` : ""}
-          ${f.passagens > 0 ? `<span>🚌 Passagens: ${fmtMoeda(f.passagens)}</span>` : ''}
+          ${f.passagens > 0 ? `<span>🚌 Passagens (15 dd): ${fmtMoeda(f.passagens)}</span>` : ''}
         </div>
         ${f.obs ? `<div class="card-obs">${escHtml(f.obs)}</div>` : ""}
       </div>`;
@@ -463,7 +463,7 @@ function consultarFuncionario(id) {
         ${c('Diária ('+diasDoMes()+' dias)', fmtMoeda(calcDiaria(f.salario)))}
       `}
       ${c('Telefone', f.telefone)}${c('Observações', f.obs)}
-      ${c('Passagens', f.passagens > 0 ? fmtMoeda(f.passagens) : '')}
+      ${c('Passagens (15 dd)', f.passagens > 0 ? fmtMoeda(f.passagens) : '')}
     </div>
     ${sec('Dados Pessoais')}
       ${c('Nacionalidade', f.nacionalidade)}${c('Estado Civil', f.estadocivil)}
