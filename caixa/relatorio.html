@@ -475,6 +475,7 @@
     }
     .prev-cols { grid-template-columns: 1fr 120px 120px 120px; }
     .prev-cols-med { grid-template-columns: 1fr 100px 100px 100px 100px; }
+    .prev-cols-pass { grid-template-columns: 1fr 120px; }
     .prev-header { display: grid; padding: 5px 16px; border-bottom: 1px solid rgba(165,214,167,0.15); }
     .prev-header span { font-size: 0.6rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #4a8a5a; text-align: right; white-space: nowrap; }
     .prev-header span:first-child { text-align: left; }
@@ -669,6 +670,7 @@
 
 <div class="previsao-wrap" id="previsao-folha"></div>
 <div class="previsao-wrap" id="previsao-medicao"></div>
+<div class="previsao-wrap" id="previsao-passagens"></div>
 
 <div class="pesquisa-overlay" id="pesquisa-overlay" onclick="fecharPesquisaSe(event)">
   <div class="pesquisa-modal">
@@ -686,7 +688,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.72";
+  const VERSAO = "1.73";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1261,6 +1263,42 @@
 
   db.collection('locais').onSnapshot(snap => { _locaisSnap = snap; renderPrevisaoMedicao(); });
   db.collection('servicos').onSnapshot(snap => { _servicosSnap = snap; renderPrevisaoMedicao(); });
+
+  // ── Passagens da Quinzena ──
+  function renderPrevisaoPassagens(snap) {
+    const el = document.getElementById('previsao-passagens');
+    if (!el) return;
+    const linhas = [];
+    let total = 0;
+    snap.docs.forEach(d => {
+      const f = d.data();
+      if (f.ativo === false) return;
+      const valor = Number(f.passagens || 0);
+      total += valor;
+      linhas.push(`
+        <div class="prev-linha prev-cols-pass">
+          <div class="prev-nome">${escHtml(f.nome)} <span class="prev-cargo">${escHtml(f.cargo||'')}</span></div>
+          <div class="prev-valor">${fmt(valor)}</div>
+        </div>`);
+    });
+    if (!linhas.length) { el.innerHTML = ''; return; }
+    el.innerHTML = `
+      <div class="previsao-card">
+        <div class="prev-titulo">
+          <span>Passagens da Quinzena</span>
+        </div>
+        <div class="prev-header prev-cols-pass">
+          <span>Funcionário</span><span>Passagens</span>
+        </div>
+        ${linhas.join('')}
+        <div class="prev-total prev-cols-pass">
+          <span>Total</span>
+          <span>${fmt(total)}</span>
+        </div>
+      </div>`;
+  }
+
+  db.collection('funcionarios').orderBy('nome').onSnapshot(renderPrevisaoPassagens);
 
   // ── Previsão da Folha ──
   function normNome(s) {

@@ -1,4 +1,4 @@
-const VERSION = "caixa-v81";
+const VERSION = "caixa-v82";
 const ASSETS = [
   "./index.html",
   "./style.css?v=30",
@@ -31,7 +31,7 @@ self.addEventListener("activate", e => {
 self.addEventListener("fetch", e => {
   if (e.request.mode === "navigate") {
     // HTML sempre vem da rede — garante versão mais nova
-    e.respondWith(fetch(e.request).catch(() => caches.match("./index.html")));
+    e.respondWith(fetch(e.request, { cache: "no-store" }).catch(() => caches.match("./index.html")));
     return;
   }
   // CSS/JS/imagens: cache primeiro, rede como fallback
