@@ -1,8 +1,8 @@
-const VERSION = "caixa-v82";
+const VERSION = "caixa-v83";
 const ASSETS = [
   "./index.html",
   "./style.css?v=30",
-  "./app.js?v=72",
+  "./app.js?v=73",
   "./manifest.json",
   "./Logo-gw.png",
   "./Aviso iPhone.png",

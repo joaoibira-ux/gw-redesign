@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.37";
+const VERSAO_CAIXA = "3.38";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -46,6 +46,7 @@ function escHtml(s) {
 let docsCache      = {};
 let ultimoDocId    = null;
 let folhaParaPagar = null;
+let passagensParaPagar = null;
 let descPrefix     = null;
 let contasReceberCache    = {};
 let contaReceberSelecionada = null;
@@ -257,6 +258,9 @@ document.getElementById("form").addEventListener("submit", function(e) {
   if (origem === "ANE->FOLHA DE PAGAMENTO") {
     if (!folhaParaPagar) { alert("Folha não carregada. Selecione a origem novamente."); return; }
     pagarFolha(data, desc, saida);
+  } else if (origem === "ANE->PASSAGENS") {
+    if (!passagensParaPagar) { alert("Passagens não carregadas. Selecione a origem novamente."); return; }
+    pagarPassagens(data, desc, saida);
   } else if (origem === "JOAO->CTAS A RECEBER") {
     criarContaAReceber(data, desc, saida);
   } else if (origem === "JOAO->BAIXA CTAS A RECEBER") {
@@ -279,6 +283,7 @@ document.getElementById("form").addEventListener("submit", function(e) {
   document.getElementById("f-saida").readOnly = false;
   document.getElementById("f-entrada").readOnly = false;
   folhaParaPagar = null;
+  passagensParaPagar = null;
   descPrefix = null;
   contaReceberSelecionada = null;
   contaPagarSelecionada = null;
@@ -304,6 +309,7 @@ const ORIGEM_GRUPOS = {
     { value: "ANE->JOAO", label: "JOÃO ALBÉRICO - Pagamento de Prólabore (Baixa do Crédito João)" },
     { value: "ANE->RETENCAO PARADIGMA 5%", label: "RETENÇÃO PARADIGMA 5% (A Receber)" },
     { value: "ANE->FOLHA DE PAGAMENTO", label: "PAGAMENTO DA FOLHA (Reseta a Folha de Pag)" },
+    { value: "ANE->PASSAGENS", label: "PAGAMENTO DAS PASSAGENS (Reseta Passagens)" },
     { value: "ANE->ADIANTAMENTO", label: "ADIANTAMENTO DE SALÁRIO (Debita da Folha)" }
   ],
   "JOAO": [
@@ -342,12 +348,13 @@ document.getElementById("f-origem").addEventListener("change", function() {
   const desc    = document.getElementById("f-desc");
   const saida   = document.getElementById("f-saida");
   const entrada = document.getElementById("f-entrada");
-  const autoDescs = ["Transferência Pix: CEF -> INTER", "Transferência Pix: CEF -> HORÁCIO", "Pró-labore JOAO: CEF -> JOAO", "Transferência Pix: INTER -> HORÁCIO", "Folha de Pagamento da Produção", "Crédito Pró-labore: João Albérico", "Pró-labore JOAO: INTER -> JOAO"];
+  const autoDescs = ["Transferência Pix: CEF -> INTER", "Transferência Pix: CEF -> HORÁCIO", "Pró-labore JOAO: CEF -> JOAO", "Transferência Pix: INTER -> HORÁCIO", "Folha de Pagamento da Produção", "Crédito Pró-labore: João Albérico", "Pró-labore JOAO: INTER -> JOAO", "Pagamento das Passagens da Próxima Quinzena"];
 
   // Sempre reseta os campos entrada/saída e prefixo ao trocar origem
   saida.readOnly = false;
   entrada.readOnly = false;
   folhaParaPagar = null;
+  passagensParaPagar = null;
   descPrefix = null;
   contaReceberSelecionada = null;
   contaPagarSelecionada = null;
@@ -488,6 +495,23 @@ document.getElementById("f-origem").addEventListener("change", function() {
 
       const totalLiquido = totalBruto - totalAdiant;
       saida.value = totalLiquido.toFixed(2).replace(".", ",");
+    });
+  } else if (this.value === "ANE->PASSAGENS") {
+    desc.value = "Pagamento das Passagens da Próxima Quinzena";
+    saida.value = "carregando...";
+    saida.readOnly = true;
+    db.collection("funcionarios").get().then(snap => {
+      let total = 0;
+      const ids = [];
+      snap.docs.forEach(d => {
+        const f = d.data();
+        if (f.ativo === false) return;
+        const valor = Number(f.passagens || 0);
+        if (valor > 0) { total += valor; ids.push(d.id); }
+      });
+      if (!ids.length) { alert("Nenhuma passagem a pagar."); saida.value = ""; return; }
+      passagensParaPagar = { ids };
+      saida.value = total.toFixed(2).replace(".", ",");
     });
   } else if (autoDescs.includes(desc.value)) {
     desc.value = "";
@@ -692,6 +716,22 @@ function pagarFolha(data, desc, saida) {
 
     batch.commit().catch(() => alert("Erro ao registrar pagamento. Tente novamente."));
   });
+}
+
+function pagarPassagens(data, desc, saida) {
+  const { ids } = passagensParaPagar;
+  const batch = db.batch();
+
+  batch.set(col.doc(), {
+    data, origem: "ANE->PASSAGENS", descricao: desc,
+    entrada: 0, saida,
+    criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+  });
+
+  // Zera as passagens pagas — não entram no próximo relatório da quinzena
+  ids.forEach(id => batch.update(db.collection("funcionarios").doc(id), { passagens: 0 }));
+
+  batch.commit().catch(() => alert("Erro ao registrar pagamento. Tente novamente."));
 }
 
 function criarContaAReceber(data, desc, saida) {
