@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.36";
+const VERSAO_CAIXA = "3.37";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -437,13 +437,26 @@ document.getElementById("f-origem").addEventListener("change", function() {
       let grupos = (folha.grupos || []).filter(g =>
         g.isEncarregado || !(g.funcionario?.cargo || "").toLowerCase().includes("ajudante")
       );
+
+      // Soma das diárias por funcionário (pintores também registram diária, além dos serviços de produção)
+      const diariaPorFunc = new Map();
       diariasSnap.docs.forEach(d => {
         const doc = d.data();
         const subtotal = (doc.dias || []).reduce((s, dia) => s + Number(dia.valor || 0), 0);
-        if (subtotal > 0) grupos = [...grupos, {
+        if (subtotal <= 0) return;
+        const key = normNome(doc.funcionarioNome);
+        const atual = diariaPorFunc.get(key) || { total: 0, nome: doc.funcionarioNome, cargo: doc.cargo || "Ajudante" };
+        atual.total += subtotal;
+        diariaPorFunc.set(key, atual);
+      });
+
+      // Só cria linha nova para quem ainda não tem linha (ajudante puro); quem já tem linha soma a diária nela
+      const nomesExistentes = new Set(grupos.map(g => normNome(g.funcionario?.nome)));
+      diariaPorFunc.forEach((info, key) => {
+        if (!nomesExistentes.has(key)) grupos = [...grupos, {
           isEncarregado: false,
-          funcionario: { nome: doc.funcionarioNome, cargo: doc.cargo || "Ajudante" },
-          subtotal
+          funcionario: { nome: info.nome, cargo: info.cargo },
+          subtotal: 0
         }];
       });
 
@@ -467,6 +480,8 @@ document.getElementById("f-origem").addEventListener("change", function() {
           const key = g.funcionario.id || g.funcionario.nome;
           if (porFuncProducao.has(key)) bruto = porFuncProducao.get(key);
         }
+        const diaria = diariaPorFunc.get(normNome(g.funcionario.nome));
+        if (diaria) bruto += diaria.total;
         totalBruto  += bruto;
         totalAdiant += adiantMap.get(normNome(g.funcionario.nome)) || 0;
       });
