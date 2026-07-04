@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.7";
+const VERSAO = "3.8";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -41,20 +41,6 @@ function ehPorProducao(cargo) { return CARGOS_POR_PRODUCAO.includes((cargo||"").
 function diasDoMes() {
   const d = new Date();
   return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-}
-function diasUteisDoMes() {
-  const d = new Date();
-  const ano = d.getFullYear(), mes = d.getMonth();
-  const totalDias = new Date(ano, mes + 1, 0).getDate();
-  let count = 0;
-  for (let dia = 1; dia <= totalDias; dia++) {
-    const wd = new Date(ano, mes, dia).getDay();
-    if (wd !== 0 && wd !== 6) count++;
-  }
-  return count;
-}
-function calcPassagemSugerida() {
-  return diasUteisDoMes() * 9.00 / 2;
 }
 function calcLiquido(salario, descontos) {
   return (salario || 0) * (1 - (descontos || 0) / 100);
@@ -105,7 +91,7 @@ function render(docs) {
           <span>Admissão: ${escHtml(f.admissao||'')}</span>
           ${f.telefone ? `<span>📞 ${escHtml(f.telefone)}</span>` : ""}
           ${f.cpf ? `<span>CPF: ${escHtml(f.cpf)}</span>` : ""}
-          ${f.passagens > 0 ? `<span>🚌 Passagem (DIA): ${fmtMoeda(f.passagens)}</span>` : ''}
+          ${f.passagens > 0 ? `<span>🚌 Passagens (15dd): ${fmtMoeda(f.passagens)}</span>` : ''}
         </div>
         ${f.obs ? `<div class="card-obs">${escHtml(f.obs)}</div>` : ""}
       </div>`;
@@ -123,7 +109,6 @@ function abrirFormulario() {
   document.getElementById("f-admissao").value = hoje();
   document.getElementById("wrap-salario").style.display = "";
   document.getElementById("wrap-descontos").style.display = "";
-  document.getElementById("f-passagens").value = calcPassagemSugerida().toFixed(2).replace(".",",");
   document.getElementById("form-overlay").style.display = "flex";
   document.getElementById("fab").classList.add("open");
   document.getElementById("f-nome").focus();
@@ -476,7 +461,7 @@ function consultarFuncionario(id) {
         ${c('Diária ('+diasDoMes()+' dias)', fmtMoeda(calcDiaria(f.salario)))}
       `}
       ${c('Telefone', f.telefone)}${c('Observações', f.obs)}
-      ${c('Passagem (DIA)', f.passagens > 0 ? fmtMoeda(f.passagens) : '')}
+      ${c('Passagens (15dd)', f.passagens > 0 ? fmtMoeda(f.passagens) : '')}
     </div>
     ${sec('Dados Pessoais')}
       ${c('Nacionalidade', f.nacionalidade)}${c('Estado Civil', f.estadocivil)}
