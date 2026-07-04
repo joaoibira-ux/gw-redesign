@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.9";
+const VERSAO = "3.10";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -113,6 +113,7 @@ function abrirFormulario() {
   document.getElementById("f-admissao").value = hoje();
   document.getElementById("wrap-salario").style.display = "";
   document.getElementById("wrap-descontos").style.display = "";
+  document.getElementById("wrap-salario-ref").style.display = "none";
   document.getElementById("form-overlay").style.display = "flex";
   document.getElementById("fab").classList.add("open");
   document.getElementById("f-nome").focus();
@@ -129,10 +130,15 @@ function fecharFormulario() {
 }
 
 // Cargo
+const SALARIO_REFERENCIA_PADRAO = 2407.00;
+
 document.getElementById("f-cargo").addEventListener("change", function() {
   const porProd = ehPorProducao(this.value);
   document.getElementById("wrap-salario").style.display = porProd ? "none" : "";
   document.getElementById("wrap-descontos").style.display = porProd ? "none" : "";
+  document.getElementById("wrap-salario-ref").style.display = porProd ? "" : "none";
+  const salarioRef = document.getElementById("f-salario-ref");
+  if (porProd && !salarioRef.value) salarioRef.value = SALARIO_REFERENCIA_PADRAO.toFixed(2).replace(".",",");
 });
 
 document.getElementById("f-salario").addEventListener("blur", function() {
@@ -143,6 +149,11 @@ document.getElementById("f-salario").addEventListener("blur", function() {
 document.getElementById("f-descontos").addEventListener("blur", function() {
   const v = parseFloat(this.value.replace(",","."));
   if (!isNaN(v) && v > 0) this.value = v.toFixed(2).replace(".",",");
+});
+
+document.getElementById("f-salario-ref").addEventListener("blur", function() {
+  const v = parseMoeda(this.value);
+  if (v > 0) this.value = v.toFixed(2).replace(".",",");
 });
 
 document.getElementById("f-passagens").addEventListener("blur", function() {
@@ -264,6 +275,7 @@ function lerCampos() {
     admissao:     v("f-admissao").trim(),
     salario:      ehPorProducao(v("f-cargo")) ? 0 : parseMoeda(v("f-salario")),
     descontos:    ehPorProducao(v("f-cargo")) ? 0 : (parseFloat((v("f-descontos")||"0").replace(",",".")) || 0),
+    salarioReferencia: ehPorProducao(v("f-cargo")) ? parseMoeda(v("f-salario-ref")) : 0,
     passagens:    parseMoeda(v("f-passagens")),
     telefone:     v("f-telefone").trim(),
     obs:          v("f-obs").trim(),
@@ -308,6 +320,7 @@ function editarFuncionario(id) {
   set("f-salario", f.salario > 0 ? f.salario.toFixed(2).replace(".",",") : "");
   set("f-descontos", f.descontos > 0 ? f.descontos.toFixed(2).replace(".",",") : "");
   set("f-passagens", f.passagens > 0 ? f.passagens.toFixed(2).replace(".",",") : "");
+  set("f-salario-ref", f.salarioReferencia > 0 ? f.salarioReferencia.toFixed(2).replace(".",",") : "");
   set("f-telefone", f.telefone); set("f-obs", f.obs);
   set("f-nacionalidade", f.nacionalidade); set("f-estadocivil", f.estadocivil);
   set("f-nascimento", f.nascimento); set("f-conjuge", f.conjuge);
@@ -326,6 +339,7 @@ function editarFuncionario(id) {
   const porProd = ehPorProducao(f.cargo);
   document.getElementById("wrap-salario").style.display = porProd ? "none" : "";
   document.getElementById("wrap-descontos").style.display = porProd ? "none" : "";
+  document.getElementById("wrap-salario-ref").style.display = porProd ? "" : "none";
   document.getElementById("form-overlay").style.display = "flex";
   document.getElementById("fab").classList.add("open");
 
@@ -458,7 +472,11 @@ function consultarFuncionario(id) {
   document.getElementById('consultar-body').innerHTML = `
     ${sec('Identificação')}
       ${c('Nome', f.nome)}${c('Cargo', f.cargo)}${c('Admissão', f.admissao)}
-      ${ehPorProducao(f.cargo) ? c('Remuneração', 'Por produção') : `
+      ${ehPorProducao(f.cargo) ? `
+        ${c('Remuneração', 'Por produção')}
+        ${c('Salário de Referência', fmtMoeda(f.salarioReferencia))}
+        ${c('Desconto Passagens (6%)', fmtMoeda(calcDescontoPassagens(f.salarioReferencia)))}
+      ` : `
         ${c('Salário Bruto', fmtMoeda(f.salario))}
         ${f.descontos > 0 ? c('Descontos', f.descontos.toFixed(2).replace('.',',') + '%') : ''}
         ${c('Desconto Passagens (6%)', fmtMoeda(calcDescontoPassagens(f.salario)))}
