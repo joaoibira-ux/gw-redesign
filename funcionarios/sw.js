@@ -1,8 +1,8 @@
-const VERSION = "func-v18";
+const VERSION = "func-v19";
 const ASSETS = [
   "./index.html",
   "./style.css?v=11",
-  "./app.js?v=18",
+  "./app.js?v=19",
   "./manifest.json",
   "./Logo-gw.png"
 ];
@@ -27,7 +27,7 @@ self.addEventListener("activate", e => {
 
 self.addEventListener("fetch", e => {
   if (e.request.mode === "navigate") {
-    e.respondWith(fetch(e.request).catch(() => caches.match("./index.html")));
+    e.respondWith(fetch(e.request, { cache: "no-store" }).catch(() => caches.match("./index.html")));
     return;
   }
   e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
