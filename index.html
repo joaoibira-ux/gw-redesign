@@ -306,6 +306,7 @@
     let PIN_COMPLETO = '2248';
     let PIN_PARCIAL  = '4512';
     let PIN_RESTRITO = '3733';
+    let PIN_LIMITADO = '0000';
     const pinsCarregados = firebase.firestore().collection('configuracoes').doc('geral').get()
       .then(doc => {
         if (!doc.exists) return;
@@ -313,6 +314,7 @@
         if (d.pinCompleto) PIN_COMPLETO = d.pinCompleto;
         if (d.pinParcial)  PIN_PARCIAL  = d.pinParcial;
         if (d.pinRestrito) PIN_RESTRITO = d.pinRestrito;
+        if (d.pinLimitado) PIN_LIMITADO = d.pinLimitado;
       }).catch(() => {});
 
     // Relatório de ponto via WhatsApp: dispara no 1º acesso ao sistema após 9:30, seg a sex.
@@ -340,14 +342,15 @@
       setTimeout(() => { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); }, 90000);
     })();
 
-    const VERSAO = '3.97';
+    const VERSAO = '3.98';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
     let modo = 'parcial'; // 'completo' | 'parcial' | 'restrito'
 
-    const APPS_PARCIAL_ACESSO = ['Caixa', 'Relatório', 'Mapa', 'Folha', 'Rel. Folha', 'Funcionários', 'Rel. Ponto', 'A Receber', 'A Pagar'];
+    const APPS_PARCIAL_ACESSO = ['Caixa', 'Relatório', 'Mapa', 'Rel. Folha', 'Rel. Ponto', 'A Receber', 'A Pagar'];
     const APPS_RESTRITO = ['Rel. Ponto'];
+    const APPS_LIMITADO = ['Rel. Ponto', 'Folha', 'Rel. Folha', 'Funcionários', 'Mapa'];
 
     const APPS = [
       { icon: '💰', name: 'Caixa',              desc: 'Lançamentos financeiros',   url: 'https://sistema.gwrevestimentos.com.br/caixa/' },
@@ -375,6 +378,7 @@
     } else if (_sessao === 'completo')  { modo = 'completo';  mostrarHome(false); }
     else if (_sessao === 'parcial')   { modo = 'parcial';   mostrarHome(false); }
     else if (_sessao === 'restrito')  { modo = 'restrito';  mostrarHome(false); }
+    else if (_sessao === 'limitado')  { modo = 'limitado';  mostrarHome(false); }
 
     function addDigit(d) {
       if (digitado.length >= 4) return;
@@ -410,7 +414,7 @@
 
     async function verificarPin() {
       await pinsCarregados;
-      const pins = { [PIN_COMPLETO]: 'completo', [PIN_PARCIAL]: 'parcial', [PIN_RESTRITO]: 'restrito' };
+      const pins = { [PIN_COMPLETO]: 'completo', [PIN_PARCIAL]: 'parcial', [PIN_RESTRITO]: 'restrito', [PIN_LIMITADO]: 'limitado' };
       if (pins[digitado]) {
         modo = pins[digitado];
         sessionStorage.setItem('gw_auth', modo);
@@ -493,6 +497,7 @@
       const grid = document.getElementById('apps-grid');
       let lista = APPS;
       if (modo === 'restrito') lista = APPS.filter(a => APPS_RESTRITO.includes(a.name));
+      else if (modo === 'limitado') lista = APPS.filter(a => APPS_LIMITADO.includes(a.name));
 
       grid.innerHTML = lista.map((app, i) => {
         const wide    = (lista.length % 2 !== 0 && i === lista.length - 1) ? ' wide' : '';

@@ -1,4 +1,4 @@
-const VERSAO = "1.0";
+const VERSAO = "1.1";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp({
@@ -17,6 +17,7 @@ const DEFAULTS = {
   pinCompleto:       "2248",
   pinParcial:        "4512",
   pinRestrito:       "3733",
+  pinLimitado:       "0000",
   senhaExcluir:      "4512",
   senhaAlterarBanco: "6535",
   salarioEncarregado: 3000,
@@ -57,6 +58,7 @@ function renderizar() {
     ${item("PIN Completo (acesso total)", cfg.pinCompleto, "pinCompleto", true)}
     ${item("PIN Parcial (acesso limitado)", cfg.pinParcial, "pinParcial", true)}
     ${item("PIN Restrito (acesso mínimo)", cfg.pinRestrito, "pinRestrito", true)}
+    ${item("PIN Limitado (ponto, folha, funcionários, mapa)", cfg.pinLimitado, "pinLimitado", true)}
   `;
 }
 
@@ -73,7 +75,7 @@ function item(label, valor, campo, oculto) {
 
 // ── Modal ─────────────────────────────────────────────────────
 const CAMPOS_MOEDA   = ["salarioEncarregado", "salarioAjudante", "valorCafe", "valorAlmoco"];
-const CAMPOS_SENHAS  = ["senhaExcluir", "senhaAlterarBanco", "pinCompleto", "pinParcial", "pinRestrito"];
+const CAMPOS_SENHAS  = ["senhaExcluir", "senhaAlterarBanco", "pinCompleto", "pinParcial", "pinRestrito", "pinLimitado"];
 const LABELS = {
   salarioEncarregado: "Salário Encarregado (R$)",
   salarioAjudante:    "Salário Ajudante (R$)",
@@ -84,6 +86,7 @@ const LABELS = {
   pinCompleto:        "Novo PIN Completo (4 dígitos)",
   pinParcial:         "Novo PIN Parcial (4 dígitos)",
   pinRestrito:        "Novo PIN Restrito (4 dígitos)",
+  pinLimitado:        "Novo PIN Limitado (4 dígitos)",
 };
 
 let _campoAtual = null;
