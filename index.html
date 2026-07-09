@@ -300,11 +300,13 @@
       appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
     });
 
-    // Carrega PINs do Firestore (Configurações); fallback nos valores abaixo
+    // Carrega PINs do Firestore (Configurações); fallback nos valores abaixo.
+    // pinsCarregados é aguardado em verificarPin() antes de comparar, pra não
+    // rejeitar um PIN customizado só porque a busca ainda não voltou.
     let PIN_COMPLETO = '2248';
     let PIN_PARCIAL  = '4512';
     let PIN_RESTRITO = '3733';
-    firebase.firestore().collection('configuracoes').doc('geral').get()
+    const pinsCarregados = firebase.firestore().collection('configuracoes').doc('geral').get()
       .then(doc => {
         if (!doc.exists) return;
         const d = doc.data();
@@ -338,7 +340,7 @@
       setTimeout(() => { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); }, 90000);
     })();
 
-    const VERSAO = '3.96';
+    const VERSAO = '3.97';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -406,7 +408,8 @@
       if (!document.fullscreenElement && !document.webkitFullscreenElement) entrarFullscreen();
     }, { passive: true });
 
-    function verificarPin() {
+    async function verificarPin() {
+      await pinsCarregados;
       const pins = { [PIN_COMPLETO]: 'completo', [PIN_PARCIAL]: 'parcial', [PIN_RESTRITO]: 'restrito' };
       if (pins[digitado]) {
         modo = pins[digitado];
