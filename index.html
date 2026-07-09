@@ -338,13 +338,13 @@
       setTimeout(() => { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); }, 90000);
     })();
 
-    const VERSAO = '3.95';
+    const VERSAO = '3.96';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
     let modo = 'parcial'; // 'completo' | 'parcial' | 'restrito'
 
-    const APPS_PARCIAL_ACESSO = ['Caixa', 'Relatório', 'Mapa', 'Rel. Folha', 'Rel. Ponto', 'A Receber', 'A Pagar'];
+    const APPS_PARCIAL_ACESSO = ['Caixa', 'Relatório', 'Mapa', 'Folha', 'Rel. Folha', 'Funcionários', 'Rel. Ponto', 'A Receber', 'A Pagar'];
     const APPS_RESTRITO = ['Rel. Ponto'];
 
     const APPS = [
