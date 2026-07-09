@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "1.1";
+const VERSAO = "1.2";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -39,6 +39,7 @@ function hoje() {
 }
 
 let docsCache = {};
+let editandoId = null;
 
 function render(docs) {
   const lista = document.getElementById("lista");
@@ -63,6 +64,7 @@ function render(docs) {
     return `
       <div class="card ${baixado ? "baixado" : ""}">
         <div class="card-acoes">
+          <button class="btn-editar" onclick="editar('${doc.id}')">Editar</button>
           <button class="btn-del" onclick="excluir('${doc.id}')" title="Excluir">✕</button>
         </div>
         <div class="card-top">
@@ -101,10 +103,14 @@ document.getElementById("form").addEventListener("submit", function(e) {
     return;
   }
 
-  col.add({
-    data, descricao, valor, status: "aberto",
-    criadoEm: firebase.firestore.FieldValue.serverTimestamp()
-  });
+  if (editandoId) {
+    col.doc(editandoId).update({ data, descricao, valor });
+  } else {
+    col.add({
+      data, descricao, valor, status: "aberto",
+      criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  }
 
   this.reset();
   toggleForm();
@@ -126,6 +132,20 @@ function excluir(id) {
   col.doc(id).delete();
 }
 
+function editar(id) {
+  const c = docsCache[id];
+  if (!c) return;
+  editandoId = id;
+  document.getElementById("f-data").value = c.data || "";
+  document.getElementById("f-desc").value = c.descricao || "";
+  document.getElementById("f-valor").value = c.valor ? c.valor.toFixed(2).replace(".", ",") : "";
+  document.getElementById("form-titulo").textContent = "Editar Conta a Pagar";
+  document.getElementById("btn-add").textContent = "Salvar";
+  document.getElementById("form").style.display = "block";
+  document.getElementById("fab").classList.add("open");
+  document.getElementById("f-desc").focus();
+}
+
 function toggleForm() {
   const form = document.getElementById("form");
   const fab  = document.getElementById("fab");
@@ -137,6 +157,9 @@ function toggleForm() {
     document.getElementById("f-desc").focus();
   } else {
     document.getElementById("form").reset();
+    editandoId = null;
+    document.getElementById("form-titulo").textContent = "Nova Conta a Pagar";
+    document.getElementById("btn-add").textContent = "+ Cadastrar";
   }
 }
 

@@ -160,6 +160,18 @@ header {
 }
 .btn-del:active { color: #f44336; }
 
+.btn-editar {
+  background: #e8f5e9;
+  color: #1a3322;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-editar:active { background: #c8e6c9; }
+
 .fab {
   position: fixed;
   bottom: max(24px, env(safe-area-inset-bottom));
