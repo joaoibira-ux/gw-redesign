@@ -342,7 +342,45 @@
       setTimeout(() => { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); }, 90000);
     })();
 
-    const VERSAO = '4.01';
+    // Recarrega o campo Passagens (15dd) de cada funcionário com o valor pago na
+    // última quinzena (passagensUltimoPago, gravado no momento do pagamento em
+    // caixa/app.js), sempre no 1º acesso ao sistema após os dias 13 e 28.
+    (function recarregarPassagensQuinzena() {
+      const hoje = new Date();
+      const dia  = hoje.getDate();
+      const ano  = hoje.getFullYear();
+      const mes  = hoje.getMonth(); // 0-indexed
+
+      const chaveCiclo = (a, m, d) => `${a}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
+      let ciclo;
+      if (dia >= 28)      ciclo = chaveCiclo(ano, mes, 28);
+      else if (dia >= 13) ciclo = chaveCiclo(ano, mes, 13);
+      else {
+        const fimMesAnterior = new Date(ano, mes, 0); // dia 0 = último dia do mês anterior
+        ciclo = chaveCiclo(fimMesAnterior.getFullYear(), fimMesAnterior.getMonth(), 28);
+      }
+
+      if (localStorage.getItem('gw_passagens_ciclo') === ciclo) return;
+
+      firebase.firestore().collection('funcionarios').get().then(snap => {
+        const batch = firebase.firestore().batch();
+        let algum = false;
+        snap.docs.forEach(doc => {
+          const f = doc.data();
+          if (f.ativo === false) return;
+          const ultimoPago = Number(f.passagensUltimoPago || 0);
+          if (ultimoPago <= 0) return;
+          batch.update(doc.ref, { passagens: ultimoPago });
+          algum = true;
+        });
+        const marcarFeito = () => localStorage.setItem('gw_passagens_ciclo', ciclo);
+        if (!algum) { marcarFeito(); return; }
+        batch.commit().then(marcarFeito).catch(e => console.error('Falha ao recarregar passagens:', e));
+      }).catch(e => console.error('Falha ao recarregar passagens:', e));
+    })();
+
+    const VERSAO = '4.02';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';

@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.39";
+const VERSAO_CAIXA = "3.40";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -504,15 +504,15 @@ document.getElementById("f-origem").addEventListener("change", function() {
     saida.readOnly = true;
     db.collection("funcionarios").get().then(snap => {
       let total = 0;
-      const ids = [];
+      const valores = {};
       snap.docs.forEach(d => {
         const f = d.data();
         if (f.ativo === false) return;
         const valor = Number(f.passagens || 0);
-        if (valor > 0) { total += valor; ids.push(d.id); }
+        if (valor > 0) { total += valor; valores[d.id] = valor; }
       });
-      if (!ids.length) { alert("Nenhuma passagem a pagar."); saida.value = ""; return; }
-      passagensParaPagar = { ids };
+      if (!Object.keys(valores).length) { alert("Nenhuma passagem a pagar."); saida.value = ""; return; }
+      passagensParaPagar = { valores };
       saida.value = total.toFixed(2).replace(".", ",");
     });
   } else if (autoDescs.includes(desc.value)) {
@@ -721,7 +721,7 @@ function pagarFolha(data, desc, saida) {
 }
 
 function pagarPassagens(data, desc, saida) {
-  const { ids } = passagensParaPagar;
+  const { valores } = passagensParaPagar;
   const batch = db.batch();
 
   batch.set(col.doc(), {
@@ -730,8 +730,11 @@ function pagarPassagens(data, desc, saida) {
     criadoEm: firebase.firestore.FieldValue.serverTimestamp()
   });
 
-  // Zera as passagens pagas — não entram no próximo relatório da quinzena
-  ids.forEach(id => batch.update(db.collection("funcionarios").doc(id), { passagens: 0 }));
+  // Zera as passagens pagas (não entram no próximo relatório da quinzena) e guarda
+  // o valor pago para a recarga automática do dia 13/28 (ver index.html)
+  Object.entries(valores).forEach(([id, valor]) => {
+    batch.update(db.collection("funcionarios").doc(id), { passagens: 0, passagensUltimoPago: valor });
+  });
 
   batch.commit().catch(() => alert("Erro ao registrar pagamento. Tente novamente."));
 }
