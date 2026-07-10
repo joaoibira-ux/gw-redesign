@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.72";
+const VERSAO = "4.73";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -415,9 +415,16 @@ function selecionarFuncionario(func) {
   atualizarBtnOk();
   const cargo = (func.cargo || '').toLowerCase();
   if (ehAjudante(func.cargo)) {
-    _pendingClick = null;
-    document.getElementById('modal-tipo-nome-ajudante').textContent = func.nome;
-    document.getElementById('modal-tipo-ajudante').classList.add('ativa');
+    if (_pendingClick) {
+      // Veio do mapa clicando direto num serviço de Tratamento — já sabemos o tipo, dá andamento
+      aguardandoCalendarioAjudante = true;
+      modoDiariaHoras = false;
+      mostrarView('view-mapa');
+      _aplicarPendingClick();
+    } else {
+      document.getElementById('modal-tipo-nome-ajudante').textContent = func.nome;
+      document.getElementById('modal-tipo-ajudante').classList.add('ativa');
+    }
   } else if (cargo.includes('pintor')) {
     document.getElementById('modal-tipo-nome').textContent = func.nome;
     document.getElementById('modal-tipo-pintor').classList.add('ativa');
@@ -673,7 +680,8 @@ function onServicoClick(el) {
   if (!servicosSelecionados.has(key)) {
     if (!funcionarioAtual) {
       _pendingClick = { key, local, servico, localid: el.dataset.localid, svidx: el.dataset.svidx };
-      apenasProducao = true;
+      // Tratamento também pode ser feito por ajudante; os demais serviços, só produção (pintor/raspador)
+      apenasProducao = ordemServico(servico.nome) !== 0;
       mostrarView('view-funcionarios');
       return;
     }
