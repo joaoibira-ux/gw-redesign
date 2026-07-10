@@ -103,7 +103,7 @@
   <!-- View 2: Mapa (com barra do funcionário + botão OK) -->
   <div id="view-mapa" class="view">
     <div class="mapa-barra">
-      <button class="btn-voltar" onclick="entradas.length ? mostrarView('view-folha') : mostrarView('view-funcionarios')">&#8592;</button>
+      <button class="btn-voltar" onclick="aguardandoCalendarioAjudante=false; entradas.length ? mostrarView('view-folha') : mostrarView('view-funcionarios')">&#8592;</button>
       <span id="func-atual" class="func-atual"></span>
       <button id="btn-ok" class="btn-ok" onclick="confirmarSelecao()" disabled>OK</button>
     </div>
@@ -142,6 +142,17 @@
     </div>
   </div>
 
+  <!-- Modal: tipo de registro do ajudante -->
+  <div id="modal-tipo-ajudante" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-titulo">Como deseja registrar?</div>
+      <div class="modal-nome" id="modal-tipo-nome-ajudante"></div>
+      <button class="modal-btn modal-btn-producao" onclick="escolherTipoAjudante('tratamento')">Tratamento de Paredes e Tetos</button>
+      <button class="modal-btn modal-btn-diaria" onclick="escolherTipoAjudante('geral')">Serviços Gerais</button>
+      <button class="modal-btn modal-btn-cancelar" onclick="fecharModalTipoAjudante()">Cancelar</button>
+    </div>
+  </div>
+
   <!-- View 4: Folha Preview -->
   <div id="view-folha" class="view">
     <div id="folha-documento"></div>
@@ -156,7 +167,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
-  <script src="app.js?v=4.70"></script>
+  <script src="app.js?v=4.72"></script>
   <script>
     if (document.documentElement.classList.contains('gw-blocked')) {
       (function() {

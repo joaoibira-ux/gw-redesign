@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.71";
+const VERSAO = "4.72";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -409,14 +409,15 @@ function _aplicarPendingClick() {
 
 function selecionarFuncionario(func) {
   funcionarioAtual = func;
+  aguardandoCalendarioAjudante = false;
   servicosSelecionados.clear();
   document.getElementById('func-atual').textContent = func.nome;
   atualizarBtnOk();
   const cargo = (func.cargo || '').toLowerCase();
   if (ehAjudante(func.cargo)) {
     _pendingClick = null;
-    modoDiariaHoras = false;
-    abrirCalendario(func);
+    document.getElementById('modal-tipo-nome-ajudante').textContent = func.nome;
+    document.getElementById('modal-tipo-ajudante').classList.add('ativa');
   } else if (cargo.includes('pintor')) {
     document.getElementById('modal-tipo-nome').textContent = func.nome;
     document.getElementById('modal-tipo-pintor').classList.add('ativa');
@@ -441,6 +442,29 @@ function escolherTipoPintor(tipo) {
     modoDiariaHoras = false;
     mostrarView('view-mapa');
     _aplicarPendingClick();
+  }
+}
+
+function fecharModalTipoAjudante() {
+  document.getElementById('modal-tipo-ajudante').classList.remove('ativa');
+}
+
+// Ajudante fazendo Tratamento de Paredes e Tetos: marca o(s) apartamento(s) no
+// mapa (como um pintor) e, em seguida, abre o calendário para marcar a diária.
+let aguardandoCalendarioAjudante = false;
+
+function escolherTipoAjudante(tipo) {
+  fecharModalTipoAjudante();
+  if (tipo === 'tratamento') {
+    _pendingClick = null;
+    aguardandoCalendarioAjudante = true;
+    modoDiariaHoras = false;
+    mostrarView('view-mapa');
+    _aplicarPendingClick();
+  } else {
+    aguardandoCalendarioAjudante = false;
+    modoDiariaHoras = false;
+    abrirCalendario(funcionarioAtual);
   }
 }
 
@@ -672,7 +696,15 @@ function atualizarBtnOk() {
 
 // ── Confirmar seleção → adiciona na folha ──────────────────
 function confirmarSelecao() {
-  if (!servicosSelecionados.size) { mostrarView('view-folha'); return; }
+  if (!servicosSelecionados.size) {
+    if (aguardandoCalendarioAjudante) {
+      aguardandoCalendarioAjudante = false;
+      abrirCalendario(funcionarioAtual);
+    } else {
+      mostrarView('view-folha');
+    }
+    return;
+  }
 
   servicosSelecionados.forEach(({ local, servico }) => {
     entradas.push({
@@ -687,8 +719,14 @@ function confirmarSelecao() {
 
   renderizarFolha();
   atualizarHeader();
-  mostrarView('view-folha');
-  salvarFolha(true, false); // salva ao voltar para a tela da folha
+  salvarFolha(true, false); // salva o progresso
+
+  if (aguardandoCalendarioAjudante) {
+    aguardandoCalendarioAjudante = false;
+    abrirCalendario(funcionarioAtual);
+  } else {
+    mostrarView('view-folha');
+  }
 }
 
 async function removerDiaria(idx) {
