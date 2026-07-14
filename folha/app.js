@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.75";
+const VERSAO = "4.76";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -299,22 +299,30 @@ async function sincronizarDiariasAjudantesPorPonto() {
         const sabado          = new Date(segunda); sabado.setDate(sabado.getDate() - 2);   // sábado da semana passada
         const segundaAnterior = new Date(segunda); segundaAnterior.setDate(segundaAnterior.getDate() - 7);
 
-        let diasTrabalhadosSemana = 0;
+        let diasUteisTrabalhados = 0; // segunda a sexta (0..4) da semana passada
         let sabadoTrabalhado = false;
-        let segASexCompleta = true;
         for (let i = 0; i < 6; i++) { // 0=segunda ... 5=sábado, da semana passada
           const dia  = new Date(segundaAnterior); dia.setDate(dia.getDate() + i);
           const trab = trabalhou(func.id, dia);
-          if (trab) diasTrabalhadosSemana++;
+          if (i <= 4 && trab) diasUteisTrabalhados++;
           if (i === 5) sabadoTrabalhado = trab;
-          if (i <= 4 && !trab) segASexCompleta = false;
         }
 
-        if (sabadoTrabalhado && diasTrabalhadosSemana >= 5) {
-          novosDias.set(fmtDiaMes(domingo), 2 * valorDiaria(func, domingo));
-        } else if (!sabadoTrabalhado && segASexCompleta) {
-          if (!novosDias.has(fmtDiaMes(sabado))) novosDias.set(fmtDiaMes(sabado), valorDiaria(func, sabado));
-          novosDias.set(fmtDiaMes(domingo), valorDiaria(func, domingo));
+        // Sábado é garantido (pago mesmo sem trabalhar) enquanto houver no
+        // máximo 2 faltas na semana (seg-sex); com mais faltas, só é pago se
+        // ele realmente trabalhou nesse sábado.
+        const faltasSemana    = 5 - diasUteisTrabalhados;
+        const sabadoGarantido = faltasSemana <= 2;
+        if (sabadoGarantido || sabadoTrabalhado) {
+          novosDias.set(fmtDiaMes(sabado), valorDiaria(func, sabado));
+        }
+
+        // Domingo só entra com base na presença real (sábado garantido não conta):
+        // seg-sex completo (5/5) → 1 diária; se além disso trabalhou o sábado
+        // de verdade (compensando falta) → 2 diárias.
+        const totalRealTrabalhado = diasUteisTrabalhados + (sabadoTrabalhado ? 1 : 0);
+        if (totalRealTrabalhado >= 5) {
+          novosDias.set(fmtDiaMes(domingo), (sabadoTrabalhado ? 2 : 1) * valorDiaria(func, domingo));
         }
       }
 
