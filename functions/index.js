@@ -221,6 +221,12 @@ async function executarFerramenta(nome, input) {
     if (senha !== SENHA_ALTERACAO_BANCO) {
       return { sucesso: false, erro: "senha_invalida", mensagem: "Senha incorreta. Peça a senha de autorização ao usuário para alterar o banco de dados." };
     }
+
+    const funcionarioDoc = await db.collection("funcionarios").doc(funcionarioId).get();
+    if (!funcionarioDoc.exists) {
+      return { sucesso: false, erro: "funcionario_invalido", mensagem: "funcionarioId não corresponde a nenhum funcionário real. Chame listar_funcionarios de novo para pegar o ID correto antes de tentar novamente." };
+    }
+
     const dataBase = data
       ? new Date(data + "T00:00:00-03:00")
       : new Date(new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }) + "T00:00:00-03:00");
