@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.76";
+const VERSAO = "4.77";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -153,6 +153,23 @@ db.collection('funcionarios').onSnapshot(snap => {
 // ── Diaristas — mesma fonte que produção (onSnapshot em tempo real) ──────
 let _diariasCache = [];
 
+// Diária de sábado/domingo ganha um rótulo específico no relatório
+// (sábado é a diária normal do dia; domingo é o repouso semanal remunerado).
+function diaSemanaDoLocalId(localId) {
+  const dataPart = (localId || '').replace(' ½', '').trim();
+  const [dia, mes] = dataPart.split('/').map(Number);
+  if (!dia || !mes) return null;
+  return new Date(new Date().getFullYear(), mes - 1, dia).getDay(); // 0=domingo, 6=sábado
+}
+
+function labelDiaria(d) {
+  if (d.horas) return `Diária (${d.horas}h)`;
+  const diaSemana = diaSemanaDoLocalId(d.localId);
+  if (diaSemana === 6) return 'Diária Sábado';
+  if (diaSemana === 0) return 'Repouso Remunerado';
+  return 'Diária';
+}
+
 function sincronizarDiaristas() {
   entradas = entradas.filter(e => e.firestoreLocalId);
   _diariasCache.forEach(doc => {
@@ -161,7 +178,7 @@ function sincronizarDiaristas() {
         funcionario:      { id: doc.funcionarioId || '', nome: doc.funcionarioNome, cargo: doc.cargo || '' },
         firestoreLocalId: '',
         localId:          d.localId,
-        servico:          d.horas ? `Diária (${d.horas}h)` : 'Diária',
+        servico:          labelDiaria(d),
         valor:            d.valor,
         horas:            d.horas || null
       });
@@ -1392,7 +1409,7 @@ async function verRelatorio() {
       (doc.dias || []).forEach(d => {
         grupos.get(key).itens.push({
           funcionario: func, firestoreLocalId: '', localId: d.localId,
-          servico: d.horas ? `Diária (${d.horas}h)` : 'Diária', valor: d.valor
+          servico: labelDiaria(d), valor: d.valor
         });
       });
     });
