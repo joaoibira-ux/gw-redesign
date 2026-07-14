@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.73";
+const VERSAO = "4.74";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -167,6 +167,7 @@ function sincronizarDiaristas() {
       });
     });
   });
+  filtrarProducaoConflitanteComDiaria();
 }
 
 db.collection('diarias').onSnapshot(snap => {
@@ -198,6 +199,25 @@ let modoDiariaHoras   = false; // true quando o calendário está sendo usado po
 
 function ehAjudante(cargo) {
   return (cargo || '').toLowerCase().includes('ajudante');
+}
+
+// Para ajudante, se no mesmo dia houver diária e produção, a diária prevalece
+// e a produção daquele dia é ignorada (não soma no total).
+function filtrarProducaoConflitanteComDiaria() {
+  const diasComDiaria = new Set();
+  entradas.forEach(e => {
+    if (e.firestoreLocalId) return; // só diárias
+    const diaMes = (e.localId || '').replace(' ½', '').trim();
+    if (!diaMes) return;
+    diasComDiaria.add(`${e.funcionario.id || e.funcionario.nome}|${diaMes}`);
+  });
+  entradas = entradas.filter(e => {
+    if (!e.firestoreLocalId) return true; // mantém diárias
+    if (!ehAjudante(e.funcionario.cargo)) return true; // regra é só para ajudante
+    if (!e.dataRegistro) return true;
+    const diaMes = e.dataRegistro.split('/').slice(0, 2).join('/');
+    return !diasComDiaria.has(`${e.funcionario.id || e.funcionario.nome}|${diaMes}`);
+  });
 }
 
 const MESES_CAL = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -724,6 +744,7 @@ function confirmarSelecao() {
       dataRegistro:     new Date().toLocaleDateString('pt-BR')
     });
   });
+  filtrarProducaoConflitanteComDiaria();
 
   renderizarFolha();
   atualizarHeader();
@@ -912,6 +933,7 @@ async function salvarFolha(silencioso = false, completarAjudantes = true) {
             entradas.push({ funcionario: g.funcionario, firestoreLocalId: '', localId: item.localId, servico: item.servico, valor: Number(item.valor) });
           });
         });
+        filtrarProducaoConflitanteComDiaria();
       }
     } catch(e) {}
   }
