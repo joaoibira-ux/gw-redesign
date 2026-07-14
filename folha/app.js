@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.74";
+const VERSAO = "4.75";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -218,6 +218,131 @@ function filtrarProducaoConflitanteComDiaria() {
     const diaMes = e.dataRegistro.split('/').slice(0, 2).join('/');
     return !diasComDiaria.has(`${e.funcionario.id || e.funcionario.nome}|${diaMes}`);
   });
+}
+
+// ── Sincroniza diárias de ajudantes a partir do ponto (quinzena atual) ──────
+// Regras:
+// - Conta como "diária trabalhada" qualquer dia da quinzena em que o ajudante
+//   tenha ENTRADA e SAÍDA registradas no ponto (horários são ignorados).
+// - Bônus semanal: numa segunda-feira, olhando a semana passada (seg a sáb):
+//   • se trabalhou o sábado e teve >=5 diárias na semana → domingo = 2 diárias
+//   • se NÃO trabalhou o sábado mas seg-sex está completo (5/5) → sábado e
+//     domingo = 1 diária cada
+// Roda toda vez que a página é aberta; só ADICIONA dias que ainda não existem
+// na coleção 'diarias' (não mexe em dias já lançados manualmente).
+async function sincronizarDiariasAjudantesPorPonto() {
+  try {
+    const hoje = new Date();
+    const ano = hoje.getFullYear(), mes = hoje.getMonth();
+    const quinzenaInicio = new Date(ano, mes, hoje.getDate() <= 15 ? 1 : 16);
+    const quinzenaFim    = hoje.getDate() <= 15 ? new Date(ano, mes, 15) : new Date(ano, mes + 1, 0);
+
+    const janelaInicio = new Date(quinzenaInicio);
+    janelaInicio.setDate(janelaInicio.getDate() - 9);
+    const janelaFimExclusiva = new Date(quinzenaFim);
+    janelaFimExclusiva.setDate(janelaFimExclusiva.getDate() + 1);
+
+    const [snapPontos, snapFunc] = await Promise.all([
+      db.collection('pontos')
+        .where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(janelaInicio))
+        .where('timestamp', '<',  firebase.firestore.Timestamp.fromDate(janelaFimExclusiva))
+        .get(),
+      db.collection('funcionarios').get()
+    ]);
+
+    const ajudantes = snapFunc.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(f => f.ativo !== false && ehAjudante(f.cargo));
+    if (!ajudantes.length) return;
+
+    // funcionarioId -> Map(diaKey -> { entrada, saida })
+    const registrosPorFunc = new Map();
+    snapPontos.docs.forEach(doc => {
+      const d = doc.data();
+      if (!d.funcionarioId || !d.timestamp || !d.tipo) return;
+      const dt = d.timestamp.toDate();
+      const diaKey = `${dt.getFullYear()}-${dt.getMonth()}-${dt.getDate()}`;
+      if (!registrosPorFunc.has(d.funcionarioId)) registrosPorFunc.set(d.funcionarioId, new Map());
+      const dias = registrosPorFunc.get(d.funcionarioId);
+      if (!dias.has(diaKey)) dias.set(diaKey, { entrada: false, saida: false });
+      const info = dias.get(diaKey);
+      if (d.tipo === 'entrada') info.entrada = true;
+      if (d.tipo === 'saida')   info.saida   = true;
+    });
+
+    function trabalhou(funcionarioId, date) {
+      const dias = registrosPorFunc.get(funcionarioId);
+      if (!dias) return false;
+      const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+      const info = dias.get(key);
+      return !!(info && info.entrada && info.saida);
+    }
+
+    function diasNoMes(a, m) { return new Date(a, m + 1, 0).getDate(); }
+    function valorDiaria(func, date) { return (func.salario || 0) / diasNoMes(date.getFullYear(), date.getMonth()); }
+    function fmtDiaMes(date) { return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}`; }
+
+    for (const func of ajudantes) {
+      const novosDias = new Map(); // localId ('dd/mm') → valor
+
+      // 1. Dias da quinzena com entrada+saída no ponto
+      for (let d = new Date(quinzenaInicio); d <= quinzenaFim; d.setDate(d.getDate() + 1)) {
+        if (trabalhou(func.id, d)) novosDias.set(fmtDiaMes(d), valorDiaria(func, d));
+      }
+
+      // 2. Bônus semanal — avaliado em cada segunda-feira dentro da quinzena
+      for (let d = new Date(quinzenaInicio); d <= quinzenaFim; d.setDate(d.getDate() + 1)) {
+        if (d.getDay() !== 1) continue; // 1 = segunda-feira
+
+        const segunda         = new Date(d);
+        const domingo         = new Date(segunda); domingo.setDate(domingo.getDate() - 1); // dia anterior
+        const sabado          = new Date(segunda); sabado.setDate(sabado.getDate() - 2);   // sábado da semana passada
+        const segundaAnterior = new Date(segunda); segundaAnterior.setDate(segundaAnterior.getDate() - 7);
+
+        let diasTrabalhadosSemana = 0;
+        let sabadoTrabalhado = false;
+        let segASexCompleta = true;
+        for (let i = 0; i < 6; i++) { // 0=segunda ... 5=sábado, da semana passada
+          const dia  = new Date(segundaAnterior); dia.setDate(dia.getDate() + i);
+          const trab = trabalhou(func.id, dia);
+          if (trab) diasTrabalhadosSemana++;
+          if (i === 5) sabadoTrabalhado = trab;
+          if (i <= 4 && !trab) segASexCompleta = false;
+        }
+
+        if (sabadoTrabalhado && diasTrabalhadosSemana >= 5) {
+          novosDias.set(fmtDiaMes(domingo), 2 * valorDiaria(func, domingo));
+        } else if (!sabadoTrabalhado && segASexCompleta) {
+          if (!novosDias.has(fmtDiaMes(sabado))) novosDias.set(fmtDiaMes(sabado), valorDiaria(func, sabado));
+          novosDias.set(fmtDiaMes(domingo), valorDiaria(func, domingo));
+        }
+      }
+
+      if (novosDias.size === 0) continue;
+
+      // 3. Upsert incremental — só adiciona dias que ainda não existem
+      const docRef  = db.collection('diarias').doc(func.id || func.nome);
+      const docSnap = await docRef.get();
+      const diasAtuais   = docSnap.exists ? (docSnap.data().dias || []) : [];
+      const chavesAtuais = new Set(diasAtuais.map(dd => (dd.localId || '').replace(' ½', '').trim()));
+
+      const diasParaAdicionar = [];
+      novosDias.forEach((valor, localId) => {
+        if (!chavesAtuais.has(localId)) diasParaAdicionar.push({ localId, valor });
+      });
+      if (!diasParaAdicionar.length) continue;
+
+      await docRef.set({
+        funcionarioId:   func.id || '',
+        funcionarioNome: func.nome,
+        cargo:           func.cargo || '',
+        diaria:          docSnap.exists ? (docSnap.data().diaria ?? valorDiaria(func, hoje)) : valorDiaria(func, hoje),
+        dias:            [...diasAtuais, ...diasParaAdicionar]
+      }, { merge: true });
+    }
+  } catch (e) {
+    console.error('Erro ao sincronizar diárias por ponto:', e);
+  }
 }
 
 const MESES_CAL = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -1317,3 +1442,5 @@ if ('serviceWorker' in navigator) {
   // Recarrega uma vez quando novo SW assume o controle (nova versão instalada)
   navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload());
 }
+
+sincronizarDiariasAjudantesPorPonto();
