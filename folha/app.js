@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.77";
+const VERSAO = "4.78";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -218,8 +218,9 @@ function ehAjudante(cargo) {
   return (cargo || '').toLowerCase().includes('ajudante');
 }
 
-// Para ajudante, se no mesmo dia houver diária e produção, a diária prevalece
-// e a produção daquele dia é ignorada (não soma no total).
+// Para ajudante, se no mesmo dia houver diária e produção, a diária prevalece:
+// o valor da produção daquele dia é zerado (não soma no total), mas o serviço
+// continua aparecendo na folha (com valor R$ 0,00) para efeito de registro.
 function filtrarProducaoConflitanteComDiaria() {
   const diasComDiaria = new Set();
   entradas.forEach(e => {
@@ -228,12 +229,13 @@ function filtrarProducaoConflitanteComDiaria() {
     if (!diaMes) return;
     diasComDiaria.add(`${e.funcionario.id || e.funcionario.nome}|${diaMes}`);
   });
-  entradas = entradas.filter(e => {
-    if (!e.firestoreLocalId) return true; // mantém diárias
-    if (!ehAjudante(e.funcionario.cargo)) return true; // regra é só para ajudante
-    if (!e.dataRegistro) return true;
+  entradas = entradas.map(e => {
+    if (!e.firestoreLocalId) return e; // mantém diárias
+    if (!ehAjudante(e.funcionario.cargo)) return e; // regra é só para ajudante
+    if (!e.dataRegistro) return e;
     const diaMes = e.dataRegistro.split('/').slice(0, 2).join('/');
-    return !diasComDiaria.has(`${e.funcionario.id || e.funcionario.nome}|${diaMes}`);
+    if (!diasComDiaria.has(`${e.funcionario.id || e.funcionario.nome}|${diaMes}`)) return e;
+    return { ...e, valor: 0 };
   });
 }
 
