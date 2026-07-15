@@ -83,7 +83,6 @@ header {
   justify-content: space-between;
   align-items: flex-start;
   gap: 10px;
-  padding-right: 28px;
 }
 
 .card-desc {
@@ -141,36 +140,142 @@ header {
   color: #1a3322;
 }
 
-.card-acoes {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  display: flex;
-  gap: 4px;
+.detalhe-badge {
+  display: inline-block;
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
-.btn-del {
+.detalhe-badge.aberto {
+  background: #fff3e0;
+  color: #ef6c00;
+}
+
+.detalhe-badge.baixado {
+  background: #e8f0e9;
+  color: #1a3322;
+}
+
+.card { cursor: pointer; }
+
+.card.selecionado {
+  border-left-color: #1565c0;
+  background: #e3f2fd;
+  box-shadow: 0 1px 4px rgba(21,101,192,0.25);
+}
+
+.btn-somar {
+  background: rgba(255,255,255,0.12);
+  color: white;
+  border: 1px solid rgba(255,255,255,0.35);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  margin: 0 8px;
+}
+.btn-somar.ativo {
+  background: #1565c0;
+  border-color: #1565c0;
+}
+
+/* ── Tela de detalhes ── */
+.detalhe-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 300;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.detalhe-box {
+  background: white;
+  width: 100%;
+  border-radius: 20px 20px 0 0;
+  padding: 20px 18px max(20px, env(safe-area-inset-bottom));
+}
+
+.detalhe-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.detalhe-fechar {
   background: none;
   border: none;
-  font-size: 1rem;
-  color: #ccc;
+  font-size: 1.1rem;
+  color: #aaa;
   cursor: pointer;
   padding: 4px;
   line-height: 1;
 }
-.btn-del:active { color: #f44336; }
 
-.btn-editar {
-  background: #e8f5e9;
+.detalhe-desc {
+  font-size: 1.1rem;
+  font-weight: 700;
   color: #1a3322;
+  margin-bottom: 6px;
+}
+
+.detalhe-valor {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #1565c0;
+  margin-bottom: 14px;
+}
+
+.detalhe-linhas {
+  border-top: 1px solid #eee;
+  padding-top: 12px;
+  margin-bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.detalhe-linha {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.88rem;
+  color: #444;
+}
+.detalhe-linha span:first-child { color: #888; }
+
+.detalhe-botoes {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-cancelar, .btn-editar-detalhe {
+  flex: 1;
   border: none;
-  border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 0.75rem;
+  border-radius: 10px;
+  padding: 13px;
+  font-size: 0.95rem;
   font-weight: 700;
   cursor: pointer;
 }
-.btn-editar:active { background: #c8e6c9; }
+
+.btn-cancelar {
+  background: #fdecea;
+  color: #c62828;
+}
+.btn-cancelar:active { background: #fadbd8; }
+
+.btn-editar-detalhe {
+  background: #1a3322;
+  color: white;
+}
+.btn-editar-detalhe:active { background: #2d5a2d; }
 
 .fab {
   position: fixed;

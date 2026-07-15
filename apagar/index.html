@@ -9,7 +9,7 @@
   <title>A Pagar</title>
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <link rel="manifest" href="./manifest.json" />
-  <link rel="stylesheet" href="./style.css?v=2" />
+  <link rel="stylesheet" href="./style.css?v=3" />
   <link rel="apple-touch-icon" href="./Logo-gw.png" />
 </head>
 <body>
@@ -19,17 +19,34 @@
     <img src="./Logo-gw.png" alt="GW" style="height:34px;width:34px;object-fit:contain;border-radius:6px;" />
   </a>
   <span>A Pagar</span>
+  <button class="btn-somar" id="btn-somar" onclick="toggleSoma()">Somar</button>
   <span id="versao-app" class="header-versao"></span>
 </header>
 
 <div class="resumo">
-  <span class="resumo-label">Total em aberto</span>
+  <span class="resumo-label" id="resumo-label">Total em aberto</span>
   <span class="resumo-valor" id="tot-aberto">R$ 0,00</span>
 </div>
 
 <div id="lista" class="lista"></div>
 
 <button class="fab" id="fab" onclick="toggleForm()">+</button>
+
+<div class="detalhe-overlay" id="detalhe-overlay" style="display:none" onclick="if(event.target===this) fecharDetalhe()">
+  <div class="detalhe-box">
+    <div class="detalhe-top">
+      <span class="detalhe-badge" id="det-badge"></span>
+      <button class="detalhe-fechar" onclick="fecharDetalhe()">✕</button>
+    </div>
+    <div class="detalhe-desc" id="det-desc"></div>
+    <div class="detalhe-valor" id="det-valor"></div>
+    <div class="detalhe-linhas" id="det-linhas"></div>
+    <div class="detalhe-botoes">
+      <button class="btn-cancelar" onclick="cancelarDaTelaDetalhe()">Cancelar</button>
+      <button class="btn-editar-detalhe" onclick="editarDaTelaDetalhe()">Editar</button>
+    </div>
+  </div>
+</div>
 
 <form class="form-card" id="form" novalidate style="display:none">
   <h3 id="form-titulo">Nova Conta a Pagar</h3>
@@ -53,7 +70,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
-<script src="./app.js?v=3"></script>
+<script src="./app.js?v=4"></script>
 <script src="../agente.js"></script>
 </body>
 </html>

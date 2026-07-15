@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "1.2";
+const VERSAO = "1.3";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -38,35 +38,48 @@ function hoje() {
   ].join("/");
 }
 
-let docsCache = {};
-let editandoId = null;
+// Converte "DD/MM/AAAA" num valor compará­vel para ordenação cronológica
+function parseDataOrdenacao(s) {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec((s || "").trim());
+  if (!m) return 0;
+  const [, d, mo, a] = m;
+  const ano = a.length === 2 ? "20" + a : a;
+  return new Date(Number(ano), Number(mo) - 1, Number(d)).getTime();
+}
+
+let docsCache   = {};
+let editandoId  = null;
+let modoSoma       = false;
+let selecionados   = new Set();
+let detalheAbertoId = null;
 
 function render(docs) {
   const lista = document.getElementById("lista");
   docsCache = {};
 
+  const docsOrdenados = [...docs].sort((a, b) =>
+    parseDataOrdenacao(a.data().data) - parseDataOrdenacao(b.data().data)
+  );
+
   let totalAberto = 0;
-  docs.forEach(doc => {
+  docsOrdenados.forEach(doc => {
     const c = doc.data();
     docsCache[doc.id] = c;
     if (c.status !== "baixado") totalAberto += c.valor || 0;
   });
-  document.getElementById("tot-aberto").textContent = fmtMoeda(totalAberto);
+  if (!modoSoma) document.getElementById("tot-aberto").textContent = fmtMoeda(totalAberto);
 
-  if (docs.length === 0) {
+  if (docsOrdenados.length === 0) {
     lista.innerHTML = '<p class="empty">Nenhuma conta a pagar cadastrada.</p>';
     return;
   }
 
-  lista.innerHTML = docs.map(doc => {
+  lista.innerHTML = docsOrdenados.map(doc => {
     const c = doc.data();
     const baixado = c.status === "baixado";
+    const sel = selecionados.has(doc.id);
     return `
-      <div class="card ${baixado ? "baixado" : ""}">
-        <div class="card-acoes">
-          <button class="btn-editar" onclick="editar('${doc.id}')">Editar</button>
-          <button class="btn-del" onclick="excluir('${doc.id}')" title="Excluir">✕</button>
-        </div>
+      <div class="card ${baixado ? "baixado" : ""} ${sel ? "selecionado" : ""}" onclick="onCardClick('${doc.id}')">
         <div class="card-top">
           <div class="card-desc">${c.numero ? `<span class="card-item-badge">Nº ${escHtml(c.numero)}</span>` : ""}${escHtml(c.descricao)}</div>
           <div class="card-valor">${fmtMoeda(c.valor)}</div>
@@ -87,6 +100,81 @@ col.orderBy("criadoEm", "asc").onSnapshot(snap => {
   document.getElementById("lista").innerHTML =
     '<p class="empty">Erro ao conectar. Verifique sua internet.</p>';
 });
+
+// ── Modo Somar ──────────────────────────────────────────────
+function toggleSoma() {
+  modoSoma = !modoSoma;
+  selecionados.clear();
+  const btn = document.getElementById("btn-somar");
+  btn.textContent = modoSoma ? "Concluir" : "Somar";
+  btn.classList.toggle("ativo", modoSoma);
+  atualizarResumoSoma();
+  render(Object.keys(docsCache).map(id => ({ id, data: () => docsCache[id] })));
+}
+
+function atualizarResumoSoma() {
+  const label = document.getElementById("resumo-label");
+  const valor = document.getElementById("tot-aberto");
+  if (modoSoma) {
+    const total = [...selecionados].reduce((acc, id) => acc + (docsCache[id]?.valor || 0), 0);
+    label.textContent = `${selecionados.size} selecionado${selecionados.size !== 1 ? "s" : ""}`;
+    valor.textContent = fmtMoeda(total);
+  } else {
+    label.textContent = "Total em aberto";
+    let totalAberto = 0;
+    Object.values(docsCache).forEach(c => { if (c.status !== "baixado") totalAberto += c.valor || 0; });
+    valor.textContent = fmtMoeda(totalAberto);
+  }
+}
+
+function onCardClick(id) {
+  if (modoSoma) {
+    if (selecionados.has(id)) selecionados.delete(id);
+    else selecionados.add(id);
+    atualizarResumoSoma();
+    render(Object.keys(docsCache).map(k => ({ id: k, data: () => docsCache[k] })));
+  } else {
+    abrirDetalhe(id);
+  }
+}
+
+// ── Tela de detalhes ────────────────────────────────────────
+function abrirDetalhe(id) {
+  const c = docsCache[id];
+  if (!c) return;
+  detalheAbertoId = id;
+  const baixado = c.status === "baixado";
+
+  document.getElementById("det-badge").textContent = baixado ? "Pago" : "Em aberto";
+  document.getElementById("det-badge").className = "detalhe-badge " + (baixado ? "baixado" : "aberto");
+  document.getElementById("det-desc").textContent = (c.numero ? `Nº ${c.numero} · ` : "") + (c.descricao || "");
+  document.getElementById("det-valor").textContent = fmtMoeda(c.valor);
+
+  const linhas = [`<div class="detalhe-linha"><span>Data</span><span>${escHtml(c.data)}</span></div>`];
+  if (baixado && c.dataBaixa) linhas.push(`<div class="detalhe-linha"><span>Pago em</span><span>${escHtml(c.dataBaixa)}</span></div>`);
+  document.getElementById("det-linhas").innerHTML = linhas.join("");
+
+  document.getElementById("detalhe-overlay").style.display = "flex";
+}
+
+function fecharDetalhe() {
+  document.getElementById("detalhe-overlay").style.display = "none";
+  detalheAbertoId = null;
+}
+
+function cancelarDaTelaDetalhe() {
+  if (!detalheAbertoId) return;
+  const id = detalheAbertoId;
+  fecharDetalhe();
+  excluir(id);
+}
+
+function editarDaTelaDetalhe() {
+  if (!detalheAbertoId) return;
+  const id = detalheAbertoId;
+  fecharDetalhe();
+  editar(id);
+}
 
 document.getElementById("form").addEventListener("submit", function(e) {
   e.preventDefault();
