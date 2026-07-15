@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-title" content="Funcionários" />
   <title>Cadastro de Funcionários</title>
   <link rel="manifest" href="./manifest.json" />
-  <link rel="stylesheet" href="./style.css?v=11" />
+  <link rel="stylesheet" href="./style.css?v=12" />
 </head>
 <body>
 
@@ -235,6 +235,10 @@
 
 <!-- TELA DE CONSULTA -->
 <div id="consultar-overlay" class="form-overlay" style="display:none">
+  <div class="consultar-topo">
+    <button type="button" class="btn-voltar-consulta" onclick="fecharConsultar()">← Voltar</button>
+    <span class="consultar-titulo">Consulta</span>
+  </div>
   <div class="form-scroll">
     <div id="consultar-body"></div>
     <div class="form-actions">
@@ -283,7 +287,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
-<script src="./app.js?v=20"></script>
+<script src="./app.js?v=21"></script>
 <script src="../agente.js"></script>
 </body>
 </html>

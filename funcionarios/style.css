@@ -285,6 +285,34 @@ header {
   -webkit-overflow-scrolling: touch;
 }
 
+#consultar-overlay { padding-top: 0; }
+
+.consultar-topo {
+  background: #1a3322;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  padding-top: max(12px, env(safe-area-inset-top));
+  flex-shrink: 0;
+}
+
+.btn-voltar-consulta {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.consultar-titulo {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
 .form-section-title {
   font-size: 0.68rem;
   font-weight: 800;
