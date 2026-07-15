@@ -692,7 +692,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.76";
+  const VERSAO = "1.77";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -783,7 +783,8 @@
     if (n.includes('tratamento'))                          return 0;
     if (n.includes('pasta'))                               return 1;
     if (n.includes('emassamento') || n.includes('massa'))  return 2;
-    if (n.includes('textura'))                             return 3;
+    if (n.includes('textura') && n.includes('wc'))         return 3;
+    if (n.includes('textura'))                             return 4;
     return 99;
   }
   function nomeAbrev(nome) {
@@ -791,6 +792,7 @@
     if (n.includes('tratamento')) return 'Tratamento';
     if (n.includes('pasta'))      return 'Gesso';
     if (n.includes('emassamento') || n.includes('massa')) return 'Massa';
+    if (n.includes('textura') && n.includes('wc'))         return 'Textura WC';
     if (n.includes('textura'))    return 'Textura';
     return (nome||'').substring(0, 12);
   }
