@@ -692,7 +692,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.79";
+  const VERSAO = "1.80";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1606,7 +1606,7 @@
           const executor = s.funcionario || found.funcionario || null;
           return {
             id: s.id, nome: s.nome, status: 'concluido',
-            executor: executor ? { nome: executor.nome, id: executor.id || '' } : null,
+            executor: executor ? { nome: executor.nome, id: executor.id || '', cargo: executor.cargo || '' } : null,
             valorPago: found.valor || 0, dataPagamento: dataSexta
           };
         });
