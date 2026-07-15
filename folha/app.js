@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.79";
+const VERSAO = "4.80";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -165,7 +165,7 @@ function diaSemanaDoLocalId(localId) {
 function labelDiaria(d) {
   if (d.horas) return `Diária (${d.horas}h)`;
   const diaSemana = diaSemanaDoLocalId(d.localId);
-  if (diaSemana === 6) return 'Diária Sábado';
+  if (diaSemana === 6) return 'Sábado';
   if (diaSemana === 0) return 'Repouso Remunerado';
   return 'Diária';
 }
@@ -256,8 +256,12 @@ async function sincronizarDiariasAjudantesPorPonto() {
     const quinzenaInicio = new Date(ano, mes, hoje.getDate() <= 15 ? 1 : 16);
     const quinzenaFim    = hoje.getDate() <= 15 ? new Date(ano, mes, 15) : new Date(ano, mes + 1, 0);
 
+    // Margem generosa: mesmo que a quinzena comece no meio da semana (ex:
+    // quarta), garante que segunda/terça daquela semana — que podem cair na
+    // quinzena/mês anterior — sejam buscadas para decidir corretamente o
+    // bônus de domingo (só corta o domingo com falta real seg-sex).
     const janelaInicio = new Date(quinzenaInicio);
-    janelaInicio.setDate(janelaInicio.getDate() - 9);
+    janelaInicio.setDate(janelaInicio.getDate() - 14);
     const janelaFimExclusiva = new Date(quinzenaFim);
     janelaFimExclusiva.setDate(janelaFimExclusiva.getDate() + 1);
 
