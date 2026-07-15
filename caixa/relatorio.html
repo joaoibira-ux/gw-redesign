@@ -477,7 +477,7 @@
       gap: 10px;
     }
     .prev-cols { grid-template-columns: 1fr 120px 120px 120px; }
-    .prev-cols-med { grid-template-columns: 1fr 100px 100px 100px 100px; }
+    .prev-cols-med { grid-template-columns: 1fr 90px 90px 90px 90px 90px 90px; }
     .prev-cols-pass { grid-template-columns: 1fr 120px; }
     .prev-header { display: grid; padding: 5px 16px; border-bottom: 1px solid rgba(165,214,167,0.15); }
     .prev-header span { font-size: 0.6rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #4a8a5a; text-align: right; white-space: nowrap; }
@@ -692,7 +692,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.77";
+  const VERSAO = "1.78";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1235,7 +1235,7 @@
     let totalMedicao = 0, totalRetencao = 0, totalAReceber = 0, totalCusto = 0;
     const linhas = cats.map(cat => {
       const { count, subtotal, custo } = sumsByCat[cat];
-      const nome = (catFallback[cat] || {}).nome || `Tipo ${cat}`;
+      const { nome, mdo: custoUd, medicao: medicaoUd } = catFallback[cat] || { nome: `Tipo ${cat}`, mdo: 0, medicao: 0 };
       const retencao = subtotal * 0.05;
       const aReceber = subtotal - retencao;
       totalMedicao  += subtotal;
@@ -1245,6 +1245,8 @@
       return `
         <div class="prev-linha prev-cols-med">
           <div class="prev-nome">${escHtml(nome)} <span class="prev-cargo">${count} apto${count !== 1 ? 's' : ''}</span></div>
+          <div class="prev-custo">${fmt(custoUd)}</div>
+          <div class="prev-custo">${fmt(medicaoUd)}</div>
           <div class="prev-custo">${fmt(custo)}</div>
           <div class="prev-valor">${fmt(subtotal)}</div>
           <div class="prev-adiant">${retencao > 0 ? '- '+fmt(retencao) : '—'}</div>
@@ -1256,11 +1258,13 @@
       <div class="previsao-card">
         <div class="prev-titulo">Previsão da Medição</div>
         <div class="prev-header prev-cols-med">
-          <span>Serviço</span><span>Custos</span><span>Medição</span><span>Retenção</span><span>A Receber</span>
+          <span>Serviço</span><span>Custo (UD)</span><span>Medição (UD)</span><span>Custos</span><span>Medição</span><span>Retenção</span><span>A Receber</span>
         </div>
         ${linhas}
         <div class="prev-total prev-cols-med">
           <span>Total</span>
+          <span>—</span>
+          <span>—</span>
           <span style="color:#ffb74d">${fmt(totalCusto)}</span>
           <span>${fmt(totalMedicao)}</span>
           <span style="color:#ef9a9a">${totalRetencao > 0 ? '- '+fmt(totalRetencao) : '—'}</span>
