@@ -1,8 +1,8 @@
-const VERSION = "folha-v4.82";
+const VERSION = "folha-v4.83";
 const ASSETS = [
   "./index.html",
   "./style.css?v=4.21",
-  "./app.js?v=4.82",
+  "./app.js?v=4.83",
   "./Logo-gw.png",
   "./Aviso iPhone.png",
   "./Aviso Adroide.png",
@@ -38,7 +38,24 @@ self.addEventListener("activate", e => {
 });
 
 self.addEventListener("fetch", e => {
-  // Tudo: cache primeiro, rede como fallback (abre instantâneo)
+  // Navegação (HTML) e app.js: rede primeiro, sem cache de resposta antiga —
+  // essa é a lógica financeira mais sensível do sistema, não pode rodar
+  // desatualizada por causa de cache de service worker. Cache só serve de
+  // fallback se estiver offline.
+  const critico = e.request.mode === "navigate" || e.request.url.includes("app.js");
+  if (critico) {
+    e.respondWith(
+      fetch(e.request, { cache: "no-store" })
+        .then(response => {
+          if (response.ok) caches.open(VERSION).then(c => c.put(e.request, response.clone()));
+          return response;
+        })
+        .catch(() => caches.match(e.request))
+    );
+    return;
+  }
+
+  // Resto (imagens, css): cache primeiro, rede como fallback (abre instantâneo)
   e.respondWith(
     caches.match(e.request).then(cached => {
       const networkFetch = fetch(e.request).then(response => {
