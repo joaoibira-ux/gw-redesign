@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "1.3";
+const VERSAO = "1.4";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -109,7 +109,7 @@ function toggleSoma() {
   btn.textContent = modoSoma ? "Concluir" : "Somar";
   btn.classList.toggle("ativo", modoSoma);
   atualizarResumoSoma();
-  render(Object.keys(docsCache).map(id => ({ id, data: () => docsCache[id] })));
+  render(Object.entries(docsCache).map(([id, c]) => ({ id, data: () => c })));
 }
 
 function atualizarResumoSoma() {
@@ -132,7 +132,7 @@ function onCardClick(id) {
     if (selecionados.has(id)) selecionados.delete(id);
     else selecionados.add(id);
     atualizarResumoSoma();
-    render(Object.keys(docsCache).map(k => ({ id: k, data: () => docsCache[k] })));
+    render(Object.entries(docsCache).map(([k, c]) => ({ id: k, data: () => c })));
   } else {
     abrirDetalhe(id);
   }
