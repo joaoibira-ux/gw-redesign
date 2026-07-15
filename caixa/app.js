@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.40";
+const VERSAO_CAIXA = "3.41";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -45,8 +45,6 @@ function escHtml(s) {
 
 let docsCache      = {};
 let ultimoDocId    = null;
-let folhaParaPagar = null;
-let passagensParaPagar = null;
 let descPrefix     = null;
 let contasReceberCache    = {};
 let contaReceberSelecionada = null;
@@ -257,13 +255,7 @@ document.getElementById("form").addEventListener("submit", function(e) {
     return;
   }
 
-  if (origem === "ANE->FOLHA DE PAGAMENTO") {
-    if (!folhaParaPagar) { alert("Folha não carregada. Selecione a origem novamente."); return; }
-    pagarFolha(data, desc, saida);
-  } else if (origem === "ANE->PASSAGENS") {
-    if (!passagensParaPagar) { alert("Passagens não carregadas. Selecione a origem novamente."); return; }
-    pagarPassagens(data, desc, saida);
-  } else if (origem === "JOAO->CTAS A RECEBER") {
+  if (origem === "JOAO->CTAS A RECEBER") {
     criarContaAReceber(data, desc, saida);
   } else if (origem === "JOAO->BAIXA CTAS A RECEBER") {
     if (!contaReceberSelecionada) { alert("Selecione uma conta a receber. Selecione a origem novamente."); return; }
@@ -284,8 +276,6 @@ document.getElementById("form").addEventListener("submit", function(e) {
   document.getElementById("f-saida").value = "";
   document.getElementById("f-saida").readOnly = false;
   document.getElementById("f-entrada").readOnly = false;
-  folhaParaPagar = null;
-  passagensParaPagar = null;
   descPrefix = null;
   contaReceberSelecionada = null;
   contaPagarSelecionada = null;
@@ -310,8 +300,6 @@ const ORIGEM_GRUPOS = {
     { value: "ANE->HORACIO", label: "HORACIO-Pagamento de Empréstimo (Baixa do Crédito Horácio)" },
     { value: "ANE->JOAO", label: "JOÃO ALBÉRICO - Pagamento de Prólabore (Baixa do Crédito João)" },
     { value: "ANE->RETENCAO PARADIGMA 5%", label: "RETENÇÃO PARADIGMA 5% (A Receber)" },
-    { value: "ANE->FOLHA DE PAGAMENTO", label: "PAGAMENTO DA FOLHA (Reseta a Folha de Pag)" },
-    { value: "ANE->PASSAGENS", label: "PAGAMENTO DAS PASSAGENS (Reseta Passagens)" },
     { value: "ANE->ADIANTAMENTO", label: "ADIANTAMENTO DE SALÁRIO (Debita da Folha)" }
   ],
   "JOAO": [
@@ -350,13 +338,11 @@ document.getElementById("f-origem").addEventListener("change", function() {
   const desc    = document.getElementById("f-desc");
   const saida   = document.getElementById("f-saida");
   const entrada = document.getElementById("f-entrada");
-  const autoDescs = ["Transferência Pix: CEF -> INTER", "Transferência Pix: CEF -> HORÁCIO", "Pró-labore JOAO: CEF -> JOAO", "Transferência Pix: INTER -> HORÁCIO", "Folha de Pagamento da Produção", "Crédito Pró-labore: João Albérico", "Pró-labore JOAO: INTER -> JOAO", "Pagamento das Passagens da Próxima Quinzena"];
+  const autoDescs = ["Transferência Pix: CEF -> INTER", "Transferência Pix: CEF -> HORÁCIO", "Pró-labore JOAO: CEF -> JOAO", "Transferência Pix: INTER -> HORÁCIO", "Crédito Pró-labore: João Albérico", "Pró-labore JOAO: INTER -> JOAO"];
 
   // Sempre reseta os campos entrada/saída e prefixo ao trocar origem
   saida.readOnly = false;
   entrada.readOnly = false;
-  folhaParaPagar = null;
-  passagensParaPagar = null;
   descPrefix = null;
   contaReceberSelecionada = null;
   contaPagarSelecionada = null;
@@ -393,128 +379,6 @@ document.getElementById("f-origem").addEventListener("change", function() {
     desc.value = "Crédito Pró-labore: João Albérico";
   } else if (this.value === "JOAO->JOAO") {
     desc.value = "Pró-labore JOAO: INTER -> JOAO";
-  } else if (this.value === "ANE->FOLHA DE PAGAMENTO") {
-    desc.value = "Folha de Pagamento da Produção";
-    saida.value = "carregando...";
-    saida.readOnly = true;
-    Promise.all([
-      db.collection("folhas").orderBy("criadoEm", "desc").limit(1).get(),
-      db.collection("lancamentos").where("origem", "in", ["ANE->ADIANTAMENTO", "JOAO->ADIANTAMENTO"]).get(),
-      db.collection("locais").get(),
-      db.collection("servicos").get(),
-      db.collection("diarias").get()
-    ]).then(([snap, adSnap, locaisSnap, servicosSnap, diariasSnap]) => {
-      if (snap.empty) { alert("Nenhuma folha encontrada."); saida.value = ""; return; }
-      const fdoc  = snap.docs[0];
-      const folha = fdoc.data();
-      if (folha.status === "paga") { alert("A última folha já foi paga."); saida.value = ""; return; }
-      folhaParaPagar = { id: fdoc.id, folha };
-
-      // Bruto real (atual) por funcionário de produção + total de serviços em pagamento
-      // (mesmo cálculo de _porFuncProducao/_nServTotal no relatorio.html)
-      const servByName = {};
-      const catFallback = {};
-      servicosSnap.docs.forEach(d => {
-        const s = d.data();
-        servByName[s.nome] = { medicao: s.medicao || 0, mdo: s.mdo || 0 };
-        const cat = ordemServico(s.nome);
-        if (cat < 99 && !(cat in catFallback)) catFallback[cat] = { medicao: s.medicao || 0, mdo: s.mdo || 0 };
-      });
-
-      const porFuncProducao = new Map();
-      let nServTotal = 0;
-      locaisSnap.docs.forEach(d => {
-        (d.data().servicos || []).forEach(s => {
-          if (s.status !== "em_pagamento") return;
-          nServTotal++;
-          const cat = ordemServico(s.nome);
-          const valores = servByName[s.nome] || catFallback[cat] || { medicao: 0, mdo: 0 };
-          let custoApto = valores.mdo;
-          if (cat === 0 && s.funcionario && (s.funcionario.cargo || "").toLowerCase().includes("pintor")) {
-            custoApto += 10;
-          }
-          const func = s.funcionario;
-          if (func && !(func.cargo || "").toLowerCase().includes("ajudante")) {
-            const key = func.id || func.nome;
-            porFuncProducao.set(key, (porFuncProducao.get(key) || 0) + custoApto);
-          }
-        });
-      });
-
-      // Grupos da folha (sem ajudantes) + diaristas vindos de 'diarias'
-      // (mesmo cálculo de renderPrevisaoFolha no relatorio.html)
-      let grupos = (folha.grupos || []).filter(g =>
-        g.isEncarregado || !(g.funcionario?.cargo || "").toLowerCase().includes("ajudante")
-      );
-
-      // Soma das diárias por funcionário (pintores também registram diária, além dos serviços de produção)
-      const diariaPorFunc = new Map();
-      diariasSnap.docs.forEach(d => {
-        const doc = d.data();
-        const subtotal = (doc.dias || []).reduce((s, dia) => s + Number(dia.valor || 0), 0);
-        if (subtotal <= 0) return;
-        const key = normNome(doc.funcionarioNome);
-        const atual = diariaPorFunc.get(key) || { total: 0, nome: doc.funcionarioNome, cargo: doc.cargo || "Ajudante" };
-        atual.total += subtotal;
-        diariaPorFunc.set(key, atual);
-      });
-
-      // Só cria linha nova para quem ainda não tem linha (ajudante puro); quem já tem linha soma a diária nela
-      const nomesExistentes = new Set(grupos.map(g => normNome(g.funcionario?.nome)));
-      diariaPorFunc.forEach((info, key) => {
-        if (!nomesExistentes.has(key)) grupos = [...grupos, {
-          isEncarregado: false,
-          funcionario: { nome: info.nome, cargo: info.cargo },
-          subtotal: 0
-        }];
-      });
-
-      const adiantMap = new Map();
-      adSnap.docs.forEach(d => {
-        const r = d.data();
-        const ddesc = r.descricao || "";
-        if (!ddesc.startsWith("Adiantamento: ")) return;
-        const nome = ddesc.slice("Adiantamento: ".length).split(/\s*[—–\-]/)[0].trim().normalize("NFC");
-        if (!nome) return;
-        adiantMap.set(normNome(nome), (adiantMap.get(normNome(nome)) || 0) + (r.saida || 0));
-      });
-
-      let totalBruto = 0, totalAdiant = 0;
-      grupos.forEach(g => {
-        let bruto = g.subtotal || 0;
-        if (g.isEncarregado) {
-          const quinzena = (g.itens || []).find(i => i.servico === "Quinzena 50%");
-          if (quinzena) bruto = Number(quinzena.valor || 0) + 5 * nServTotal;
-        } else {
-          const key = g.funcionario.id || g.funcionario.nome;
-          if (porFuncProducao.has(key)) bruto = porFuncProducao.get(key);
-        }
-        const diaria = diariaPorFunc.get(normNome(g.funcionario.nome));
-        if (diaria) bruto += diaria.total;
-        totalBruto  += bruto;
-        totalAdiant += adiantMap.get(normNome(g.funcionario.nome)) || 0;
-      });
-
-      const totalLiquido = totalBruto - totalAdiant;
-      saida.value = totalLiquido.toFixed(2).replace(".", ",");
-    });
-  } else if (this.value === "ANE->PASSAGENS") {
-    desc.value = "Pagamento das Passagens da Próxima Quinzena";
-    saida.value = "carregando...";
-    saida.readOnly = true;
-    db.collection("funcionarios").get().then(snap => {
-      let total = 0;
-      const valores = {};
-      snap.docs.forEach(d => {
-        const f = d.data();
-        if (f.ativo === false) return;
-        const valor = Number(f.passagens || 0);
-        if (valor > 0) { total += valor; valores[d.id] = valor; }
-      });
-      if (!Object.keys(valores).length) { alert("Nenhuma passagem a pagar."); saida.value = ""; return; }
-      passagensParaPagar = { valores };
-      saida.value = total.toFixed(2).replace(".", ",");
-    });
   } else if (autoDescs.includes(desc.value)) {
     desc.value = "";
   }
@@ -650,94 +514,6 @@ document.getElementById("f-desc").addEventListener("input", function() {
   }
 });
 
-function pagarFolha(data, desc, saida) {
-  const { id: folhaId, folha } = folhaParaPagar;
-
-  // Lookup: "firestoreId:servico" → {funcionario, valor}
-  const lookup = new Map();
-  (folha.grupos || []).forEach(g => {
-    if (g.isEncarregado) return;
-    (g.itens || []).forEach(item => {
-      const entry = { funcionario: g.funcionario, valor: item.valor };
-      lookup.set(`${item.firestoreLocalId}:${item.servico}`,            entry);
-      lookup.set(`${item.firestoreLocalId}:${nomeAbrev(item.servico)}`, entry);
-    });
-  });
-
-  Promise.all([
-    db.collection("locais").get(),
-    db.collection("diarias").get(),
-    db.collection("lancamentos").where("origem", "in", ["ANE->ADIANTAMENTO", "JOAO->ADIANTAMENTO"]).get()
-  ]).then(([locaisSnap, diariasSnap, adiantSnap]) => {
-    const batch = db.batch();
-
-    // Lançamento no caixa
-    batch.set(col.doc(), {
-      data, origem: "ANE->FOLHA DE PAGAMENTO", descricao: desc,
-      entrada: 0, saida,
-      criadoEm: firebase.firestore.FieldValue.serverTimestamp()
-    });
-
-    // Marca folha como paga
-    batch.update(db.collection("folhas").doc(folhaId), {
-      status:  "paga",
-      pagaEm:  firebase.firestore.FieldValue.serverTimestamp()
-    });
-
-    // Marca cada serviço amarelo como concluido
-    locaisSnap.docs.forEach(doc => {
-      const servicos  = doc.data().servicos || [];
-      const temAmarelo = servicos.some(s => s.status === "em_pagamento");
-      if (!temAmarelo) return;
-
-      const novos = servicos.map(s => {
-        if (s.status !== "em_pagamento") return s;
-        const found    = lookup.get(`${doc.id}:${s.nome}`) || lookup.get(`${doc.id}:${nomeAbrev(s.nome)}`) || {};
-        const executor = s.funcionario || found.funcionario || null;
-        return {
-          id:            s.id,
-          nome:          s.nome,
-          status:        "concluido",
-          executor:      executor ? { nome: executor.nome, id: executor.id || "" } : null,
-          valorPago:     found.valor || 0,
-          dataPagamento: data
-        };
-      });
-
-      batch.update(db.collection("locais").doc(doc.id), { servicos: novos });
-    });
-
-    // Zera o crédito dos diaristas no calendário da folha (pago junto com esta folha)
-    diariasSnap.docs.forEach(doc => batch.delete(doc.ref));
-
-    // Adiantamentos já descontados nesta folha não entram na próxima (preserva a origem ANE/JOAO)
-    adiantSnap.docs.forEach(doc => {
-      const novaOrigem = doc.data().origem === "JOAO->ADIANTAMENTO" ? "JOAO->ANTECIPACAO" : "ANE->ANTECIPACAO";
-      batch.update(doc.ref, { origem: novaOrigem });
-    });
-
-    batch.commit().catch(() => alert("Erro ao registrar pagamento. Tente novamente."));
-  });
-}
-
-function pagarPassagens(data, desc, saida) {
-  const { valores } = passagensParaPagar;
-  const batch = db.batch();
-
-  batch.set(col.doc(), {
-    data, origem: "ANE->PASSAGENS", descricao: desc,
-    entrada: 0, saida,
-    criadoEm: firebase.firestore.FieldValue.serverTimestamp()
-  });
-
-  // Zera as passagens pagas (não entram no próximo relatório da quinzena) e guarda
-  // o valor pago para a recarga automática do dia 13/28 (ver index.html)
-  Object.entries(valores).forEach(([id, valor]) => {
-    batch.update(db.collection("funcionarios").doc(id), { passagens: 0, passagensUltimoPago: valor });
-  });
-
-  batch.commit().catch(() => alert("Erro ao registrar pagamento. Tente novamente."));
-}
 
 function criarContaAReceber(data, desc, saida) {
   const numero = String(Object.keys(docsCache).length + 1).padStart(4, "0");
