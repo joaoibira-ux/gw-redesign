@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.10";
+const VERSAO = "3.11";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -65,7 +65,16 @@ function render(docs) {
   const lista = document.getElementById("lista");
   funcionariosCache = {};
   if (!docs.length) { lista.innerHTML = '<p class="empty">Nenhum funcionário cadastrado.</p>'; return; }
-  lista.innerHTML = docs.map(doc => {
+
+  // Ativos primeiro (ordem alfabética), inativos no fim (também alfabética)
+  const docsOrdenados = [...docs].sort((a, b) => {
+    const fa = a.data(), fb = b.data();
+    const ativoA = fa.ativo !== false, ativoB = fb.ativo !== false;
+    if (ativoA !== ativoB) return ativoA ? -1 : 1;
+    return (fa.nome || "").localeCompare(fb.nome || "", "pt-BR");
+  });
+
+  lista.innerHTML = docsOrdenados.map(doc => {
     const f = doc.data();
     funcionariosCache[doc.id] = f;
     const porProd = ehPorProducao(f.cargo);
