@@ -380,7 +380,89 @@
       }).catch(e => console.error('Falha ao recarregar passagens:', e));
     })();
 
-    const VERSAO = '4.19';
+    // Fecha automaticamente saídas pendentes do ponto (dias passados em que o
+    // funcionário bateu entrada mas esqueceu a saída), registrando a saída às
+    // 14:00 naquele dia. Nunca mexe no dia de hoje (que ainda pode estar em
+    // andamento). Usa config/pontoFechamento.ultimaVerificada como marca
+    // d'água: na primeira vez que roda, só estabelece o marco em "ontem" —
+    // sem varrer/alterar nada do histórico anterior — e passa a corrigir só
+    // dias futuros a partir daí em diante.
+    (function fecharSaidasPendentesPonto() {
+      const agora = new Date();
+      const chaveData = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+      const dataDeChave = s => { const [a,m,d] = s.split('-').map(Number); return new Date(a, m-1, d); };
+
+      const chaveHoje = chaveData(agora);
+      if (localStorage.getItem('gw_fechamento_ponto_dia') === chaveHoje) return;
+
+      const db = firebase.firestore();
+      const configRef = db.collection('config').doc('pontoFechamento');
+
+      // meia-noite local de hoje/ontem — nunca carregar a hora atual, senão
+      // o dia de hoje (ainda em andamento) vaza pra dentro da checagem
+      const hoje  = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
+      const ontem = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() - 1);
+      const chaveOntem = chaveData(ontem);
+
+      configRef.get().then(doc => {
+        const ultimaVerificada = doc.exists ? doc.data().ultimaVerificada : null;
+
+        if (!ultimaVerificada) {
+          return configRef.set({ ultimaVerificada: chaveOntem });
+        }
+
+        const inicio = dataDeChave(ultimaVerificada);
+        inicio.setDate(inicio.getDate() + 1);
+        if (inicio > ontem) return; // nada novo a verificar
+
+        const fimExclusivo = hoje; // meia-noite de hoje: exclui o dia de hoje inteiro
+
+        return db.collection('pontos')
+          .where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(inicio))
+          .where('timestamp', '<',  firebase.firestore.Timestamp.fromDate(fimExclusivo))
+          .get()
+          .then(snap => {
+            const porFuncDia = new Map();
+            snap.docs.forEach(d => {
+              const p = d.data();
+              if (!p.funcionarioId || !p.timestamp || !p.tipo) return;
+              const ts = p.timestamp.toDate();
+              const chave = `${p.funcionarioId}|${chaveData(ts)}`;
+              if (!porFuncDia.has(chave)) {
+                porFuncDia.set(chave, {
+                  entrada: false, saida: false, funcionarioNome: '',
+                  funcionarioId: p.funcionarioId,
+                  dia: new Date(ts.getFullYear(), ts.getMonth(), ts.getDate())
+                });
+              }
+              const info = porFuncDia.get(chave);
+              if (p.tipo === 'entrada') { info.entrada = true; info.funcionarioNome = p.funcionarioNome || info.funcionarioNome; }
+              if (p.tipo === 'saida') info.saida = true;
+            });
+
+            const batch = db.batch();
+            porFuncDia.forEach(info => {
+              if (info.entrada && !info.saida) {
+                const timestampSaida = new Date(info.dia.getFullYear(), info.dia.getMonth(), info.dia.getDate(), 14, 0, 0);
+                batch.set(db.collection('pontos').doc(), {
+                  funcionarioId: info.funcionarioId,
+                  funcionarioNome: info.funcionarioNome || '',
+                  tipo: 'saida',
+                  timestamp: firebase.firestore.Timestamp.fromDate(timestampSaida),
+                  localizacao: null,
+                  fechamentoAutomatico: true
+                });
+              }
+            });
+            batch.set(configRef, { ultimaVerificada: chaveOntem }, { merge: true });
+            return batch.commit();
+          });
+      })
+      .then(() => localStorage.setItem('gw_fechamento_ponto_dia', chaveHoje))
+      .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
+    })();
+
+    const VERSAO = '4.20';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
