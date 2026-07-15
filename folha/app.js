@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.80";
+const VERSAO = "4.81";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -255,6 +255,17 @@ async function sincronizarDiariasAjudantesPorPonto() {
     const ano = hoje.getFullYear(), mes = hoje.getMonth();
     const quinzenaInicio = new Date(ano, mes, hoje.getDate() <= 15 ? 1 : 16);
     const quinzenaFim    = hoje.getDate() <= 15 ? new Date(ano, mes, 15) : new Date(ano, mes + 1, 0);
+
+    // Se a última folha paga foi criada dentro desta mesma quinzena, ela já foi
+    // fechada — não recria as diárias que o fechamento zerou de propósito.
+    const ultimaFolhaSnap = await db.collection('folhas').orderBy('criadoEm', 'desc').limit(1).get();
+    if (!ultimaFolhaSnap.empty) {
+      const ultima = ultimaFolhaSnap.docs[0].data();
+      if (ultima.status === 'paga' && ultima.criadoEm) {
+        const dtCriacao = ultima.criadoEm.toDate();
+        if (dtCriacao >= quinzenaInicio && dtCriacao <= quinzenaFim) return;
+      }
+    }
 
     // Margem generosa: mesmo que a quinzena comece no meio da semana (ex:
     // quarta), garante que segunda/terça daquela semana — que podem cair na
