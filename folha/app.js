@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.78";
+const VERSAO = "4.79";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -793,8 +793,12 @@ db.collection("locais").orderBy("identificacao", "asc").onSnapshot(snap => {
           if (novoFn !== e.funcionario || novoValor !== e.valor) refinado = true;
           return { ...e, funcionario: novoFn, valor: novoValor, dataRegistro: found.dataRegistro || e.dataRegistro || null };
         });
+        filtrarProducaoConflitanteComDiaria();
 
-        if (refinado) { renderizarFolha(); atualizarHeader(); }
+        // Sempre re-renderiza aqui: além do refino por lookup, o filtro de
+        // conflito diária×produção acima também pode ter alterado valores.
+        renderizarFolha();
+        atualizarHeader();
       });
     }
   }
