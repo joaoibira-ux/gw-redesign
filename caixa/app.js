@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.41";
+const VERSAO_CAIXA = "3.42";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -126,6 +126,8 @@ function render(docs) {
         interE += r.entrada || 0;
       } else if (r.origem === "JOAO->BAIXA CTAS A PAGAR") {
         interS += r.saida || 0;
+      } else if (r.origem === "ANE->BAIXA CTAS A PAGAR") {
+        cefS += r.saida || 0;
       } else if (r.origem === "ANE->CREDITO A REPASSAR P BBS FOMENTO") {
         cefE += r.entrada || 0;
       }
@@ -262,9 +264,9 @@ document.getElementById("form").addEventListener("submit", function(e) {
     baixarContaAReceber(data, desc, entrada);
   } else if (origem === "JOAO->CTAS A PAGAR") {
     criarContaAPagar(data, desc, entrada);
-  } else if (origem === "JOAO->BAIXA CTAS A PAGAR") {
+  } else if (origem === "JOAO->BAIXA CTAS A PAGAR" || origem === "ANE->BAIXA CTAS A PAGAR") {
     if (!contaPagarSelecionada) { alert("Selecione uma conta a pagar. Selecione a origem novamente."); return; }
-    baixarContaAPagar(data, desc, saida);
+    baixarContaAPagar(data, desc, saida, origem);
   } else if (origem === "ANE->CREDITO A REPASSAR P BBS FOMENTO") {
     criarCreditoRepassarBBS(data, desc, entrada);
   } else {
@@ -300,7 +302,8 @@ const ORIGEM_GRUPOS = {
     { value: "ANE->HORACIO", label: "HORACIO-Pagamento de Empréstimo (Baixa do Crédito Horácio)" },
     { value: "ANE->JOAO", label: "JOÃO ALBÉRICO - Pagamento de Prólabore (Baixa do Crédito João)" },
     { value: "ANE->RETENCAO PARADIGMA 5%", label: "RETENÇÃO PARADIGMA 5% (A Receber)" },
-    { value: "ANE->ADIANTAMENTO", label: "ADIANTAMENTO DE SALÁRIO (Debita da Folha)" }
+    { value: "ANE->ADIANTAMENTO", label: "ADIANTAMENTO DE SALÁRIO (Debita da Folha)" },
+    { value: "ANE->BAIXA CTAS A PAGAR", label: "ANE → BAIXA CTAS A PAGAR" }
   ],
   "JOAO": [
     { value: "JOAO", label: "JOAO (Geral)" },
@@ -355,7 +358,7 @@ document.getElementById("f-origem").addEventListener("change", function() {
     if (autoDescs.includes(desc.value)) desc.value = "";
     abrirPickerContaReceber();
     return;
-  } else if (this.value === "JOAO->BAIXA CTAS A PAGAR") {
+  } else if (this.value === "JOAO->BAIXA CTAS A PAGAR" || this.value === "ANE->BAIXA CTAS A PAGAR") {
     if (autoDescs.includes(desc.value)) desc.value = "";
     abrirPickerContaPagar();
     return;
@@ -587,13 +590,13 @@ function criarCreditoRepassarBBS(data, desc, entrada) {
   batch.commit().catch(() => alert("Erro ao criar conta a pagar. Tente novamente."));
 }
 
-function baixarContaAPagar(data, desc, saida) {
+function baixarContaAPagar(data, desc, saida, origem) {
   const { id, conta } = contaPagarSelecionada;
   const numero = String(Object.keys(docsCache).length + 1).padStart(4, "0");
   const batch = db.batch();
 
   batch.set(col.doc(), {
-    data, origem: "JOAO->BAIXA CTAS A PAGAR", descricao: desc,
+    data, origem: origem || "JOAO->BAIXA CTAS A PAGAR", descricao: desc,
     entrada: 0, saida,
     criadoEm: firebase.firestore.FieldValue.serverTimestamp()
   });
