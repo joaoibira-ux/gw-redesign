@@ -1,4 +1,5 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 if (!admin.apps.length) admin.initializeApp();
@@ -764,3 +765,31 @@ exports.relatorioPontoWhatsApp = onCall(
     return { enviado: true, total: snap.size };
   }
 );
+
+// Auto-corretor: sempre que um documento em 'diarias' é criado/atualizado,
+// verifica se a quinzena atual já foi fechada (última folha paga criada
+// dentro dela) — se foi, apaga o documento de novo. Protege contra clientes
+// desatualizados (cache de service worker antigo) recriando diárias que o
+// fechamento já zerou de propósito, não importa qual aparelho/navegador
+// tenha feito a escrita.
+exports.protegerDiariasFechadas = onDocumentWritten("diarias/{funcionarioId}", async (event) => {
+  const depois = event.data.after;
+  if (!depois.exists) return; // documento foi deletado, nada a corrigir
+
+  process.env.TZ = "America/Sao_Paulo";
+  const hoje = new Date();
+  const ano = hoje.getFullYear(), mes = hoje.getMonth(), dia = hoje.getDate();
+  const quinzenaInicio = new Date(ano, mes, dia <= 15 ? 1 : 16);
+  const quinzenaFim    = dia <= 15 ? new Date(ano, mes, 15, 23, 59, 59, 999) : new Date(ano, mes + 1, 0, 23, 59, 59, 999);
+
+  const ultimaFolhaSnap = await db.collection("folhas").orderBy("criadoEm", "desc").limit(1).get();
+  if (ultimaFolhaSnap.empty) return;
+
+  const ultima = ultimaFolhaSnap.docs[0].data();
+  if (ultima.status !== "paga" || !ultima.criadoEm) return;
+
+  const dtCriacao = ultima.criadoEm.toDate();
+  if (dtCriacao >= quinzenaInicio && dtCriacao <= quinzenaFim) {
+    await depois.ref.delete();
+  }
+});
