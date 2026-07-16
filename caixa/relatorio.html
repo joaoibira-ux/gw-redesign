@@ -692,7 +692,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.80";
+  const VERSAO = "1.81";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1446,6 +1446,35 @@
     return [String(d.getDate()).padStart(2, '0'), String(d.getMonth() + 1).padStart(2, '0'), d.getFullYear()].join('/');
   }
 
+  // Gera um snapshot do mapa de execução (estado ANTES do fechamento) e envia
+  // por Telegram, abrindo a página do mapa num iframe oculto com ?snapshot=1.
+  // O fechamento aguarda a confirmação de envio (postMessage) antes de seguir,
+  // com um timeout de segurança para nunca travar indefinidamente.
+  function capturarSnapshotMapaAntesDoFechamento() {
+    return new Promise(resolve => {
+      let resolvido = false;
+      const iframe = document.createElement('iframe');
+      iframe.src = '../mapa/index.html?snapshot=1';
+      iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:1400px;height:1000px;border:none;visibility:hidden;';
+
+      function finalizar(ok) {
+        if (resolvido) return;
+        resolvido = true;
+        window.removeEventListener('message', onMessage);
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+        resolve(ok);
+      }
+
+      function onMessage(e) {
+        if (e.data && e.data.mapaSnapshotDone) finalizar(!!e.data.ok);
+      }
+
+      window.addEventListener('message', onMessage);
+      document.body.appendChild(iframe);
+      setTimeout(() => finalizar(false), 20000);
+    });
+  }
+
   async function fecharMedicaoFolha() {
     const btn = document.getElementById('btn-fechar-medicao');
     const textoOriginal = btn.textContent;
@@ -1565,6 +1594,10 @@
       const resumo = `Folha: R$ ${fmt(totalFolha)}\nPassagens: R$ ${fmt(totalPassagens)}\n\nVão ser criadas contas a pagar com vencimento em ${dataSexta}.\nOs serviços em medição serão marcados como concluídos, e as diárias/passagens zeradas.`;
       if (!confirm('Fechar Medição/Folha?\n\n' + resumo)) return;
 
+      btn.textContent = '📸 Enviando mapa...';
+      await capturarSnapshotMapaAntesDoFechamento();
+
+      btn.textContent = '⏳ Fechando...';
       const batch = db.batch();
 
       if (totalFolha > 0) {

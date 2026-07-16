@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.12";
+const VERSAO = "3.13";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -208,19 +208,72 @@ function renderAtual() {
   render(locaisData);
 }
 
+// Snapshot automático do mapa antes do fechamento da folha/medição: a página é
+// aberta em um iframe oculto com ?snapshot=1, captura a imagem assim que os
+// dados carregarem e avisa a janela pai (postMessage) quando terminar.
+const SNAPSHOT_MODE = new URLSearchParams(window.location.search).get("snapshot") === "1";
+let _locaisProntos  = false;
+let _servicosProntos = false;
+
+function avisarPai(ok) {
+  if (window._snapshotFeito) return;
+  window._snapshotFeito = true;
+  try { window.parent.postMessage({ mapaSnapshotDone: true, ok }, "*"); } catch (e) {}
+}
+
+async function capturarEEnviarSnapshotMapa() {
+  try {
+    const canvas = await html2canvas(document.body, {
+      scale: 1.6,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      windowWidth: document.body.scrollWidth,
+      windowHeight: document.body.scrollHeight
+    });
+    const blob = await new Promise(r => canvas.toBlob(r, "image/jpeg", 0.88));
+    const formData = new FormData();
+    formData.append("chat_id", "1672059919");
+    formData.append("photo", blob, "mapa-gw.jpg");
+    formData.append("caption", `🗺️ Mapa de Execução — antes do fechamento (${new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })})`);
+    const res = await fetch("https://api.telegram.org/bot7469790318:AAEFzcPeS_MG6vvmKrhiZjVWXv1m9J0PTk4/sendPhoto", {
+      method: "POST", body: formData
+    });
+    return res.ok;
+  } catch (e) {
+    return false;
+  }
+}
+
+function tentarCapturarSnapshot() {
+  if (!SNAPSHOT_MODE || !_locaisProntos || !_servicosProntos || window._snapshotFeito) return;
+  setTimeout(async () => {
+    const ok = await capturarEEnviarSnapshotMapa();
+    avisarPai(ok);
+  }, 500); // pequena espera para garantir que o DOM terminou de pintar
+}
+
+if (SNAPSHOT_MODE) {
+  setTimeout(() => avisarPai(false), 15000); // rede de segurança local
+}
+
 db.collection("locais").orderBy("identificacao", "asc").onSnapshot(snap => {
   locaisData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   renderAtual();
+  _locaisProntos = true;
+  tentarCapturarSnapshot();
 }, err => {
   console.error(err);
   document.getElementById("mapa").innerHTML =
     '<p class="empty">Erro ao conectar.</p>';
+  avisarPai(false);
 });
 
 db.collection("servicos").onSnapshot(snap => {
   servicosCache = {};
   snap.forEach(d => { servicosCache[d.id] = d.data(); });
   renderAtual();
+  _servicosProntos = true;
+  tentarCapturarSnapshot();
 });
 
 if ("serviceWorker" in navigator) {
