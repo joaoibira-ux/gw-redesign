@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.13";
+const VERSAO = "3.14";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -222,13 +222,26 @@ function avisarPai(ok) {
 }
 
 async function capturarEEnviarSnapshotMapa() {
+  // #mapa tem overflow-y: auto (rolagem interna) e cada .bloco-body tem
+  // overflow-x: auto — sem isso, o html2canvas só capturava o que cabia na
+  // "tela" visível, cortando os últimos blocos. Remove temporariamente os
+  // overflows pra expor o conteúdo inteiro antes de capturar.
+  const elementos = [document.getElementById("mapa"), ...document.querySelectorAll(".bloco-body")];
+  const estados = elementos.map(el => ({ el, overflow: el.style.overflow, height: el.style.height }));
+  elementos.forEach(el => { el.style.overflow = "visible"; });
+  document.getElementById("mapa").style.height = "auto";
+
   try {
+    const largura = document.body.scrollWidth;
+    const altura  = document.body.scrollHeight;
     const canvas = await html2canvas(document.body, {
       scale: 1.6,
       useCORS: true,
       backgroundColor: "#ffffff",
-      windowWidth: document.body.scrollWidth,
-      windowHeight: document.body.scrollHeight
+      width: largura,
+      height: altura,
+      windowWidth: largura,
+      windowHeight: altura
     });
     const blob = await new Promise(r => canvas.toBlob(r, "image/jpeg", 0.88));
     const formData = new FormData();
@@ -241,6 +254,8 @@ async function capturarEEnviarSnapshotMapa() {
     return res.ok;
   } catch (e) {
     return false;
+  } finally {
+    estados.forEach(({ el, overflow, height }) => { el.style.overflow = overflow; el.style.height = height; });
   }
 }
 
