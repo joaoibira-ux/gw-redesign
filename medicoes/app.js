@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "2.6";
+const VERSAO = "2.7";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -18,9 +18,9 @@ const storage = firebase.storage();
 
 let currentImagemUrl = null;
 
-async function uploadImagemMedicao(file) {
+async function uploadImagemMedicao(blob) {
   const ref = storage.ref(`medicoes/${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`);
-  await ref.put(file);
+  await ref.put(blob, { contentType: "image/jpeg" });
   return await ref.getDownloadURL();
 }
 
@@ -123,7 +123,11 @@ function abrirSeletorFoto() {
   document.getElementById("input-foto").click();
 }
 
-function lerImagemComoBase64(file) {
+// Redimensiona a foto uma única vez e reaproveita o resultado tanto para a IA
+// (base64) quanto para o Storage (blob) — evita enviar a foto original de
+// câmera (facilmente 5-8MB) pela rede móvel, que costumava falhar com
+// "storage/unknown" em conexões instáveis.
+function redimensionarImagem(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -139,7 +143,10 @@ function lerImagemComoBase64(file) {
         canvas.width = width;
         canvas.height = height;
         canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL("image/jpeg", 0.85).split(",")[1]);
+        canvas.toBlob(blob => {
+          if (!blob) { reject(new Error("Não foi possível processar a imagem.")); return; }
+          resolve({ base64: canvas.toDataURL("image/jpeg", 0.85).split(",")[1], blob });
+        }, "image/jpeg", 0.85);
       };
       img.onerror = () => reject(new Error("Não foi possível ler a imagem."));
       img.src = reader.result;
@@ -160,12 +167,12 @@ document.getElementById("input-foto").addEventListener("change", async function(
 
   mostrarLoading(true);
   try {
-    const [imageBase64, imagemUrl] = await Promise.all([
-      lerImagemComoBase64(file),
-      uploadImagemMedicao(file)
+    const { base64: imageBase64, blob } = await redimensionarImagem(file);
+    const [imagemUrl, resp] = await Promise.all([
+      uploadImagemMedicao(blob),
+      extrairMedicoesFn({ imageBase64, mimeType: "image/jpeg" })
     ]);
     currentImagemUrl = imagemUrl;
-    const resp = await extrairMedicoesFn({ imageBase64, mimeType: "image/jpeg" });
     const dados = resp.data || {};
     if (!dados.itens || dados.itens.length === 0) {
       alert("Não foi possível identificar itens na imagem. Adicione manualmente na tela a seguir.");

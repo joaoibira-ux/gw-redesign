@@ -1,8 +1,8 @@
-const VERSION = "medicoes-v6";
+const VERSION = "medicoes-v7";
 const ASSETS = [
   "./index.html",
   "./style.css?v=3",
-  "./app.js?v=2.2",
+  "./app.js?v=2.7",
   "./manifest.json",
   "./Logo-gw.png"
 ];
@@ -26,8 +26,18 @@ self.addEventListener("activate", e => {
 });
 
 self.addEventListener("fetch", e => {
-  if (e.request.mode === "navigate") {
-    e.respondWith(fetch(e.request).catch(() => caches.match("./index.html")));
+  // Navegação e app.js: rede primeiro, sem cache de resposta antiga — evita
+  // rodar versão desatualizada do upload/extração de medições.
+  const critico = e.request.mode === "navigate" || e.request.url.includes("app.js");
+  if (critico) {
+    e.respondWith(
+      fetch(e.request, { cache: "no-store" })
+        .then(response => {
+          if (response.ok) caches.open(VERSION).then(c => c.put(e.request, response.clone()));
+          return response;
+        })
+        .catch(() => caches.match(e.request))
+    );
     return;
   }
   e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
