@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.83";
+const VERSAO = "4.84";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1443,10 +1443,12 @@ async function verRelatorio() {
     gruposData       = [...grupos.values()].map(g => ({ funcionario: g.funcionario, itens: g.itens }));
   } else {
     // Sem folha aberta — lê o último documento salvo, descartando itens cujo serviço
-    // já não está mais em_pagamento em 'locais' (removido da folha após o fechamento)
+    // já não está mais em_pagamento em 'locais' (removido da folha após o fechamento).
+    // Se a última folha já foi paga, não há nada em aberto pra mostrar (mesmo
+    // comportamento do relatório financeiro, que fica vazio nesse caso).
     try {
       const fSnap = await db.collection('folhas').orderBy('criadoEm', 'desc').limit(1).get();
-      if (fSnap.empty) { alert('Nenhuma folha encontrada.'); return; }
+      if (fSnap.empty || fSnap.docs[0].data().status === 'paga') { alert('Nenhuma folha aberta no momento.'); return; }
       const folha   = fSnap.docs[0].data();
       const gList   = folha.grupos || [];
 
