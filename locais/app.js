@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "2.6";
+const VERSAO = "2.7";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -375,7 +375,7 @@ function toggleForm() {
 function abrirConfigPonto() {
   const senha = prompt("Configurar local do ponto\n\nDigite a senha:");
   if (senha === null) return;
-  if (senha !== "2248") { alert("Senha incorreta."); return; }
+  if (senha !== "6535") { alert("Senha incorreta."); return; }
 
   colConfig.doc("ponto").get().then(snap => {
     const d = snap.exists ? snap.data() : {};
