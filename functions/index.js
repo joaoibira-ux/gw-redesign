@@ -193,7 +193,7 @@ const TOOLS_GW = [
   },
   {
     name: "gerar_planilha_medicoes",
-    description: "Gera uma planilha Excel (.xlsx) com o resumo e os itens dos boletins de medição BM01 até BM09 (ignora boletins de Tratamento de Superfície / BMT) e envia o arquivo pelo WhatsApp.",
+    description: "Gera uma planilha Excel (.xlsx) com o resumo e os itens dos boletins de medição BM01 até BM09 (ignora boletins de Tratamento de Superfície / BMT) e envia o arquivo pelo Telegram.",
     input_schema: { type: "object", properties: {} }
   },
   {
@@ -230,26 +230,24 @@ function ehTratamentoMedicao(m) {
   return /^bmt/i.test(m.nome || "");
 }
 
-async function enviarDocumentoWhatsApp(token, link, filename, caption) {
-  const resp = await fetch(`https://graph.facebook.com/v25.0/${WHATSAPP_PHONE_ID}/messages`, {
+// Mesmo bot/chat já usados para o relatório do caixa (caixa/relatorio.html).
+const TELEGRAM_BOT_TOKEN = "7469790318:AAEFzcPeS_MG6vvmKrhiZjVWXv1m9J0PTk4";
+const TELEGRAM_CHAT_ID = "1672059919";
+
+async function enviarDocumentoTelegram(buffer, filename, caption) {
+  const form = new FormData();
+  form.append("chat_id", TELEGRAM_CHAT_ID);
+  form.append("document", new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), filename);
+  form.append("caption", caption);
+
+  const resp = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument`, {
     method: "POST",
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to: WHATSAPP_DESTINO,
-      type: "document",
-      document: { link, filename, caption }
-    })
+    body: form
   });
-  const respText = await resp.text();
-  let result;
-  try { result = JSON.parse(respText); } catch { result = null; }
-  if (!resp.ok || !result) {
-    console.error("Erro ao enviar documento WhatsApp:", resp.status, respText.slice(0, 500));
-    throw new Error("Falha ao enviar documento pelo WhatsApp: " + (result?.error?.message || `status ${resp.status}`));
+  const result = await resp.json().catch(() => null);
+  if (!resp.ok || !result || !result.ok) {
+    console.error("Erro ao enviar documento Telegram:", resp.status, JSON.stringify(result).slice(0, 500));
+    throw new Error("Falha ao enviar documento pelo Telegram: " + (result?.description || `status ${resp.status}`));
   }
   return result;
 }
@@ -622,29 +620,23 @@ async function executarFerramenta(nome, input) {
 
     const buffer = await workbook.xlsx.writeBuffer();
     const filename = `medicoes_bm01-09_${Date.now()}.xlsx`;
-    const file = admin.storage().bucket().file(`planilhas/${filename}`);
-    await file.save(Buffer.from(buffer), {
-      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    });
-    const [url] = await file.getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 3600 * 1000 });
 
     try {
-      await enviarDocumentoWhatsApp(
-        whatsappToken.value(),
-        url,
+      await enviarDocumentoTelegram(
+        Buffer.from(buffer),
         filename,
         `Planilha de medições BM01 a BM09 (${medicoes.length} boletins)`
       );
     } catch (err) {
       console.error(err);
-      return { sucesso: false, erro: "falha_envio_whatsapp", mensagem: err.message, linkPlanilha: url };
+      return { sucesso: false, erro: "falha_envio_telegram", mensagem: err.message };
     }
 
     return {
       sucesso: true,
       quantidadeBoletins: medicoes.length,
       boletins: medicoes.map(m => m.nome),
-      mensagem: "Planilha gerada e enviada pelo WhatsApp com sucesso."
+      mensagem: "Planilha gerada e enviada pelo Telegram com sucesso."
     };
   }
 
@@ -671,7 +663,7 @@ async function executarFerramenta(nome, input) {
 }
 
 exports.agenteGW = onCall(
-  { secrets: [anthropicApiKey, whatsappToken], timeoutSeconds: 120, memory: "512MiB", cors: true, invoker: "public" },
+  { secrets: [anthropicApiKey], timeoutSeconds: 120, memory: "512MiB", cors: true, invoker: "public" },
   async (request) => {
     const { mensagem, historico = [] } = request.data || {};
     if (!mensagem) throw new HttpsError("invalid-argument", "mensagem é obrigatória.");
