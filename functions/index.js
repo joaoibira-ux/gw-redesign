@@ -2,6 +2,7 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
+const ExcelJS = require("exceljs");
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 
@@ -191,6 +192,11 @@ const TOOLS_GW = [
     }
   },
   {
+    name: "gerar_planilha_medicoes",
+    description: "Gera uma planilha Excel (.xlsx) com o resumo e os itens dos boletins de medição BM01 até BM09 (ignora boletins de Tratamento de Superfície / BMT) e envia o arquivo pelo WhatsApp.",
+    input_schema: { type: "object", properties: {} }
+  },
+  {
     name: "consultar_servicos_funcionario",
     description: "Consulta os serviços executados por um funcionário no Mapa de Obra. Também pode filtrar por local/apartamento.",
     input_schema: {
@@ -209,6 +215,43 @@ function normCodigo(s) {
   return String(s).toLowerCase()
     .replace(/\s+/g, "")                      // remove espaços
     .replace(/([a-z]+)0*(\d+)/g, "$1$2");     // remove zeros à esquerda do número
+}
+
+// Retorna o número do boletim (1-9) se "nome" for BM01..BM09 (com ou sem zero à
+// esquerda, com ou sem espaço). "BMT..." nunca casa, pois exige "bm" seguido
+// direto de dígito/espaço/zero — não de "t".
+function numeroBM(nome) {
+  const m = String(nome || "").trim().match(/^bm\s*0*([1-9])\b/i);
+  return m ? Number(m[1]) : null;
+}
+
+function ehTratamentoMedicao(m) {
+  if ((m.itens || []).some(it => it.apartamento === "1.0")) return true;
+  return /^bmt/i.test(m.nome || "");
+}
+
+async function enviarDocumentoWhatsApp(token, link, filename, caption) {
+  const resp = await fetch(`https://graph.facebook.com/v25.0/${WHATSAPP_PHONE_ID}/messages`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: WHATSAPP_DESTINO,
+      type: "document",
+      document: { link, filename, caption }
+    })
+  });
+  const respText = await resp.text();
+  let result;
+  try { result = JSON.parse(respText); } catch { result = null; }
+  if (!resp.ok || !result) {
+    console.error("Erro ao enviar documento WhatsApp:", resp.status, respText.slice(0, 500));
+    throw new Error("Falha ao enviar documento pelo WhatsApp: " + (result?.error?.message || `status ${resp.status}`));
+  }
+  return result;
 }
 
 async function executarFerramenta(nome, input) {
@@ -530,6 +573,81 @@ async function executarFerramenta(nome, input) {
     return { sucesso: true, id };
   }
 
+  if (nome === "gerar_planilha_medicoes") {
+    const snap = await db.collection("medicoes").get();
+    const medicoes = snap.docs
+      .map(d => ({ id: d.id, ...d.data(), numero: numeroBM(d.data().nome) }))
+      .filter(m => m.numero !== null && !ehTratamentoMedicao(m))
+      .sort((a, b) => a.numero - b.numero);
+
+    if (medicoes.length === 0) {
+      return { sucesso: false, erro: "sem_dados", mensagem: "Nenhum boletim BM01 a BM09 encontrado nas medições cadastradas." };
+    }
+
+    const workbook = new ExcelJS.Workbook();
+
+    const resumo = workbook.addWorksheet("Resumo");
+    resumo.columns = [
+      { header: "Boletim", key: "nome", width: 14 },
+      { header: "Data", key: "data", width: 12 },
+      { header: "Valor Medido", key: "valor", width: 16 },
+      { header: "Descontos", key: "descontos", width: 14 },
+      { header: "Valor NF", key: "valorNotaFiscal", width: 14 }
+    ];
+    medicoes.forEach(m => resumo.addRow({
+      nome: m.nome || "",
+      data: m.data || "",
+      valor: m.valor || 0,
+      descontos: m.descontos || 0,
+      valorNotaFiscal: m.valorNotaFiscal || 0
+    }));
+    resumo.getRow(1).font = { bold: true };
+
+    const itensSheet = workbook.addWorksheet("Itens");
+    itensSheet.columns = [
+      { header: "Boletim", key: "boletim", width: 14 },
+      { header: "Item", key: "apartamento", width: 10 },
+      { header: "Serviço", key: "servico", width: 40 },
+      { header: "Quantidade", key: "quantidade", width: 12 },
+      { header: "Valor", key: "valor", width: 14 }
+    ];
+    medicoes.forEach(m => (m.itens || []).forEach(it => itensSheet.addRow({
+      boletim: m.nome || "",
+      apartamento: it.apartamento || "",
+      servico: it.servico || "",
+      quantidade: it.quantidade || 0,
+      valor: it.valor || 0
+    })));
+    itensSheet.getRow(1).font = { bold: true };
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const filename = `medicoes_bm01-09_${Date.now()}.xlsx`;
+    const file = admin.storage().bucket().file(`planilhas/${filename}`);
+    await file.save(Buffer.from(buffer), {
+      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    });
+    const [url] = await file.getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 3600 * 1000 });
+
+    try {
+      await enviarDocumentoWhatsApp(
+        whatsappToken.value(),
+        url,
+        filename,
+        `Planilha de medições BM01 a BM09 (${medicoes.length} boletins)`
+      );
+    } catch (err) {
+      console.error(err);
+      return { sucesso: false, erro: "falha_envio_whatsapp", mensagem: err.message, linkPlanilha: url };
+    }
+
+    return {
+      sucesso: true,
+      quantidadeBoletins: medicoes.length,
+      boletins: medicoes.map(m => m.nome),
+      mensagem: "Planilha gerada e enviada pelo WhatsApp com sucesso."
+    };
+  }
+
   if (nome === "consultar_servicos_funcionario") {
     const { funcionarioNome, local, status = "concluido" } = input;
     const localNorm = local ? normCodigo(local) : null;
@@ -553,7 +671,7 @@ async function executarFerramenta(nome, input) {
 }
 
 exports.agenteGW = onCall(
-  { secrets: [anthropicApiKey], timeoutSeconds: 120, memory: "512MiB", cors: true, invoker: "public" },
+  { secrets: [anthropicApiKey, whatsappToken], timeoutSeconds: 120, memory: "512MiB", cors: true, invoker: "public" },
   async (request) => {
     const { mensagem, historico = [] } = request.data || {};
     if (!mensagem) throw new HttpsError("invalid-argument", "mensagem é obrigatória.");
