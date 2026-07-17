@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.14";
+const VERSAO = "3.15";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -157,6 +157,53 @@ function verServico(e, el) {
 
 function fecharInfo() {
   document.getElementById("popup-det").style.display = "none";
+}
+
+const ORDEM_CATEGORIA = ["Tratamento", "Gesso", "Massa", "Textura"];
+
+function mostrarTotaisConcluidos() {
+  const fmtValor = v => "R$ " + v.toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+
+  const porCategoria = {};
+  let qtdGeral = 0, totalGeral = 0;
+
+  locaisData.forEach(local => {
+    (local.servicos || []).forEach(s => {
+      if (s.status !== "concluido") return;
+      const cat = nomeAbrev(s.nome);
+      if (!porCategoria[cat]) porCategoria[cat] = { qtd: 0, valor: 0 };
+      porCategoria[cat].qtd   += 1;
+      porCategoria[cat].valor += (s.valorPago || 0);
+      qtdGeral   += 1;
+      totalGeral += (s.valorPago || 0);
+    });
+  });
+
+  const categorias = Object.keys(porCategoria).sort((a, b) => {
+    const ia = ORDEM_CATEGORIA.indexOf(a), ib = ORDEM_CATEGORIA.indexOf(b);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+  });
+
+  const body = document.getElementById("totais-body");
+  if (qtdGeral === 0) {
+    body.innerHTML = '<p style="font-size:0.78rem;color:#aaa;padding:6px 0">Nenhum serviço concluído ainda.</p>';
+  } else {
+    body.innerHTML = categorias.map(cat => `
+      <div class="pop-linha">
+        <span class="pop-label">${escHtml(cat)} (${porCategoria[cat].qtd})</span>
+        <span>${fmtValor(porCategoria[cat].valor)}</span>
+      </div>`).join("") + `
+      <div class="pop-linha total-linha">
+        <span class="pop-label">Total (${qtdGeral})</span>
+        <span>${fmtValor(totalGeral)}</span>
+      </div>`;
+  }
+
+  document.getElementById("modal-totais").style.display = "flex";
+}
+
+function fecharTotais() {
+  document.getElementById("modal-totais").style.display = "none";
 }
 
 // Fecha ao clicar fora do popup
