@@ -24,6 +24,14 @@
         { "fieldPath": "funcionarioId", "order": "ASCENDING" },
         { "fieldPath": "timestamp", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "pontos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "funcionarioId", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
