@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.16";
+const VERSAO = "3.17";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -172,11 +172,12 @@ function mostrarTotaisConcluidos() {
     (local.servicos || []).forEach(s => {
       if (s.status !== "concluido") return;
       const cat = nomeAbrev(s.nome);
+      const valorMedicao = (servicosCache[s.id] && servicosCache[s.id].medicao) || 0;
       if (!porCategoria[cat]) porCategoria[cat] = { qtd: 0, valor: 0 };
       porCategoria[cat].qtd   += 1;
-      porCategoria[cat].valor += (s.valorPago || 0);
+      porCategoria[cat].valor += valorMedicao;
       qtdGeral   += 1;
-      totalGeral += (s.valorPago || 0);
+      totalGeral += valorMedicao;
     });
   });
 
@@ -189,7 +190,10 @@ function mostrarTotaisConcluidos() {
   if (qtdGeral === 0) {
     body.innerHTML = '<p style="font-size:0.78rem;color:#aaa;padding:6px 0">Nenhum serviço concluído ainda.</p>';
   } else {
-    body.innerHTML = categorias.map(cat => `
+    const subtitulo = podeVerValores
+      ? '<p style="font-size:0.62rem;color:#999;margin-bottom:6px">Valores de medição</p>'
+      : "";
+    body.innerHTML = subtitulo + categorias.map(cat => `
       <div class="pop-linha">
         <span class="pop-label">${escHtml(cat)} (${porCategoria[cat].qtd})</span>
         ${podeVerValores ? `<span>${fmtValor(porCategoria[cat].valor)}</span>` : ""}
