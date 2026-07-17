@@ -110,6 +110,19 @@
       margin-top: 4px;
     }
 
+    /* Telas largas (PC/notebook): a tela do PIN foi pensada pra celular
+       (estreita e alta) — em janelas largas o teclado numérico gigante
+       obrigava a rolar. Encolhe tudo proporcionalmente pra caber sem rolagem. */
+    @media (min-width: 700px) {
+      .pin-header { padding: 14px 30px; margin-top: 10px; gap: 6px; }
+      .pin-logo { width: 48px; height: 48px; }
+      .pin-title { font-size: 1rem; }
+      .pin-dots-wrap { padding: 10px 26px; gap: 10px; }
+      .numpad { max-width: 250px; gap: 8px; padding: 10px 22px; }
+      .num-key { font-size: 1.15rem; }
+      .num-key sub { font-size: 0.38rem; }
+    }
+
     /* Numpad */
     .numpad {
       display: grid; grid-template-columns: repeat(3, 1fr);
@@ -503,7 +516,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.35';
+    const VERSAO = '4.36';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
