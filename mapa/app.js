@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.18";
+const VERSAO = "3.19";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -159,7 +159,15 @@ function fecharInfo() {
   document.getElementById("popup-det").style.display = "none";
 }
 
-const ORDEM_CATEGORIA = ["Tratamento", "Gesso", "Massa", "Textura"];
+const ORDEM_CATEGORIA = ["Tratamento", "Gesso", "Massa", "Textura", "Textura wc"];
+
+// Mesma categoria mostrada na célula do apartamento: usa o "Nome no Mapa"
+// cadastrado no serviço quando existir (é o que separa "Textura" de
+// "Textura wc", por exemplo), senão cai no fallback de nomeAbrev.
+function categoriaTotal(s) {
+  const disp = servicosCache[s.id];
+  return (disp && disp.nomeMapa) ? disp.nomeMapa : nomeAbrev(s.nome);
+}
 
 function mostrarTotaisConcluidos() {
   const podeVerValores = sessionStorage.getItem("gw_auth") === "completo";
@@ -171,7 +179,7 @@ function mostrarTotaisConcluidos() {
   locaisData.forEach(local => {
     (local.servicos || []).forEach(s => {
       if (s.status !== "concluido") return;
-      const cat = nomeAbrev(s.nome);
+      const cat = categoriaTotal(s);
       const valorMedicao = (servicosCache[s.id] && servicosCache[s.id].medicao) || 0;
       if (!porCategoria[cat]) porCategoria[cat] = { qtd: 0, valor: 0 };
       porCategoria[cat].qtd   += 1;
