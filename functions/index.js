@@ -88,6 +88,17 @@ const TOOLS_GW = [
     }
   },
   {
+    name: "ultimo_registro_ponto",
+    description: "Busca o último registro de ponto (entrada ou saída, o mais recente independente da data) de um funcionário específico, incluindo data, horário e localização GPS de onde foi registrado (se disponível). Use listar_funcionarios antes para obter o funcionarioId correto. Use para perguntas como 'quando fulano bateu ponto pela última vez' ou 'qual a localização do último ponto de fulano'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        funcionarioId: { type: "string", description: "ID do funcionário (obtido via listar_funcionarios)" }
+      },
+      required: ["funcionarioId"]
+    }
+  },
+  {
     name: "extrato_refeicoes",
     description: "Gera o extrato de refeições (café da manhã e almoço) de um período, baseado nos registros de ponto. Para cada dia do período, conta quantos funcionários registraram a entrada antes das 7h (café da manhã) e quantos registraram antes das 11h (almoço — inclui quem já tomou café). Café custa R$10 e almoço R$15 por funcionário. Use quando o usuário pedir 'extrato das refeições', 'gasto com café e almoço' ou similar, em formato de texto/números.",
     input_schema: {
@@ -560,6 +571,34 @@ async function executarFerramenta(nome, input) {
       const hora = ts.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
       return { id: d.id, tipo: dd.tipo, hora };
     });
+  }
+
+  if (nome === "ultimo_registro_ponto") {
+    const { funcionarioId } = input;
+    const snap = await db.collection("pontos")
+      .where("funcionarioId", "==", funcionarioId)
+      .orderBy("timestamp", "desc")
+      .limit(1)
+      .get();
+
+    if (snap.empty) return { encontrado: false, mensagem: "Nenhum registro de ponto encontrado para esse funcionário." };
+
+    const dd = snap.docs[0].data();
+    const ts = dd.timestamp.toDate();
+    const loc = dd.localizacao;
+
+    return {
+      encontrado: true,
+      funcionarioNome: dd.funcionarioNome,
+      tipo: dd.tipo,
+      data: ts.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }),
+      hora: ts.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }),
+      localizacao: (loc && (loc.lat || loc.lng)) ? {
+        lat: loc.lat,
+        lng: loc.lng,
+        link: `https://www.google.com/maps?q=${loc.lat},${loc.lng}`
+      } : null
+    };
   }
 
   if (nome === "extrato_refeicoes") {
