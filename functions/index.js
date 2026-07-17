@@ -197,6 +197,11 @@ const TOOLS_GW = [
     input_schema: { type: "object", properties: {} }
   },
   {
+    name: "gerar_planilha_mapa",
+    description: "Gera uma planilha Excel (.xlsx) com os serviços concluídos do Mapa de Obra (bloco, apartamento, serviço, executor, data e valor pago) e envia o arquivo pelo Telegram.",
+    input_schema: { type: "object", properties: {} }
+  },
+  {
     name: "consultar_servicos_funcionario",
     description: "Consulta os serviços executados por um funcionário no Mapa de Obra. Também pode filtrar por local/apartamento.",
     input_schema: {
@@ -637,6 +642,75 @@ async function executarFerramenta(nome, input) {
       quantidadeBoletins: medicoes.length,
       boletins: medicoes.map(m => m.nome),
       mensagem: "Planilha gerada e enviada pelo Telegram com sucesso."
+    };
+  }
+
+  if (nome === "gerar_planilha_mapa") {
+    const [locaisSnap, servicosSnap] = await Promise.all([
+      db.collection("locais").orderBy("identificacao", "asc").get(),
+      db.collection("servicos").get()
+    ]);
+
+    const nomesMapa = {};
+    servicosSnap.docs.forEach(d => {
+      const s = d.data();
+      if (s.nomeMapa) nomesMapa[d.id] = s.nomeMapa;
+    });
+
+    const linhas = [];
+    locaisSnap.docs.forEach(d => {
+      const local = d.data();
+      const ident = local.identificacao || d.id;
+      const blocoMatch = String(ident).match(/^([A-Za-z]+)/);
+      const bloco = blocoMatch ? blocoMatch[1].toUpperCase() : "";
+      (local.servicos || []).forEach(s => {
+        if (s.status !== "concluido") return;
+        linhas.push({
+          bloco,
+          apartamento: ident,
+          servico: (s.id && nomesMapa[s.id]) || s.nome || "",
+          executor: (s.executor && s.executor.nome) || "",
+          dataPagamento: s.dataPagamento || "",
+          valorPago: s.valorPago || 0
+        });
+      });
+    });
+
+    if (linhas.length === 0) {
+      return { sucesso: false, erro: "sem_dados", mensagem: "Nenhum serviço concluído encontrado no Mapa de Obra." };
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Mapa de Obra");
+    sheet.columns = [
+      { header: "Bloco", key: "bloco", width: 10 },
+      { header: "Apartamento", key: "apartamento", width: 14 },
+      { header: "Serviço", key: "servico", width: 30 },
+      { header: "Executor", key: "executor", width: 24 },
+      { header: "Data Pagamento", key: "dataPagamento", width: 16 },
+      { header: "Valor Pago", key: "valorPago", width: 14 }
+    ];
+    linhas.forEach(l => sheet.addRow(l));
+    sheet.getRow(1).font = { bold: true };
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const filename = `mapa_obra_${Date.now()}.xlsx`;
+
+    try {
+      await enviarDocumentoTelegram(
+        Buffer.from(buffer),
+        filename,
+        `Planilha do Mapa de Obra — serviços concluídos (${linhas.length} itens)`
+      );
+    } catch (err) {
+      console.error(err);
+      return { sucesso: false, erro: "falha_envio_telegram", mensagem: err.message };
+    }
+
+    return {
+      sucesso: true,
+      quantidadeServicos: linhas.length,
+      mensagem: "Planilha do Mapa de Obra gerada e enviada pelo Telegram com sucesso."
     };
   }
 
