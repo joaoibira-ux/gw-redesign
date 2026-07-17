@@ -3,6 +3,9 @@ const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 const ExcelJS = require("exceljs");
+const sharp = require("sharp");
+const fs = require("fs");
+const path = require("path");
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 
@@ -86,7 +89,19 @@ const TOOLS_GW = [
   },
   {
     name: "extrato_refeicoes",
-    description: "Gera o extrato de refeições (café da manhã e almoço) de um período, baseado nos registros de ponto. Para cada dia do período, conta quantos funcionários registraram a entrada antes das 7h (café da manhã) e quantos registraram antes das 11h (almoço — inclui quem já tomou café). Café custa R$10 e almoço R$15 por funcionário. Use quando o usuário pedir 'extrato das refeições', 'gasto com café e almoço' ou similar.",
+    description: "Gera o extrato de refeições (café da manhã e almoço) de um período, baseado nos registros de ponto. Para cada dia do período, conta quantos funcionários registraram a entrada antes das 7h (café da manhã) e quantos registraram antes das 11h (almoço — inclui quem já tomou café). Café custa R$10 e almoço R$15 por funcionário. Use quando o usuário pedir 'extrato das refeições', 'gasto com café e almoço' ou similar, em formato de texto/números.",
+    input_schema: {
+      type: "object",
+      properties: {
+        data_inicio: { type: "string", description: "Data inicial do período, formato YYYY-MM-DD" },
+        data_fim:    { type: "string", description: "Data final do período, formato YYYY-MM-DD" }
+      },
+      required: ["data_inicio", "data_fim"]
+    }
+  },
+  {
+    name: "extrato_refeicoes_imagem",
+    description: "Gera o extrato de refeições (mesmo cálculo de extrato_refeicoes) como uma imagem PNG estilizada com a logo da GW e envia pelo Telegram, pronta para encaminhar. Use quando o usuário pedir a imagem/arte do extrato, ou para 'enviar pelo Telegram', em vez da versão em texto.",
     input_schema: {
       type: "object",
       properties: {
@@ -269,6 +284,201 @@ async function enviarDocumentoTelegram(buffer, filename, caption) {
   return result;
 }
 
+async function enviarFotoTelegram(buffer, filename, caption) {
+  const form = new FormData();
+  form.append("chat_id", TELEGRAM_CHAT_ID);
+  form.append("photo", new Blob([buffer], { type: "image/png" }), filename);
+  form.append("caption", caption);
+
+  const resp = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
+    method: "POST",
+    body: form
+  });
+  const result = await resp.json().catch(() => null);
+  if (!resp.ok || !result || !result.ok) {
+    console.error("Erro ao enviar foto Telegram:", resp.status, JSON.stringify(result).slice(0, 500));
+    throw new Error("Falha ao enviar imagem pelo Telegram: " + (result?.description || `status ${resp.status}`));
+  }
+  return result;
+}
+
+// ── Extrato de refeições ────────────────────────────────────────────────
+
+async function calcularExtratoRefeicoes(data_inicio, data_fim) {
+  const PRECO_CAFE = 10;
+  const PRECO_ALMOCO = 15;
+
+  const inicio = new Date(data_inicio + "T00:00:00-03:00");
+  const fim    = new Date(data_fim + "T23:59:59-03:00");
+
+  const snap = await db.collection("pontos")
+    .where("tipo", "==", "entrada")
+    .where("timestamp", ">=", inicio)
+    .where("timestamp", "<=", fim)
+    .orderBy("timestamp")
+    .get();
+
+  // Agrupa por dia (fuso de Brasília) e guarda só a entrada mais cedo de
+  // cada funcionário naquele dia — evita contar duas vezes se houver
+  // mais de um registro de entrada no mesmo dia.
+  const porDia = {};
+  snap.docs.forEach(d => {
+    const p = d.data();
+    const ts = p.timestamp.toDate();
+    const diaKey = ts.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    if (!porDia[diaKey]) porDia[diaKey] = {};
+    const atual = porDia[diaKey][p.funcionarioId];
+    if (atual === undefined || ts.getTime() < atual) porDia[diaKey][p.funcionarioId] = ts.getTime();
+  });
+
+  let totalCafe = 0, totalAlmoco = 0;
+  const dias = Object.keys(porDia).sort().map(diaKey => {
+    let cafe = 0, almoco = 0;
+    Object.values(porDia[diaKey]).forEach(ms => {
+      const horaLocal = new Date(ms).toLocaleTimeString("en-GB", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", hour12: false });
+      const [h, m] = horaLocal.split(":").map(Number);
+      const horaDecimal = h + m / 60;
+      if (horaDecimal < 7)  cafe++;
+      if (horaDecimal < 11) almoco++;
+    });
+    totalCafe   += cafe;
+    totalAlmoco += almoco;
+    const [ano, mes, dia] = diaKey.split("-");
+    return {
+      data: `${dia}/${mes}/${ano}`,
+      cafeManha: cafe,
+      almoco,
+      custoCafe: cafe * PRECO_CAFE,
+      custoAlmoco: almoco * PRECO_ALMOCO,
+      custoDia: cafe * PRECO_CAFE + almoco * PRECO_ALMOCO
+    };
+  });
+
+  return {
+    periodo: { inicio: data_inicio, fim: data_fim },
+    precoCafe: PRECO_CAFE,
+    precoAlmoco: PRECO_ALMOCO,
+    dias,
+    totais: {
+      cafeManha: totalCafe,
+      almoco: totalAlmoco,
+      custoCafe: totalCafe * PRECO_CAFE,
+      custoAlmoco: totalAlmoco * PRECO_ALMOCO,
+      custoGeral: totalCafe * PRECO_CAFE + totalAlmoco * PRECO_ALMOCO
+    }
+  };
+}
+
+function construirSVGExtrato(dados, logoBase64) {
+  const fmt = v => "R$ " + v.toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  const fmtDataBR = iso => iso.split("-").reverse().join("/");
+
+  const LARGURA = 800;
+  const PAD = 44;
+  const ALT_HEADER = 200;
+  const ALT_LINHA = 48;
+  const ALT_TABELA_HEADER = 40;
+  const ALT_TOTAIS = 150;
+  const ALT_FOOTER = 50;
+
+  const ALTURA = ALT_HEADER + ALT_TABELA_HEADER + dados.dias.length * ALT_LINHA + ALT_TOTAIS + ALT_FOOTER + PAD;
+
+  const larguraTabela = LARGURA - PAD * 2;
+  const colData = PAD + 24;
+  const colCafe = PAD + larguraTabela * 0.46;
+  const colAlmoco = PAD + larguraTabela * 0.68;
+  const colCusto = PAD + larguraTabela - 24;
+
+  let y = ALT_HEADER;
+
+  const headerTabela = `
+    <text x="${colData}" y="${y + 26}" font-size="13" font-weight="700" letter-spacing="1.5" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif">DATA</text>
+    <text x="${colCafe}" y="${y + 26}" font-size="13" font-weight="700" letter-spacing="1.5" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">CAFÉ</text>
+    <text x="${colAlmoco}" y="${y + 26}" font-size="13" font-weight="700" letter-spacing="1.5" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">ALMOÇO</text>
+    <text x="${colCusto}" y="${y + 26}" font-size="13" font-weight="700" letter-spacing="1.5" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif" text-anchor="end">CUSTO</text>
+    <line x1="${PAD}" y1="${y + 36}" x2="${PAD + larguraTabela}" y2="${y + 36}" stroke="rgba(165,214,167,0.25)" stroke-width="1"/>
+  `;
+  y += ALT_TABELA_HEADER;
+
+  const linhas = dados.dias.map((d, i) => {
+    const bg = i % 2 === 0 ? "rgba(255,255,255,0.035)" : "transparent";
+    const rowY = y;
+    const linha = `
+      <rect x="${PAD}" y="${rowY}" width="${larguraTabela}" height="${ALT_LINHA}" fill="${bg}" rx="10"/>
+      <text x="${colData}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="16" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif">${d.data}</text>
+      <text x="${colCafe}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="16" fill="#c8e6c9" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">${d.cafeManha}</text>
+      <text x="${colAlmoco}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="16" fill="#c8e6c9" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">${d.almoco}</text>
+      <text x="${colCusto}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="16" font-weight="600" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${fmt(d.custoDia)}</text>
+    `;
+    y += ALT_LINHA;
+    return linha;
+  }).join("");
+
+  const totaisY = y + 20;
+  const totaisAltura = ALT_TOTAIS - 20;
+  const blocoTotais = `
+    <rect x="${PAD}" y="${totaisY}" width="${larguraTabela}" height="${totaisAltura}" rx="16" fill="rgba(105,240,174,0.08)" stroke="rgba(105,240,174,0.35)" stroke-width="1.5"/>
+    <text x="${PAD + 28}" y="${totaisY + 34}" font-size="14" font-weight="700" letter-spacing="1" fill="#a5d6a7" font-family="Arial, Helvetica, sans-serif">TOTAL DO PERÍODO</text>
+
+    <text x="${PAD + 28}" y="${totaisY + 66}" font-size="14" fill="#c8e6c9" font-family="Arial, Helvetica, sans-serif">Café da manhã</text>
+    <text x="${PAD + 28}" y="${totaisY + 88}" font-size="20" font-weight="700" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif">${dados.totais.cafeManha} <tspan font-size="13" fill="#8fbf99" font-weight="400">(${fmt(dados.totais.custoCafe)})</tspan></text>
+
+    <text x="${PAD + larguraTabela * 0.36}" y="${totaisY + 66}" font-size="14" fill="#c8e6c9" font-family="Arial, Helvetica, sans-serif">Almoço</text>
+    <text x="${PAD + larguraTabela * 0.36}" y="${totaisY + 88}" font-size="20" font-weight="700" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif">${dados.totais.almoco} <tspan font-size="13" fill="#8fbf99" font-weight="400">(${fmt(dados.totais.custoAlmoco)})</tspan></text>
+
+    <line x1="${PAD + larguraTabela * 0.66}" y1="${totaisY + 20}" x2="${PAD + larguraTabela * 0.66}" y2="${totaisY + totaisAltura - 20}" stroke="rgba(165,214,167,0.3)" stroke-width="1"/>
+
+    <text x="${PAD + larguraTabela - 28}" y="${totaisY + 40}" font-size="14" fill="#c8e6c9" font-family="Arial, Helvetica, sans-serif" text-anchor="end">TOTAL GERAL</text>
+    <text x="${PAD + larguraTabela - 28}" y="${totaisY + 74}" font-size="30" font-weight="800" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${fmt(dados.totais.custoGeral)}</text>
+  `;
+
+  const footerY = totaisY + totaisAltura + 34;
+  const footer = `
+    <text x="${LARGURA / 2}" y="${footerY}" font-size="11" letter-spacing="1" fill="#5a8a63" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">Extrato de Refeições • Sistema GW • Gerado em ${new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</text>
+  `;
+
+  const logoW = 64, logoH = 64 * (1106 / 1422);
+
+  return `
+<svg width="${LARGURA}" height="${ALTURA}" viewBox="0 0 ${LARGURA} ${ALTURA}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#12331f"/>
+      <stop offset="45%" stop-color="#0c2417"/>
+      <stop offset="100%" stop-color="#06120b"/>
+    </linearGradient>
+    <clipPath id="logoClip"><rect x="0" y="0" width="${logoW}" height="${logoH}" rx="10"/></clipPath>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#69f0ae" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#69f0ae" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="${LARGURA}" height="${ALTURA}" fill="url(#bg)"/>
+
+  <circle cx="${LARGURA / 2}" cy="${40 + logoH / 2}" r="90" fill="url(#glow)"/>
+
+  <g transform="translate(${LARGURA / 2 - logoW / 2}, 40)">
+    <image href="data:image/png;base64,${logoBase64}" width="${logoW}" height="${logoH}" clip-path="url(#logoClip)"/>
+  </g>
+
+  <text x="${LARGURA / 2}" y="${40 + logoH + 34}" font-size="26" font-weight="800" letter-spacing="3" fill="#f1f8f2" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">GREEN WALL</text>
+  <text x="${LARGURA / 2}" y="${40 + logoH + 58}" font-size="13" font-weight="700" letter-spacing="4" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">EXTRATO DE REFEIÇÕES</text>
+  <text x="${LARGURA / 2}" y="${40 + logoH + 82}" font-size="14" fill="#a5d6a7" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">${fmtDataBR(dados.periodo.inicio)} a ${fmtDataBR(dados.periodo.fim)}</text>
+
+  ${headerTabela}
+  ${linhas}
+  ${blocoTotais}
+  ${footer}
+</svg>`;
+}
+
+async function gerarImagemExtrato(dados) {
+  const logoBase64 = fs.readFileSync(path.join(__dirname, "Logo-gw.png")).toString("base64");
+  const svg = construirSVGExtrato(dados, logoBase64);
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
 async function executarFerramenta(nome, input) {
   if (nome === "listar_funcionarios") {
     const snap = await db.collection("funcionarios").orderBy("nome").get();
@@ -353,68 +563,31 @@ async function executarFerramenta(nome, input) {
   }
 
   if (nome === "extrato_refeicoes") {
-    const { data_inicio, data_fim } = input;
-    const PRECO_CAFE = 10;
-    const PRECO_ALMOCO = 15;
+    return calcularExtratoRefeicoes(input.data_inicio, input.data_fim);
+  }
 
-    const inicio = new Date(data_inicio + "T00:00:00-03:00");
-    const fim    = new Date(data_fim + "T23:59:59-03:00");
+  if (nome === "extrato_refeicoes_imagem") {
+    const dados = await calcularExtratoRefeicoes(input.data_inicio, input.data_fim);
+    if (!dados.dias.length) {
+      return { sucesso: false, erro: "sem_dados", mensagem: "Nenhum registro de ponto encontrado nesse período." };
+    }
 
-    const snap = await db.collection("pontos")
-      .where("tipo", "==", "entrada")
-      .where("timestamp", ">=", inicio)
-      .where("timestamp", "<=", fim)
-      .orderBy("timestamp")
-      .get();
-
-    // Agrupa por dia (fuso de Brasília) e guarda só a entrada mais cedo de
-    // cada funcionário naquele dia — evita contar duas vezes se houver
-    // mais de um registro de entrada no mesmo dia.
-    const porDia = {};
-    snap.docs.forEach(d => {
-      const p = d.data();
-      const ts = p.timestamp.toDate();
-      const diaKey = ts.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
-      if (!porDia[diaKey]) porDia[diaKey] = {};
-      const atual = porDia[diaKey][p.funcionarioId];
-      if (atual === undefined || ts.getTime() < atual) porDia[diaKey][p.funcionarioId] = ts.getTime();
-    });
-
-    let totalCafe = 0, totalAlmoco = 0;
-    const dias = Object.keys(porDia).sort().map(diaKey => {
-      let cafe = 0, almoco = 0;
-      Object.values(porDia[diaKey]).forEach(ms => {
-        const horaLocal = new Date(ms).toLocaleTimeString("en-GB", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", hour12: false });
-        const [h, m] = horaLocal.split(":").map(Number);
-        const horaDecimal = h + m / 60;
-        if (horaDecimal < 7)  cafe++;
-        if (horaDecimal < 11) almoco++;
-      });
-      totalCafe   += cafe;
-      totalAlmoco += almoco;
-      const [ano, mes, dia] = diaKey.split("-");
-      return {
-        data: `${dia}/${mes}/${ano}`,
-        cafeManha: cafe,
-        almoco,
-        custoCafe: cafe * PRECO_CAFE,
-        custoAlmoco: almoco * PRECO_ALMOCO,
-        custoDia: cafe * PRECO_CAFE + almoco * PRECO_ALMOCO
-      };
-    });
+    try {
+      const buffer = await gerarImagemExtrato(dados);
+      await enviarFotoTelegram(
+        buffer,
+        `extrato-refeicoes-${input.data_inicio}-a-${input.data_fim}.png`,
+        `Extrato de Refeições — ${dados.periodo.inicio.split("-").reverse().join("/")} a ${dados.periodo.fim.split("-").reverse().join("/")}`
+      );
+    } catch (err) {
+      console.error(err);
+      return { sucesso: false, erro: "falha_geracao_ou_envio", mensagem: err.message };
+    }
 
     return {
-      periodo: { inicio: data_inicio, fim: data_fim },
-      precoCafe: PRECO_CAFE,
-      precoAlmoco: PRECO_ALMOCO,
-      dias,
-      totais: {
-        cafeManha: totalCafe,
-        almoco: totalAlmoco,
-        custoCafe: totalCafe * PRECO_CAFE,
-        custoAlmoco: totalAlmoco * PRECO_ALMOCO,
-        custoGeral: totalCafe * PRECO_CAFE + totalAlmoco * PRECO_ALMOCO
-      }
+      sucesso: true,
+      mensagem: "Imagem do extrato de refeições gerada e enviada pelo Telegram com sucesso.",
+      totais: dados.totais
     };
   }
 
