@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.15";
+const VERSAO = "3.16";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -162,6 +162,7 @@ function fecharInfo() {
 const ORDEM_CATEGORIA = ["Tratamento", "Gesso", "Massa", "Textura"];
 
 function mostrarTotaisConcluidos() {
+  const podeVerValores = sessionStorage.getItem("gw_auth") === "completo";
   const fmtValor = v => "R$ " + v.toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 
   const porCategoria = {};
@@ -191,11 +192,11 @@ function mostrarTotaisConcluidos() {
     body.innerHTML = categorias.map(cat => `
       <div class="pop-linha">
         <span class="pop-label">${escHtml(cat)} (${porCategoria[cat].qtd})</span>
-        <span>${fmtValor(porCategoria[cat].valor)}</span>
+        ${podeVerValores ? `<span>${fmtValor(porCategoria[cat].valor)}</span>` : ""}
       </div>`).join("") + `
       <div class="pop-linha total-linha">
         <span class="pop-label">Total (${qtdGeral})</span>
-        <span>${fmtValor(totalGeral)}</span>
+        ${podeVerValores ? `<span>${fmtValor(totalGeral)}</span>` : ""}
       </div>`;
   }
 

@@ -81,6 +81,29 @@
       align-self: flex-end; margin-top: 3px;
     }
 
+    .pin-confiar {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 0.68rem; color: #cfe8d2;
+      margin-top: -6px;
+      cursor: pointer; user-select: none;
+    }
+    .pin-confiar input { width: 15px; height: 15px; accent-color: #69f0ae; }
+
+    /* Tela simplificada de "toque para entrar" (PC marcado como confiável) */
+    .pin-toque {
+      display: none; flex-direction: column; align-items: center; gap: 14px;
+      padding: 32px 40px;
+      border-radius: 24px;
+      cursor: pointer; user-select: none;
+      max-width: 300px;
+    }
+    .pin-toque-icone { font-size: 2rem; }
+    .pin-toque-texto { font-size: 0.85rem; color: #e8f5e9; text-align: center; font-weight: 600; }
+    .pin-toque-usar-senha {
+      font-size: 0.65rem; color: #9fc7a3; text-decoration: underline;
+      margin-top: 4px;
+    }
+
     /* Numpad */
     .numpad {
       display: grid; grid-template-columns: repeat(3, 1fr);
@@ -228,7 +251,7 @@
       <div class="pin-version" id="pin-version-display"></div>
     </div>
 
-    <div class="pin-dots-wrap glass">
+    <div class="pin-dots-wrap glass" id="pin-dots-wrap">
       <div class="pin-dots" id="pin-dots">
         <div class="pin-dot"></div>
         <div class="pin-dot"></div>
@@ -238,7 +261,7 @@
       <div class="pin-error" id="pin-error"></div>
     </div>
 
-    <div class="numpad glass">
+    <div class="numpad glass" id="pin-numpad">
       <div class="num-key" onclick="addDigit('1')">1<sub>   </sub></div>
       <div class="num-key" onclick="addDigit('2')">2<sub>ABC</sub></div>
       <div class="num-key" onclick="addDigit('3')">3<sub>DEF</sub></div>
@@ -251,6 +274,17 @@
       <div class="num-key empty"></div>
       <div class="num-key" onclick="addDigit('0')">0</div>
       <div class="num-key del" onclick="deleteDigit()">⌫</div>
+    </div>
+
+    <label class="pin-confiar" id="pin-confiar-label">
+      <input type="checkbox" id="chk-confiar" />
+      Não pedir PIN neste computador
+    </label>
+
+    <div class="pin-toque glass" id="pin-toque" onclick="entrarComoConfiavel()">
+      <div class="pin-toque-icone">👆</div>
+      <div class="pin-toque-texto">Toque ou pressione Enter para entrar</div>
+      <div class="pin-toque-usar-senha" onclick="event.stopPropagation(); esquecerPcConfiavel()">Não é este computador? Usar PIN</div>
     </div>
 
   </div>
@@ -462,7 +496,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.33';
+    const VERSAO = '4.34';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -499,6 +533,29 @@
     else if (_sessao === 'parcial')   { modo = 'parcial';   mostrarHome(false); }
     else if (_sessao === 'restrito')  { modo = 'restrito';  mostrarHome(false); }
     else if (_sessao === 'limitado')  { modo = 'limitado';  mostrarHome(false); }
+    else if (localStorage.getItem('gw_pc_confiavel') === '1') { ativarTelaConfiavel(); }
+
+    function ativarTelaConfiavel() {
+      document.getElementById('pin-dots-wrap').style.display = 'none';
+      document.getElementById('pin-numpad').style.display = 'none';
+      document.getElementById('pin-confiar-label').style.display = 'none';
+      document.getElementById('pin-toque').style.display = 'flex';
+      document.addEventListener('keydown', e => { if (e.key === 'Enter') entrarComoConfiavel(); });
+    }
+
+    function entrarComoConfiavel() {
+      modo = localStorage.getItem('gw_pc_modo') || 'completo';
+      sessionStorage.setItem('gw_auth', modo);
+      entrarFullscreen();
+      document.getElementById('pin-screen').style.opacity = '0';
+      setTimeout(() => mostrarSplashLogo(() => mostrarHome(true)), 320);
+    }
+
+    function esquecerPcConfiavel() {
+      localStorage.removeItem('gw_pc_confiavel');
+      localStorage.removeItem('gw_pc_modo');
+      window.location.reload();
+    }
 
     function addDigit(d) {
       if (digitado.length >= 4) return;
@@ -538,6 +595,10 @@
       if (pins[digitado]) {
         modo = pins[digitado];
         sessionStorage.setItem('gw_auth', modo);
+        if (document.getElementById('chk-confiar').checked) {
+          localStorage.setItem('gw_pc_confiavel', '1');
+          localStorage.setItem('gw_pc_modo', modo);
+        }
         entrarFullscreen();
         document.getElementById('pin-screen').style.opacity = '0';
         setTimeout(() => mostrarSplashLogo(() => mostrarHome(true)), 320);
@@ -644,5 +705,6 @@
     }
   </script>
   <script src="./agente.js"></script>
+  <script src="./pc-confiavel.js"></script>
 </body>
 </html>
