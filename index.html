@@ -462,7 +462,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.31';
+    const VERSAO = '4.32';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -643,5 +643,6 @@
       navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload());
     }
   </script>
+  <script src="./agente.js"></script>
 </body>
 </html>

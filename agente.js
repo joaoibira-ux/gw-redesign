@@ -200,7 +200,7 @@
   }
 
   function adicionarBotaoNoHeader() {
-    const header = document.querySelector("header");
+    const header = document.querySelector("header") || document.querySelector(".home-header");
     if (!header) return;
     const btn = document.createElement("button");
     btn.id = "agente-btn";
