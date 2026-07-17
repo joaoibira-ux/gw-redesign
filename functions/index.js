@@ -85,6 +85,18 @@ const TOOLS_GW = [
     }
   },
   {
+    name: "extrato_refeicoes",
+    description: "Gera o extrato de refeições (café da manhã e almoço) de um período, baseado nos registros de ponto. Para cada dia do período, conta quantos funcionários registraram a entrada antes das 7h (café da manhã) e quantos registraram antes das 11h (almoço — inclui quem já tomou café). Café custa R$10 e almoço R$15 por funcionário. Use quando o usuário pedir 'extrato das refeições', 'gasto com café e almoço' ou similar.",
+    input_schema: {
+      type: "object",
+      properties: {
+        data_inicio: { type: "string", description: "Data inicial do período, formato YYYY-MM-DD" },
+        data_fim:    { type: "string", description: "Data final do período, formato YYYY-MM-DD" }
+      },
+      required: ["data_inicio", "data_fim"]
+    }
+  },
+  {
     name: "cancelar_ponto",
     description: "Cancela (exclui) um registro de ponto já existente. Use consultar_ponto antes para obter o id do registro correto. ALTERA O BANCO DE DADOS: exige o campo senha, que deve ser pedido ao usuário antes de chamar esta ferramenta.",
     input_schema: {
@@ -338,6 +350,72 @@ async function executarFerramenta(nome, input) {
       const hora = ts.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
       return { id: d.id, tipo: dd.tipo, hora };
     });
+  }
+
+  if (nome === "extrato_refeicoes") {
+    const { data_inicio, data_fim } = input;
+    const PRECO_CAFE = 10;
+    const PRECO_ALMOCO = 15;
+
+    const inicio = new Date(data_inicio + "T00:00:00-03:00");
+    const fim    = new Date(data_fim + "T23:59:59-03:00");
+
+    const snap = await db.collection("pontos")
+      .where("tipo", "==", "entrada")
+      .where("timestamp", ">=", inicio)
+      .where("timestamp", "<=", fim)
+      .orderBy("timestamp")
+      .get();
+
+    // Agrupa por dia (fuso de Brasília) e guarda só a entrada mais cedo de
+    // cada funcionário naquele dia — evita contar duas vezes se houver
+    // mais de um registro de entrada no mesmo dia.
+    const porDia = {};
+    snap.docs.forEach(d => {
+      const p = d.data();
+      const ts = p.timestamp.toDate();
+      const diaKey = ts.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+      if (!porDia[diaKey]) porDia[diaKey] = {};
+      const atual = porDia[diaKey][p.funcionarioId];
+      if (atual === undefined || ts.getTime() < atual) porDia[diaKey][p.funcionarioId] = ts.getTime();
+    });
+
+    let totalCafe = 0, totalAlmoco = 0;
+    const dias = Object.keys(porDia).sort().map(diaKey => {
+      let cafe = 0, almoco = 0;
+      Object.values(porDia[diaKey]).forEach(ms => {
+        const horaLocal = new Date(ms).toLocaleTimeString("en-GB", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", hour12: false });
+        const [h, m] = horaLocal.split(":").map(Number);
+        const horaDecimal = h + m / 60;
+        if (horaDecimal < 7)  cafe++;
+        if (horaDecimal < 11) almoco++;
+      });
+      totalCafe   += cafe;
+      totalAlmoco += almoco;
+      const [ano, mes, dia] = diaKey.split("-");
+      return {
+        data: `${dia}/${mes}/${ano}`,
+        cafeManha: cafe,
+        almoco,
+        custoCafe: cafe * PRECO_CAFE,
+        custoAlmoco: almoco * PRECO_ALMOCO,
+        custoDia: cafe * PRECO_CAFE + almoco * PRECO_ALMOCO
+      };
+    });
+
+    return {
+      periodo: { inicio: data_inicio, fim: data_fim },
+      precoCafe: PRECO_CAFE,
+      precoAlmoco: PRECO_ALMOCO,
+      dias,
+      totais: {
+        cafeManha: totalCafe,
+        almoco: totalAlmoco,
+        custoCafe: totalCafe * PRECO_CAFE,
+        custoAlmoco: totalAlmoco * PRECO_ALMOCO,
+        custoGeral: totalCafe * PRECO_CAFE + totalAlmoco * PRECO_ALMOCO
+      }
+    };
   }
 
   if (nome === "cancelar_ponto") {
