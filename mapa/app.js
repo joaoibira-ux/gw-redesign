@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.17";
+const VERSAO = "3.18";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -176,32 +176,45 @@ function mostrarTotaisConcluidos() {
       if (!porCategoria[cat]) porCategoria[cat] = { qtd: 0, valor: 0 };
       porCategoria[cat].qtd   += 1;
       porCategoria[cat].valor += valorMedicao;
-      qtdGeral   += 1;
-      totalGeral += valorMedicao;
+      if (cat !== "Tratamento") {
+        qtdGeral   += 1;
+        totalGeral += valorMedicao;
+      }
     });
   });
 
-  const categorias = Object.keys(porCategoria).sort((a, b) => {
-    const ia = ORDEM_CATEGORIA.indexOf(a), ib = ORDEM_CATEGORIA.indexOf(b);
-    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
-  });
+  const categorias = Object.keys(porCategoria)
+    .filter(c => c !== "Tratamento")
+    .sort((a, b) => {
+      const ia = ORDEM_CATEGORIA.indexOf(a), ib = ORDEM_CATEGORIA.indexOf(b);
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    });
+  const tratamento = porCategoria["Tratamento"];
 
   const body = document.getElementById("totais-body");
-  if (qtdGeral === 0) {
+  if (qtdGeral === 0 && !tratamento) {
     body.innerHTML = '<p style="font-size:0.78rem;color:#aaa;padding:6px 0">Nenhum serviço concluído ainda.</p>';
   } else {
     const subtitulo = podeVerValores
       ? '<p style="font-size:0.62rem;color:#999;margin-bottom:6px">Valores de medição</p>'
       : "";
-    body.innerHTML = subtitulo + categorias.map(cat => `
+    const linha = (cat, dados) => `
       <div class="pop-linha">
-        <span class="pop-label">${escHtml(cat)} (${porCategoria[cat].qtd})</span>
-        ${podeVerValores ? `<span>${fmtValor(porCategoria[cat].valor)}</span>` : ""}
-      </div>`).join("") + `
+        <span class="pop-label">${escHtml(cat)} (${dados.qtd})</span>
+        ${podeVerValores ? `<span>${fmtValor(dados.valor)}</span>` : ""}
+      </div>`;
+    body.innerHTML = subtitulo
+      + categorias.map(cat => linha(cat, porCategoria[cat])).join("")
+      + `
       <div class="pop-linha total-linha">
         <span class="pop-label">Total (${qtdGeral})</span>
         ${podeVerValores ? `<span>${fmtValor(totalGeral)}</span>` : ""}
-      </div>`;
+      </div>`
+      + (tratamento ? `
+      <div class="pop-linha tratamento-linha">
+        <span class="pop-label">Tratamento (${tratamento.qtd}) <em>— à parte, não entra no total</em></span>
+        ${podeVerValores ? `<span>${fmtValor(tratamento.valor)}</span>` : ""}
+      </div>` : "");
   }
 
   document.getElementById("modal-totais").style.display = "flex";

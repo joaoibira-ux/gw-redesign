@@ -265,3 +265,17 @@ header {
   font-weight: 700;
   color: #1a3322;
 }
+
+.tratamento-linha {
+  border-top: 1px dashed #ccc !important;
+  margin-top: 6px;
+  padding-top: 8px !important;
+  color: #888;
+}
+.tratamento-linha em {
+  font-style: normal;
+  font-size: 0.6rem;
+  color: #aaa;
+  display: block;
+  margin-top: 1px;
+}
