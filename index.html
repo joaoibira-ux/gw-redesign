@@ -31,6 +31,8 @@
         url('./bg-pin.jpg') center/cover no-repeat scroll;
       padding: env(safe-area-inset-top, 20px) 0 env(safe-area-inset-bottom, 20px);
       transition: opacity .35s ease;
+      overflow-y: auto;
+      gap: 10px;
     }
 
     .pin-header {
@@ -38,6 +40,7 @@
       padding: 22px 36px;
       margin-top: 28px;
       border-radius: 26px;
+      flex-shrink: 0;
     }
     .pin-logo { width: 72px; height: 72px; object-fit: contain; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.4)); }
     .pin-title { font-size: 1.3rem; font-weight: 800; letter-spacing: 3px; color: #e8f5e9; text-shadow: 0 2px 10px rgba(0,0,0,0.5); }
@@ -53,6 +56,7 @@
       display: flex; flex-direction: column; align-items: center; gap: 18px;
       padding: 18px 32px;
       border-radius: 22px;
+      flex-shrink: 0;
     }
     .pin-dots {
       display: flex; gap: 16px; align-items: center; justify-content: center;
@@ -83,11 +87,12 @@
 
     .pin-confiar {
       display: flex; align-items: center; gap: 8px;
-      font-size: 0.68rem; color: #cfe8d2;
-      margin-top: -6px;
+      font-size: 0.72rem; color: #e8f5e9;
       cursor: pointer; user-select: none;
+      flex-shrink: 0;
+      padding-bottom: 4px;
     }
-    .pin-confiar input { width: 15px; height: 15px; accent-color: #69f0ae; }
+    .pin-confiar input { width: 16px; height: 16px; accent-color: #69f0ae; flex-shrink: 0; }
 
     /* Tela simplificada de "toque para entrar" (PC marcado como confiável) */
     .pin-toque {
@@ -96,6 +101,7 @@
       border-radius: 24px;
       cursor: pointer; user-select: none;
       max-width: 300px;
+      flex-shrink: 0;
     }
     .pin-toque-icone { font-size: 2rem; }
     .pin-toque-texto { font-size: 0.85rem; color: #e8f5e9; text-align: center; font-weight: 600; }
@@ -109,6 +115,7 @@
       display: grid; grid-template-columns: repeat(3, 1fr);
       gap: 14px; padding: 18px 32px; width: 100%; max-width: 340px;
       border-radius: 28px;
+      flex-shrink: 0;
     }
     .num-key {
       aspect-ratio: 1;
@@ -496,7 +503,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.34';
+    const VERSAO = '4.35';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
