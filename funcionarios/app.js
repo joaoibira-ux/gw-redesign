@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.12";
+const VERSAO = "3.13";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -59,6 +59,17 @@ let modelsLoaded = false;
 let faceStream = null;
 let pendingFaceDescriptor = null;
 let pendingFotoThumb = null;
+
+// PIN 2912 (tela de login) = cadastro simplificado: só Nome, Face, Cargo, Admissão, Telefone, Obs.
+const CADASTRO_SIMPLIFICADO = sessionStorage.getItem('gw_auth') === 'cadastro';
+
+function aplicarModoSimplificado() {
+  const display = CADASTRO_SIMPLIFICADO ? "none" : "";
+  ["row-remuneracao", "row-passagens", "sec-pessoais", "sec-documentos", "sec-endereco"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = display;
+  });
+}
 
 // ── Lista ─────────────────────────────────────────────────
 function render(docs) {
@@ -129,6 +140,7 @@ function abrirFormulario() {
   pendingFaceDescriptor = null;
   pendingFotoThumb = null;
   atualizarStatusFace();
+  aplicarModoSimplificado();
 }
 
 function fecharFormulario() {
@@ -241,14 +253,16 @@ function validarFormulario() {
   const v  = id => ((document.getElementById(id)||{}).value||"").trim();
   const rb = n  => !!document.querySelector(`input[name="${n}"]:checked`);
   const editando = !!editandoId;
+  const simplificado = CADASTRO_SIMPLIFICADO;
   // Em edição, campos vazios são permitidos; se preenchidos, ainda precisam ser válidos.
   const data = (val, msg, erros) => { if ((!editando || val) && !validarData(val)) erros.push(msg); };
   const erros = [];
   if (!v("f-nome"))           erros.push("Nome");
   if (!v("f-cargo"))          erros.push("Cargo");
   data(v("f-admissao"), "Admissão (DD/MM/AAAA)", erros);
-  if (!editando && !ehPorProducao(v("f-cargo")) && !parseMoeda(v("f-salario"))) erros.push("Salário / Diária");
   if (!editando && !v("f-telefone"))       erros.push("Telefone");
+  if (simplificado) return erros;
+  if (!ehPorProducao(v("f-cargo")) && !parseMoeda(v("f-salario")) && !editando) erros.push("Salário / Diária");
   if (!editando && !v("f-nacionalidade"))  erros.push("Nacionalidade");
   if (!editando && !v("f-estadocivil"))    erros.push("Estado Civil");
   data(v("f-nascimento"), "Data de Nascimento (DD/MM/AAAA)", erros);
@@ -355,6 +369,7 @@ function editarFuncionario(id) {
   pendingFaceDescriptor = null;
   pendingFotoThumb = null;
   atualizarStatusFace();
+  aplicarModoSimplificado();
 }
 
 // ── Cadastro de Face ────────────────────────────────────────

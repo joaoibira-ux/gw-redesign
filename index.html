@@ -361,6 +361,7 @@
     let PIN_PARCIAL  = '4512';
     let PIN_RESTRITO = '3733';
     let PIN_LIMITADO = '0000';
+    let PIN_CADASTRO = '2912';
     const pinsCarregados = firebase.firestore().collection('configuracoes').doc('geral').get()
       .then(doc => {
         if (!doc.exists) return;
@@ -369,6 +370,7 @@
         if (d.pinParcial)  PIN_PARCIAL  = d.pinParcial;
         if (d.pinRestrito) PIN_RESTRITO = d.pinRestrito;
         if (d.pinLimitado) PIN_LIMITADO = d.pinLimitado;
+        if (d.pinCadastro) PIN_CADASTRO = d.pinCadastro;
       }).catch(() => {});
 
     // Relatório de ponto via WhatsApp: dispara no 1º acesso ao sistema após 9:30, seg a sex.
@@ -516,11 +518,11 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.44';
+    const VERSAO = '4.45';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
-    let modo = 'parcial'; // 'completo' | 'parcial' | 'restrito'
+    let modo = 'parcial'; // 'completo' | 'parcial' | 'restrito' | 'limitado' | 'cadastro'
 
     const APPS_PARCIAL_ACESSO = ['Caixa', 'Relatório', 'Mapa', 'Rel. Folha', 'Rel. Ponto', 'A Receber', 'A Pagar'];
     const APPS_RESTRITO = ['Rel. Ponto'];
@@ -553,6 +555,7 @@
     else if (_sessao === 'parcial')   { modo = 'parcial';   mostrarHome(false); }
     else if (_sessao === 'restrito')  { modo = 'restrito';  mostrarHome(false); }
     else if (_sessao === 'limitado')  { modo = 'limitado';  mostrarHome(false); }
+    else if (_sessao === 'cadastro')  { modo = 'cadastro';  mostrarHome(false); }
     else if (localStorage.getItem('gw_pc_confiavel') === '1') { ativarTelaConfiavel(); }
 
     function ativarTelaConfiavel() {
@@ -611,7 +614,7 @@
 
     async function verificarPin() {
       await pinsCarregados;
-      const pins = { [PIN_COMPLETO]: 'completo', [PIN_PARCIAL]: 'parcial', [PIN_RESTRITO]: 'restrito', [PIN_LIMITADO]: 'limitado' };
+      const pins = { [PIN_COMPLETO]: 'completo', [PIN_PARCIAL]: 'parcial', [PIN_RESTRITO]: 'restrito', [PIN_LIMITADO]: 'limitado', [PIN_CADASTRO]: 'cadastro' };
       if (pins[digitado]) {
         modo = pins[digitado];
         sessionStorage.setItem('gw_auth', modo);

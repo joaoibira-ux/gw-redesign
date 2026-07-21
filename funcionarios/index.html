@@ -60,7 +60,7 @@
           <input type="text" id="f-admissao" placeholder="DD/MM/AAAA" />
         </div>
       </div>
-      <div class="form-row">
+      <div class="form-row" id="row-remuneracao">
         <div class="form-group" id="wrap-salario">
           <label id="lbl-salario">Salário Bruto (R$)</label>
           <input type="decimal" inputmode="decimal" id="f-salario" placeholder="0,00" />
@@ -80,7 +80,7 @@
           <input type="tel" id="f-telefone" placeholder="(00) 00000-0000" />
         </div>
       </div>
-      <div class="form-row">
+      <div class="form-row" id="row-passagens">
         <div class="form-group full">
           <label>Passagens (15dd) (R$)</label>
           <input type="text" inputmode="decimal" id="f-passagens" placeholder="0,00" />
@@ -93,6 +93,7 @@
         </div>
       </div>
 
+      <div id="sec-pessoais">
       <div class="form-section-title">Dados Pessoais</div>
       <div class="form-row">
         <div class="form-group">
@@ -152,7 +153,9 @@
           </div>
         </div>
       </div>
+      </div>
 
+      <div id="sec-documentos">
       <div class="form-section-title">Documentos</div>
       <div class="form-row">
         <div class="form-group">
@@ -200,7 +203,9 @@
           <input type="text" id="f-emissaoctps" placeholder="DD/MM/AAAA" />
         </div>
       </div>
+      </div>
 
+      <div id="sec-endereco">
       <div class="form-section-title">Endereço</div>
       <div class="form-row">
         <div class="form-group">
@@ -223,6 +228,7 @@
           <label>Cidade *</label>
           <input type="text" id="f-cidade" placeholder="Cidade" />
         </div>
+      </div>
       </div>
 
       <div class="form-actions">
@@ -287,7 +293,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
-<script src="./app.js?v=21"></script>
+<script src="./app.js?v=22"></script>
 <script src="../agente.js"></script>
 <script src="../pc-confiavel.js"></script>
 <script src="../bfcache-fix.js"></script>
