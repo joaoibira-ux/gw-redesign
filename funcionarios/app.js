@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.13";
+const VERSAO = "3.14";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -28,6 +28,15 @@ function parseMoeda(s) {
 
 function fmtMoeda(v) {
   return "R$ " + (v||0).toFixed(2).replace(".",",").replace(/\B(?=(\d{3})+(?!\d))/g,".");
+}
+
+let _toastTimer = null;
+function mostrarToast(msg) {
+  const toast = document.getElementById("toast");
+  toast.textContent = msg;
+  toast.classList.add("show");
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => toast.classList.remove("show"), 2500);
 }
 
 function hoje() {
@@ -554,7 +563,7 @@ function irParaAssinaturaParaSalvar() {
     pendingFaceDescriptor = null;
     pendingFotoThumb = null;
     fecharFormulario();
-    alert('Dados atualizados com sucesso!');
+    mostrarToast('Dados atualizados com sucesso!');
     return;
   }
 
@@ -606,7 +615,7 @@ function assinarESalvar() {
   document.getElementById('assin-overlay').style.display = 'none';
   document.getElementById('fab').classList.remove('open');
   consultandoId = null;
-  alert('Funcionário salvo com sucesso!');
+  mostrarToast('Funcionário salvo com sucesso!');
 }
 
 function voltarDaAssinatura() {
