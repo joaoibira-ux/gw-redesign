@@ -12,7 +12,7 @@
   </style>
 </head>
 <body>
-  <h2>Inserir I01→I08, I101→I108, J01→J08, J101→J108</h2>
+  <h2>Inserir K01→K08, K101→K108</h2>
   <p>Clique para criar os apartamentos seguindo o mesmo padrão do A01.</p>
   <button onclick="seed()">Executar</button>
   <div id="log"></div>
@@ -50,10 +50,8 @@
     const tipo = modelo.tipo || "Apartamento";
 
     const novos = [
-      "I01","I02","I03","I04","I05","I06","I07","I08",
-      "I101","I102","I103","I104","I105","I106","I107","I108",
-      "J01","J02","J03","J04","J05","J06","J07","J08",
-      "J101","J102","J103","J104","J105","J106","J107","J108"
+      "K01","K02","K03","K04","K05","K06","K07","K08",
+      "K101","K102","K103","K104","K105","K106","K107","K108"
     ];
 
     for (const id of novos) {
