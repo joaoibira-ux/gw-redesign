@@ -692,7 +692,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.82";
+  const VERSAO = "1.83";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1370,13 +1370,19 @@
       adiantMap.set(normNome(nome), (adiantMap.get(normNome(nome)) || 0) + (r.saida || 0));
     });
 
-    // % de desconto de INSS cadastrado em cada funcionário (0 se não encontrado)
+    // Desconto de INSS e Passagens em R$, fixos — os mesmos já calculados em
+    // Funcionários sobre o salário base (Salário Bruto ou Salário de
+    // Referência, conforme o cargo), não sobre o Bruto do período.
+    const CARGOS_POR_PRODUCAO_REL = ['PINTOR', 'RASPADOR'];
     const descontosMap = new Map();
     if (_funcionariosSnap) _funcionariosSnap.docs.forEach(d => {
       const f = d.data();
+      const porProd = CARGOS_POR_PRODUCAO_REL.includes((f.cargo || '').toUpperCase());
+      const base = porProd ? Number(f.salarioReferencia || 0) : Number(f.salario || 0);
       const pct = Number(f.descontos || 0);
-      descontosMap.set(d.id, pct);
-      descontosMap.set(normNome(f.nome), pct);
+      const valores = { inss: base * pct / 100, passagens: base * 0.06 };
+      descontosMap.set(d.id, valores);
+      descontosMap.set(normNome(f.nome), valores);
     });
 
     let totalBruto = 0, totalInss = 0, totalPassagens = 0, totalAdiant = 0;
@@ -1399,9 +1405,9 @@
       return { g, bruto, adiant };
     }).filter(({ g, bruto, adiant }) => g.isEncarregado || bruto > 0 || adiant > 0)
       .map(({ g, bruto, adiant }) => {
-        const descPct = descontosMap.get(g.funcionario.id) ?? descontosMap.get(normNome(g.funcionario.nome)) ?? 0;
-        const inss = bruto * descPct / 100;
-        const passagens = bruto * 0.06;
+        const desc = descontosMap.get(g.funcionario.id) ?? descontosMap.get(normNome(g.funcionario.nome)) ?? { inss: 0, passagens: 0 };
+        const inss = desc.inss;
+        const passagens = desc.passagens;
         const liq = bruto - inss - passagens - adiant;
         totalBruto     += bruto;
         totalInss      += inss;
