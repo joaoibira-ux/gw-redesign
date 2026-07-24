@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.19";
+const VERSAO = "3.20";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -54,7 +54,7 @@ function diasDoMes() {
   return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
 }
 function calcLiquido(salario, descontos) {
-  return (salario || 0) * (1 - (descontos || 0) / 100);
+  return (salario || 0) * (1 - (descontos || 0) / 100 - 0.06);
 }
 function calcDiaria(salario) {
   const dias = diasDoMes();
