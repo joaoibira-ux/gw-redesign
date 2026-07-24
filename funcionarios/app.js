@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.14";
+const VERSAO = "3.15";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -109,11 +109,14 @@ function render(docs) {
         <div class="card-info">
           <span class="badge">${escHtml(f.cargo)}</span>
           <span class="card-salario ${porProd ? 'por-producao' : ''}">
-            ${porProd ? 'Por produção' : (() => {
+            ${(() => {
+              const base = porProd ? f.salarioReferencia : f.salario;
+              const descInss = f.descontos ? ` · INSS: ${f.descontos}%` : '';
+              const descPass = calcDescontoPassagens(base);
+              if (porProd) return `Por produção${descInss} · Desc. Passagens: ${fmtMoeda(descPass)}`;
               const liq = calcLiquido(f.salario, f.descontos);
               const dia = calcDiaria(f.salario);
-              const descPass = calcDescontoPassagens(f.salario);
-              return `${fmtMoeda(f.salario)}${f.descontos ? ` · Desc: ${f.descontos}%` : ''} · Desc. Passagens: ${fmtMoeda(descPass)} · Líq: ${fmtMoeda(liq)} · Diária: ${fmtMoeda(dia)}`;
+              return `${fmtMoeda(f.salario)}${descInss} · Desc. Passagens: ${fmtMoeda(descPass)} · Líq: ${fmtMoeda(liq)} · Diária: ${fmtMoeda(dia)}`;
             })()}
           </span>
           <button class="btn-ativo ${ativo ? 'ativo' : 'inativo'}" onclick="toggleAtivo('${doc.id}')">
@@ -165,7 +168,6 @@ const SALARIO_REFERENCIA_PADRAO = 2407.00;
 document.getElementById("f-cargo").addEventListener("change", function() {
   const porProd = ehPorProducao(this.value);
   document.getElementById("wrap-salario").style.display = porProd ? "none" : "";
-  document.getElementById("wrap-descontos").style.display = porProd ? "none" : "";
   document.getElementById("wrap-salario-ref").style.display = porProd ? "" : "none";
   const salarioRef = document.getElementById("f-salario-ref");
   if (porProd && !salarioRef.value) salarioRef.value = SALARIO_REFERENCIA_PADRAO.toFixed(2).replace(".",",");
@@ -306,7 +308,7 @@ function lerCampos() {
     cargo:        v("f-cargo"),
     admissao:     v("f-admissao").trim(),
     salario:      ehPorProducao(v("f-cargo")) ? 0 : parseMoeda(v("f-salario")),
-    descontos:    ehPorProducao(v("f-cargo")) ? 0 : (parseFloat((v("f-descontos")||"0").replace(",",".")) || 0),
+    descontos:    parseFloat((v("f-descontos")||"0").replace(",",".")) || 0,
     salarioReferencia: ehPorProducao(v("f-cargo")) ? parseMoeda(v("f-salario-ref")) : 0,
     passagens:    parseMoeda(v("f-passagens")),
     telefone:     v("f-telefone").trim(),
@@ -370,7 +372,6 @@ function editarFuncionario(id) {
 
   const porProd = ehPorProducao(f.cargo);
   document.getElementById("wrap-salario").style.display = porProd ? "none" : "";
-  document.getElementById("wrap-descontos").style.display = porProd ? "none" : "";
   document.getElementById("wrap-salario-ref").style.display = porProd ? "" : "none";
   document.getElementById("form-overlay").style.display = "flex";
   document.getElementById("fab").classList.add("open");
@@ -508,11 +509,12 @@ function consultarFuncionario(id) {
       ${ehPorProducao(f.cargo) ? `
         ${c('Remuneração', 'Por produção')}
         ${c('Salário de Referência', fmtMoeda(f.salarioReferencia))}
-        ${c('Desconto Passagens (6%)', fmtMoeda(calcDescontoPassagens(f.salarioReferencia)))}
+        ${f.descontos > 0 ? c('Desconto de INSS', f.descontos.toFixed(2).replace('.',',') + '%') : ''}
+        ${c('Desconto das Passagens (6%)', fmtMoeda(calcDescontoPassagens(f.salarioReferencia)))}
       ` : `
         ${c('Salário Bruto', fmtMoeda(f.salario))}
-        ${f.descontos > 0 ? c('Descontos', f.descontos.toFixed(2).replace('.',',') + '%') : ''}
-        ${c('Desconto Passagens (6%)', fmtMoeda(calcDescontoPassagens(f.salario)))}
+        ${f.descontos > 0 ? c('Desconto de INSS', f.descontos.toFixed(2).replace('.',',') + '%') : ''}
+        ${c('Desconto das Passagens (6%)', fmtMoeda(calcDescontoPassagens(f.salario)))}
         ${c('Valor Líquido', fmtMoeda(calcLiquido(f.salario, f.descontos)))}
         ${c('Diária ('+diasDoMes()+' dias)', fmtMoeda(calcDiaria(f.salario)))}
       `}
