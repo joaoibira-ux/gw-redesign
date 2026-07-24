@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.15";
+const VERSAO = "3.16";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -164,6 +164,7 @@ function fecharFormulario() {
 
 // Cargo
 const SALARIO_REFERENCIA_PADRAO = 2407.00;
+const DESCONTO_INSS_PADRAO_PRODUCAO = 7.5;
 
 document.getElementById("f-cargo").addEventListener("change", function() {
   const porProd = ehPorProducao(this.value);
@@ -171,6 +172,8 @@ document.getElementById("f-cargo").addEventListener("change", function() {
   document.getElementById("wrap-salario-ref").style.display = porProd ? "" : "none";
   const salarioRef = document.getElementById("f-salario-ref");
   if (porProd && !salarioRef.value) salarioRef.value = SALARIO_REFERENCIA_PADRAO.toFixed(2).replace(".",",");
+  const descontos = document.getElementById("f-descontos");
+  if (porProd && !descontos.value) descontos.value = DESCONTO_INSS_PADRAO_PRODUCAO.toFixed(2).replace(".",",");
 });
 
 document.getElementById("f-salario").addEventListener("blur", function() {
@@ -373,6 +376,9 @@ function editarFuncionario(id) {
   const porProd = ehPorProducao(f.cargo);
   document.getElementById("wrap-salario").style.display = porProd ? "none" : "";
   document.getElementById("wrap-salario-ref").style.display = porProd ? "" : "none";
+  if (porProd && !(f.descontos > 0)) {
+    document.getElementById("f-descontos").value = DESCONTO_INSS_PADRAO_PRODUCAO.toFixed(2).replace(".",",");
+  }
   document.getElementById("form-overlay").style.display = "flex";
   document.getElementById("fab").classList.add("open");
 
