@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.17";
+const VERSAO = "3.18";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -63,6 +63,9 @@ function calcDiaria(salario) {
 function calcDescontoPassagens(salario) {
   return (salario || 0) * 0.06;
 }
+function calcDescontoInss(salario, percentual) {
+  return (salario || 0) * (percentual || 0) / 100;
+}
 
 let funcionariosCache = {};
 let editandoId = null;
@@ -113,7 +116,7 @@ function render(docs) {
           <span class="card-salario ${porProd ? 'por-producao' : ''}">
             ${(() => {
               const base = porProd ? f.salarioReferencia : f.salario;
-              const descInss = f.descontos ? ` · INSS: ${f.descontos}%` : '';
+              const descInss = f.descontos ? ` · Desc. INSS: ${fmtMoeda(calcDescontoInss(base, f.descontos))}` : '';
               const descPass = calcDescontoPassagens(base);
               if (porProd) return `Por produção${descInss} · Desc. Passagens: ${fmtMoeda(descPass)}`;
               const liq = calcLiquido(f.salario, f.descontos);
@@ -517,11 +520,11 @@ function consultarFuncionario(id) {
       ${ehPorProducao(f.cargo) ? `
         ${c('Remuneração', 'Por produção')}
         ${c('Salário de Referência', fmtMoeda(f.salarioReferencia))}
-        ${f.descontos > 0 ? c('Desconto de INSS', f.descontos.toFixed(2).replace('.',',') + '%') : ''}
+        ${f.descontos > 0 ? c('Desconto de INSS ('+f.descontos.toFixed(2).replace('.',',')+'%)', fmtMoeda(calcDescontoInss(f.salarioReferencia, f.descontos))) : ''}
         ${c('Desconto das Passagens (6%)', fmtMoeda(calcDescontoPassagens(f.salarioReferencia)))}
       ` : `
         ${c('Salário Bruto', fmtMoeda(f.salario))}
-        ${f.descontos > 0 ? c('Desconto de INSS', f.descontos.toFixed(2).replace('.',',') + '%') : ''}
+        ${f.descontos > 0 ? c('Desconto de INSS ('+f.descontos.toFixed(2).replace('.',',')+'%)', fmtMoeda(calcDescontoInss(f.salario, f.descontos))) : ''}
         ${c('Desconto das Passagens (6%)', fmtMoeda(calcDescontoPassagens(f.salario)))}
         ${c('Valor Líquido', fmtMoeda(calcLiquido(f.salario, f.descontos)))}
         ${c('Diária ('+diasDoMes()+' dias)', fmtMoeda(calcDiaria(f.salario)))}
