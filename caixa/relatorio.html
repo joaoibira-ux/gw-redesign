@@ -476,7 +476,7 @@
       align-items: center;
       gap: 10px;
     }
-    .prev-cols { grid-template-columns: 1fr 120px 120px 120px; }
+    .prev-cols { grid-template-columns: 1fr 100px 100px 100px 100px 100px; }
     .prev-cols-med { grid-template-columns: 1fr 90px 90px 90px 90px 90px 90px; }
     .prev-cols-pass { grid-template-columns: 1fr 120px; }
     .prev-header { display: grid; padding: 5px 16px; border-bottom: 1px solid rgba(165,214,167,0.15); }
@@ -692,7 +692,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.81";
+  const VERSAO = "1.82";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1311,7 +1311,12 @@
       </div>`;
   }
 
-  db.collection('funcionarios').orderBy('nome').onSnapshot(renderPrevisaoPassagens);
+  let _funcionariosSnap = null;
+  db.collection('funcionarios').orderBy('nome').onSnapshot(snap => {
+    _funcionariosSnap = snap;
+    renderPrevisaoPassagens(snap);
+    renderPrevisaoFolha();
+  });
 
   // ── Previsão da Folha ──
   function normNome(s) {
@@ -1365,7 +1370,16 @@
       adiantMap.set(normNome(nome), (adiantMap.get(normNome(nome)) || 0) + (r.saida || 0));
     });
 
-    let totalBruto = 0, totalAdiant = 0;
+    // % de desconto de INSS cadastrado em cada funcionário (0 se não encontrado)
+    const descontosMap = new Map();
+    if (_funcionariosSnap) _funcionariosSnap.docs.forEach(d => {
+      const f = d.data();
+      const pct = Number(f.descontos || 0);
+      descontosMap.set(d.id, pct);
+      descontosMap.set(normNome(f.nome), pct);
+    });
+
+    let totalBruto = 0, totalInss = 0, totalPassagens = 0, totalAdiant = 0;
     const linhas = grupos.map(g => {
       const isAjud = (g.funcionario?.cargo || '').toLowerCase().includes('ajudante');
       // Bruto recalculado a partir do estado atual de 'locais' (mais confiável que o subtotal salvo na folha)
@@ -1385,31 +1399,40 @@
       return { g, bruto, adiant };
     }).filter(({ g, bruto, adiant }) => g.isEncarregado || bruto > 0 || adiant > 0)
       .map(({ g, bruto, adiant }) => {
-        const liq = bruto - adiant;
-        totalBruto  += bruto;
-        totalAdiant += adiant;
+        const descPct = descontosMap.get(g.funcionario.id) ?? descontosMap.get(normNome(g.funcionario.nome)) ?? 0;
+        const inss = bruto * descPct / 100;
+        const passagens = bruto * 0.06;
+        const liq = bruto - inss - passagens - adiant;
+        totalBruto     += bruto;
+        totalInss      += inss;
+        totalPassagens += passagens;
+        totalAdiant    += adiant;
         return `
           <div class="prev-linha prev-cols${g.isEncarregado ? ' prev-enc' : ''}">
             <div class="prev-nome">${escHtml(g.funcionario.nome)} <span class="prev-cargo">${escHtml(g.funcionario.cargo||'')}</span></div>
             <div class="prev-valor">${fmt(bruto)}</div>
+            <div class="prev-adiant">${inss > 0 ? '- '+fmt(inss) : '—'}</div>
+            <div class="prev-adiant">${passagens > 0 ? '- '+fmt(passagens) : '—'}</div>
             <div class="prev-adiant">${adiant > 0 ? '- '+fmt(adiant) : '—'}</div>
             <div class="prev-liq">${fmt(liq)}</div>
           </div>`;
       }).join('');
 
-    const totalLiq = totalBruto - totalAdiant;
+    const totalLiq = totalBruto - totalInss - totalPassagens - totalAdiant;
     el.innerHTML = `
       <div class="previsao-card">
         <div class="prev-titulo">
           <span>Previsão da Folha de Pagamento</span>
         </div>
         <div class="prev-header prev-cols">
-          <span>Funcionário</span><span>Bruto</span><span>Adiant.</span><span>Líquido</span>
+          <span>Funcionário</span><span>Bruto</span><span>INSS</span><span>Passagens</span><span>Adiant.</span><span>Líquido</span>
         </div>
         ${linhas}
         <div class="prev-total prev-cols">
           <span>Total</span>
           <span>${fmt(totalBruto)}</span>
+          <span style="color:#ef9a9a">${totalInss > 0 ? '- '+fmt(totalInss) : '—'}</span>
+          <span style="color:#ef9a9a">${totalPassagens > 0 ? '- '+fmt(totalPassagens) : '—'}</span>
           <span style="color:#ef9a9a">${totalAdiant > 0 ? '- '+fmt(totalAdiant) : '—'}</span>
           <span>${fmt(totalLiq)}</span>
         </div>
