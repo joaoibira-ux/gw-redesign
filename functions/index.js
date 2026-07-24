@@ -88,6 +88,19 @@ const TOOLS_GW = [
     }
   },
   {
+    name: "consultar_ponto_periodo",
+    description: "Consulta registros de ponto em um intervalo de datas (ex: 'essa semana', 'de 21 a 24 de julho', 'semana passada'). Retorna os registros agrupados por dia, incluindo os dias sem nenhum registro. Use esta ferramenta — em vez de chamar consultar_ponto várias vezes ou responder de memória — sempre que o usuário pedir ponto de mais de um dia.",
+    input_schema: {
+      type: "object",
+      properties: {
+        funcionarioId: { type: "string", description: "ID do funcionário. Omita para consultar todos os funcionários no período." },
+        data_inicio: { type: "string", description: "Data inicial do período, formato YYYY-MM-DD" },
+        data_fim: { type: "string", description: "Data final do período, formato YYYY-MM-DD" }
+      },
+      required: ["data_inicio", "data_fim"]
+    }
+  },
+  {
     name: "ultimo_registro_ponto",
     description: "Busca o último registro de ponto (entrada ou saída, o mais recente independente da data) de um funcionário específico, incluindo data, horário e localização GPS de onde foi registrado (se disponível). Use listar_funcionarios antes para obter o funcionarioId correto. Use para perguntas como 'quando fulano bateu ponto pela última vez' ou 'qual a localização do último ponto de fulano'.",
     input_schema: {
@@ -573,6 +586,45 @@ async function executarFerramenta(nome, input) {
     });
   }
 
+  if (nome === "consultar_ponto_periodo") {
+    const { funcionarioId, data_inicio, data_fim } = input;
+    if (!data_inicio || !data_fim) {
+      return { erro: "parametros_invalidos", mensagem: "data_inicio e data_fim são obrigatórios." };
+    }
+    const inicio = new Date(data_inicio + "T00:00:00-03:00");
+    const fim = new Date(data_fim + "T23:59:59-03:00");
+
+    let query = db.collection("pontos")
+      .where("timestamp", ">=", inicio)
+      .where("timestamp", "<=", fim);
+    if (funcionarioId) query = query.where("funcionarioId", "==", funcionarioId);
+    const snap = await query.orderBy("timestamp").get();
+
+    const porDia = {};
+    for (let d = new Date(inicio); d <= fim; d.setDate(d.getDate() + 1)) {
+      porDia[d.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" })] = [];
+    }
+
+    snap.docs.forEach(d => {
+      const dd = d.data();
+      const ts = dd.timestamp.toDate();
+      const diaISO = ts.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+      const hora = ts.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+      if (!porDia[diaISO]) porDia[diaISO] = [];
+      porDia[diaISO].push({
+        id: d.id,
+        tipo: dd.tipo,
+        hora,
+        ...(funcionarioId ? {} : { funcionarioId: dd.funcionarioId, funcionarioNome: dd.funcionarioNome })
+      });
+    });
+
+    return {
+      periodo: { inicio: data_inicio, fim: data_fim },
+      dias: Object.keys(porDia).sort().map(dia => ({ data: dia, registros: porDia[dia] }))
+    };
+  }
+
   if (nome === "ultimo_registro_ponto") {
     const { funcionarioId } = input;
     const snap = await db.collection("pontos")
@@ -1046,7 +1098,8 @@ Para editar ou excluir um lançamento do caixa, use consultar_caixa primeiro par
 Para cancelar um registro de ponto, use consultar_ponto primeiro para encontrar o id correto e confirme com o usuário qual registro é (funcionário, tipo e horário) antes de cancelar.
 Para corrigir um registro de ponto já existente (mudar data, horário ou tipo), use editar_ponto com o id obtido via consultar_ponto — NÃO cancele e registre de novo manualmente em duas chamadas separadas; editar_ponto já faz isso internamente (substitui o registro e guarda um histórico da alteração).
 Quando o usuário pedir para registrar ponto em uma data diferente de hoje (ex: "registre a saída de fulano dia 27/06"), SEMPRE preencha o campo "data" de registrar_ponto com essa data — nunca deixe em branco, senão o registro cai na data de hoje por engano.
-Quando o usuário pedir o ponto de "todos", "todos os funcionários" ou não especificar um funcionário, chame consultar_ponto UMA ÚNICA VEZ sem o campo funcionarioId — essa ferramenta já retorna os registros de todos de uma vez. NUNCA chame consultar_ponto repetidamente por funcionário para montar essa lista.`;
+Quando o usuário pedir o ponto de "todos", "todos os funcionários" ou não especificar um funcionário, chame consultar_ponto UMA ÚNICA VEZ sem o campo funcionarioId — essa ferramenta já retorna os registros de todos de uma vez. NUNCA chame consultar_ponto repetidamente por funcionário para montar essa lista.
+CRÍTICO: consultar_ponto só serve para UM dia. Quando o usuário pedir ponto de mais de um dia (ex: "essa semana", "de 21 a 24/07", "semana passada", "esse mês"), use consultar_ponto_periodo com data_inicio e data_fim — nunca chame consultar_ponto dia por dia nem responda com base em consultas anteriores da conversa. Sempre consulte de novo antes de responder sobre um período.`;
 
     const messages = [
       ...historico.slice(-8),
