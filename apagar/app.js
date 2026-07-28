@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "1.4";
+const VERSAO = "1.5";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -53,6 +53,27 @@ let modoSoma       = false;
 let selecionados   = new Set();
 let detalheAbertoId = null;
 
+function cardHtml(id, c, opts) {
+  const baixado = c.status === "baixado";
+  const sel = opts.selecionavel && selecionados.has(id);
+  const onclick = opts.selecionavel ? `onCardClick('${id}')` : `abrirDetalhe('${id}')`;
+  return `
+    <div class="card ${baixado ? "baixado" : ""} ${sel ? "selecionado" : ""}" onclick="${onclick}">
+      <div class="card-top">
+        <div class="card-desc">${c.numero ? `<span class="card-item-badge">Nº ${escHtml(c.numero)}</span>` : ""}${escHtml(c.descricao)}</div>
+        <div class="card-valor">${fmtMoeda(c.valor)}</div>
+      </div>
+      <div class="card-meta">
+        <span>${escHtml(c.data)}</span>
+        <span class="badge ${baixado ? "baixado" : "aberto"}">${baixado ? "Pago" : "Em aberto"}</span>
+        ${baixado && c.dataBaixa ? `<span>Pagto: ${escHtml(c.dataBaixa)}</span>` : ""}
+      </div>
+    </div>`;
+}
+
+// A lista principal só mostra contas em aberto — as pagas ficam na tela
+// separada (botão "Pagos" no cabeçalho), pra não poluir o que ainda
+// precisa de atenção.
 function render(docs) {
   const lista = document.getElementById("lista");
   docsCache = {};
@@ -69,28 +90,35 @@ function render(docs) {
   });
   if (!modoSoma) document.getElementById("tot-aberto").textContent = fmtMoeda(totalAberto);
 
-  if (docsOrdenados.length === 0) {
-    lista.innerHTML = '<p class="empty">Nenhuma conta a pagar cadastrada.</p>';
-    return;
+  const abertos = docsOrdenados.filter(doc => doc.data().status !== "baixado");
+
+  if (abertos.length === 0) {
+    lista.innerHTML = '<p class="empty">Nenhuma conta em aberto.</p>';
+  } else {
+    lista.innerHTML = abertos.map(doc => cardHtml(doc.id, doc.data(), { selecionavel: true })).join("");
   }
 
-  lista.innerHTML = docsOrdenados.map(doc => {
-    const c = doc.data();
-    const baixado = c.status === "baixado";
-    const sel = selecionados.has(doc.id);
-    return `
-      <div class="card ${baixado ? "baixado" : ""} ${sel ? "selecionado" : ""}" onclick="onCardClick('${doc.id}')">
-        <div class="card-top">
-          <div class="card-desc">${c.numero ? `<span class="card-item-badge">Nº ${escHtml(c.numero)}</span>` : ""}${escHtml(c.descricao)}</div>
-          <div class="card-valor">${fmtMoeda(c.valor)}</div>
-        </div>
-        <div class="card-meta">
-          <span>${escHtml(c.data)}</span>
-          <span class="badge ${baixado ? "baixado" : "aberto"}">${baixado ? "Pago" : "Em aberto"}</span>
-          ${baixado && c.dataBaixa ? `<span>Pagto: ${escHtml(c.dataBaixa)}</span>` : ""}
-        </div>
-      </div>`;
-  }).join("");
+  renderPagos(docsOrdenados);
+}
+
+// ── Tela de Pagos ───────────────────────────────────────────
+function renderPagos(docsOrdenados) {
+  const lista = document.getElementById("lista-pagos");
+  if (!lista) return;
+  const pagos = docsOrdenados.filter(doc => doc.data().status === "baixado");
+  if (pagos.length === 0) {
+    lista.innerHTML = '<p class="empty">Nenhuma conta paga ainda.</p>';
+    return;
+  }
+  lista.innerHTML = pagos.map(doc => cardHtml(doc.id, doc.data(), { selecionavel: false })).join("");
+}
+
+function abrirPagos() {
+  document.getElementById("pagos-overlay").style.display = "flex";
+}
+
+function fecharPagos() {
+  document.getElementById("pagos-overlay").style.display = "none";
 }
 
 col.orderBy("criadoEm", "asc").onSnapshot(snap => {

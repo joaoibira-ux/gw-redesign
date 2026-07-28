@@ -9,7 +9,7 @@
   <title>A Pagar</title>
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <link rel="manifest" href="./manifest.json" />
-  <link rel="stylesheet" href="./style.css?v=3" />
+  <link rel="stylesheet" href="./style.css?v=4" />
   <link rel="apple-touch-icon" href="./Logo-gw.png" />
 </head>
 <body>
@@ -20,6 +20,7 @@
   </a>
   <span>A Pagar</span>
   <button class="btn-somar" id="btn-somar" onclick="toggleSoma()">Somar</button>
+  <button class="btn-somar" id="btn-pagos" onclick="abrirPagos()">Pagos</button>
   <span id="versao-app" class="header-versao"></span>
 </header>
 
@@ -29,6 +30,14 @@
 </div>
 
 <div id="lista" class="lista"></div>
+
+<div class="pagos-overlay" id="pagos-overlay" style="display:none">
+  <div class="pagos-header">
+    <span>Pagos</span>
+    <button class="pagos-fechar" onclick="fecharPagos()">✕</button>
+  </div>
+  <div id="lista-pagos" class="lista"></div>
+</div>
 
 <button class="fab" id="fab" onclick="toggleForm()">+</button>
 
@@ -70,7 +79,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
-<script src="./app.js?v=5"></script>
+<script src="./app.js?v=6"></script>
 <script src="../agente.js"></script>
 <script src="../pc-confiavel.js"></script>
 <script src="../bfcache-fix.js"></script>
