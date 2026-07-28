@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.85";
+const VERSAO = "4.86";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1004,8 +1004,18 @@ function renderizarFolha() {
   const totalProducao = entradas.reduce((acc, e) => acc + Number(e.valor), 0);
   const totalGeral    = totalProducao + valorEncarregado;
 
+  // Diárias chegam na ordem em que foram lançadas (sync do ponto dia a dia,
+  // ou adição manual), não em ordem cronológica — ordena pelo dd/mm do
+  // localId antes de exibir.
+  function chaveDataLocalId(localId) {
+    const dataPart = (localId || '').replace(' ½', '').trim();
+    const [dia, mes] = dataPart.split('/').map(Number);
+    return (mes || 0) * 100 + (dia || 0);
+  }
+
   const gruposHtml = [...grupos.values()].map(g => {
     const isAjud   = g.isDiaria;
+    if (isAjud) g.itens.sort((a, b) => chaveDataLocalId(a.localId) - chaveDataLocalId(b.localId));
     const subtotal = g.itens.reduce((acc, e) => acc + Number(e.valor), 0);
     const linhas   = g.itens.map(e => isAjud ? `
       <tr>
