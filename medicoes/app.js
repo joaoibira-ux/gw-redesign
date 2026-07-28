@@ -7,12 +7,13 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "2.8";
+const VERSAO = "2.9";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
 const db  = firebase.firestore();
 const col = db.collection("medicoes");
+const colReceber = db.collection("contasReceber");
 const extrairMedicoesFn = firebase.functions().httpsCallable("extrairMedicoes");
 const storage = firebase.storage();
 
@@ -273,16 +274,32 @@ function salvarRevisao() {
       valor: it.valor
     }));
 
+  const valorNotaFiscal = parseMoeda(document.getElementById("rv-notafiscal").value);
+
   col.add({
     nome,
     data,
     valor: parseMoeda(document.getElementById("rv-valor").value),
     descontos: parseMoeda(document.getElementById("rv-descontos").value),
-    valorNotaFiscal: parseMoeda(document.getElementById("rv-notafiscal").value),
+    valorNotaFiscal,
     itens,
     imagemUrl: currentImagemUrl || null,
     criadoEm: firebase.firestore.FieldValue.serverTimestamp()
   });
+
+  // Toda medição nova gera automaticamente a conta a receber correspondente
+  // (95% do Valor da NF — os outros 5% ficam retidos, mesma regra mostrada
+  // no detalhe da medição). Só no registro de medição nova, não em edição
+  // de uma já existente, pra não duplicar o lançamento.
+  if (valorNotaFiscal > 0) {
+    colReceber.add({
+      data,
+      descricao: `Medição ${nome}`,
+      valor: Math.round(valorNotaFiscal * 0.95 * 100) / 100,
+      status: "aberto",
+      criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  }
 
   itensRevisao = [];
   currentImagemUrl = null;
@@ -319,7 +336,7 @@ function abrirDetalhe(id) {
 
   document.getElementById("dt-info-grid").innerHTML = `
     <div class="dt-info-item">
-      <span class="dt-info-label">NF (95%)</span>
+      <span class="dt-info-label">A Receber</span>
       <span class="dt-info-valor">${fmtMoeda(nf95)}</span>
     </div>
     <div class="dt-info-item">
