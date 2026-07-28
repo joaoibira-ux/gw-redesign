@@ -328,16 +328,18 @@ function abrirDetalhe(id) {
     return ts <= currentTs;
   });
 
-  // Valores computados
-  const valorMedido = m.valor || 0;
-  const retencao = valorMedido * 0.05;
-  const nf95 = valorMedido * 0.95;
-  const retencaoAcum = docsAte.reduce((s, d) => s + (d.valor || 0) * 0.05, 0);
+  // Valores computados — em cima do Valor da NF (valorNotaFiscal), não do
+  // Medido bruto: quando há desconto, os dois divergem, e é sobre a NF que
+  // a retenção de 5% e o A Receber realmente incidem.
+  const valorNF = m.valorNotaFiscal || 0;
+  const retencao = valorNF * 0.05;
+  const aReceber = valorNF * 0.95;
+  const retencaoAcum = docsAte.reduce((s, d) => s + (d.valorNotaFiscal || 0) * 0.05, 0);
 
   document.getElementById("dt-info-grid").innerHTML = `
     <div class="dt-info-item">
       <span class="dt-info-label">A Receber</span>
-      <span class="dt-info-valor">${fmtMoeda(nf95)}</span>
+      <span class="dt-info-valor">${fmtMoeda(aReceber)}</span>
     </div>
     <div class="dt-info-item">
       <span class="dt-info-label">Retenção (5%)</span>
