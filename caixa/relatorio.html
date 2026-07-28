@@ -351,19 +351,6 @@
     .row-totais td.saldo-total.pos { color: #c8e6c9; }
     .row-totais td.saldo-total.neg { color: #ef9a9a; }
 
-    .row-retencao td {
-      padding: 12px 14px;
-      font-weight: 800;
-      font-size: 0.92rem;
-      background: #004d61;
-      color: white;
-      white-space: nowrap;
-      print-color-adjust: exact;
-      -webkit-print-color-adjust: exact;
-    }
-    .row-retencao td.lbl { color: #80deea; }
-    .row-retencao td.retencao-valor { color: #e0f7fa; text-align: right; }
-
     .row-saldo-anterior td {
       background: #0d2318;
       border-bottom: 2px solid #2d5a2d;
@@ -664,10 +651,6 @@
         <td class="saida-total"  id="f-total-saida">0,00</td>
         <td class="saldo-total"  id="f-total-saldo">0,00</td>
       </tr>
-      <tr class="row-retencao">
-        <td colspan="6" class="lbl">RETENÇÃO 5% PARADIGMA</td>
-        <td class="retencao-valor" id="r-retencao">0,00</td>
-      </tr>
     </tbody>
   </table>
 </div>
@@ -692,7 +675,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.83";
+  const VERSAO = "1.84";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1031,10 +1014,9 @@
 
   const HORACIO_BASE  = -136306.23;
   const JOAO_BASE     = -32250;
-  const RETENCAO_BASE = 4666.66;
 
   function atualizaTotaisGlobais() {
-    let cefE = 0, cefS = 0, interE = 0, interS = 0, horacioSaidas = 0, joaoE = 0, retencaoE = 0;
+    let cefE = 0, cefS = 0, interE = 0, interS = 0, horacioSaidas = 0, joaoE = 0;
     todosOsDocs.forEach(r => {
       if (r.origem === "ANE->GW-INTER") {
         cefS   += r.saida || 0;
@@ -1052,10 +1034,8 @@
         horacioSaidas += r.saida || 0;
       } else if (r.origem === "ANE->RETENCAO PARADIGMA 5%") {
         cefS      += r.saida || 0;
-        retencaoE += r.saida || 0;
       } else if (r.origem === "JOAO->RETENCAO PARADIGMA 5%") {
         interS    += r.saida || 0;
-        retencaoE += r.saida || 0;
       } else if (r.origem === "ANE->HORACIO") {
         cefS          += r.saida || 0;
         horacioSaidas += r.saida || 0;
@@ -1085,7 +1065,6 @@
     document.getElementById("r-joao").style.color    = joao    >= 0 ? "#ffffff" : "#ef9a9a";
     document.getElementById("r-horacio").textContent = fmt(horacio);
     document.getElementById("r-horacio").style.color = horacio >= 0 ? "#ffffff" : "#ef9a9a";
-    document.getElementById("r-retencao").textContent = fmt(RETENCAO_BASE + retencaoE);
   }
 
   function atualizaRodape(tE, tS, saldo) {
