@@ -448,15 +448,15 @@
             <div id="dd-chart-faturamento" style="flex:1;min-height:0;"></div>
           </div>
           <div class="dd-card">
-            <div class="dd-card-header"><span class="dd-card-header-title">Resumo Financeiro</span></div>
-            <div id="dd-donut-financeiro" style="flex:1;min-height:0;"></div>
+            <div class="dd-card-header"><span class="dd-card-header-title">Últimas Medições</span></div>
+            <div id="dd-lista-medicoes" class="dd-card-scroll"></div>
           </div>
         </div>
 
         <div class="dd-row3">
           <div class="dd-card">
-            <div class="dd-card-header"><span class="dd-card-header-title">Últimas Medições</span></div>
-            <div id="dd-lista-medicoes" class="dd-card-scroll"></div>
+            <div class="dd-card-header"><span class="dd-card-header-title">Resumo Financeiro</span></div>
+            <div id="dd-donut-financeiro" style="flex:1;min-height:0;"></div>
           </div>
           <div class="dd-card">
             <div class="dd-card-header"><span class="dd-card-header-title">Progresso dos Serviços</span></div>
@@ -679,7 +679,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.61';
+    const VERSAO = '4.62';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
