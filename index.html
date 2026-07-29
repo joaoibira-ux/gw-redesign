@@ -220,6 +220,93 @@
     .app-desc { font-size: 0.65rem; color: #cfe8d1; font-weight: 500; }
     .app-arrow { margin-left: auto; color: #c8e6c9; font-size: 0.8rem; }
 
+    /* ══════════════ DASHBOARD DESKTOP (telas largas) ══════════════
+       Só aparece em janelas largas (ver ehDesktop()) — no celular o
+       #home-screen de sempre continua sem nenhuma mudança. */
+    #dashboard-desktop {
+      position: fixed; inset: 0;
+      display: none;
+      background: #0b140e;
+      color: #e8f5e9;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      opacity: 0;
+      transition: opacity .3s ease;
+    }
+    #dashboard-desktop.visible { display: flex; }
+    #dashboard-desktop.show { opacity: 1; }
+
+    .dd-sidebar {
+      width: 240px; flex-shrink: 0;
+      background: #0e1c13;
+      border-right: 1px solid rgba(255,255,255,0.06);
+      display: flex; flex-direction: column;
+      padding: 20px 14px;
+      overflow-y: auto;
+    }
+    .dd-brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 22px; }
+    .dd-brand img { width: 34px; height: 34px; object-fit: contain; border-radius: 8px; }
+    .dd-brand-title { font-size: 0.85rem; font-weight: 800; letter-spacing: 1px; color: #f1f8f2; line-height: 1.2; }
+    .dd-brand-sub { font-size: 0.55rem; letter-spacing: 1.5px; color: #7bc47f; font-weight: 700; }
+
+    .dd-nav-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 12px; border-radius: 10px;
+      color: #cfe8d1; text-decoration: none;
+      font-size: 0.82rem; font-weight: 600;
+      cursor: pointer; transition: background .12s;
+    }
+    .dd-nav-item:hover { background: rgba(255,255,255,0.06); }
+    .dd-nav-item.ativo { background: rgba(105,240,174,0.14); color: #69f0ae; }
+    .dd-nav-icon { font-size: 1rem; width: 20px; text-align: center; }
+
+    .dd-main { flex: 1; overflow-y: auto; padding: 24px 28px 40px; }
+    .dd-topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+    .dd-topbar-datas { display: flex; align-items: center; gap: 10px; color: #9fc9a2; font-size: 0.78rem; }
+    .dd-topbar-user { display: flex; align-items: center; gap: 10px; color: #cfe8d1; font-size: 0.8rem; }
+    .dd-avatar { width: 30px; height: 30px; border-radius: 50%; background: #1b3322; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; }
+
+    .dd-h1 { font-size: 1.35rem; font-weight: 800; color: #f1f8f2; margin-bottom: 2px; }
+    .dd-h1-sub { font-size: 0.8rem; color: #8fb391; margin-bottom: 20px; }
+
+    .dd-card {
+      background: #101f15;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px;
+      padding: 16px 18px;
+    }
+    .dd-card-title { font-size: 0.72rem; color: #8fb391; font-weight: 700; letter-spacing: 0.3px; margin-bottom: 4px; }
+    .dd-card-value { font-size: 1.35rem; font-weight: 800; color: #f1f8f2; }
+    .dd-card-delta { font-size: 0.68rem; font-weight: 700; margin-top: 4px; }
+    .dd-card-delta.pos { color: #69f0ae; }
+    .dd-card-delta.neg { color: #ff8a80; }
+    .dd-card-icon {
+      width: 38px; height: 38px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.1rem; margin-bottom: 10px;
+    }
+
+    .dd-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 16px; }
+    .dd-row2 { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-bottom: 16px; }
+    .dd-row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 16px; }
+
+    .dd-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .dd-card-header-title { font-size: 0.85rem; font-weight: 700; color: #f1f8f2; }
+
+    .dd-lista-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.76rem; }
+    .dd-lista-item:last-child { border-bottom: none; }
+    .dd-lista-nome { color: #e8f5e9; font-weight: 600; }
+    .dd-lista-sub { color: #8fb391; font-size: 0.66rem; }
+    .dd-lista-valor { color: #69f0ae; font-weight: 700; }
+
+    .dd-alerta { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; font-size: 0.76rem; color: #dcece0; }
+    .dd-alerta-icon { font-size: 0.9rem; }
+
+    .dd-empty { color: #7a9c7d; font-size: 0.76rem; padding: 10px 0; }
+
+    .dd-donut-legend { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; font-size: 0.7rem; }
+    .dd-donut-legend-item { display: flex; align-items: center; gap: 8px; color: #cfe8d1; }
+    .dd-donut-legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
     /* ── SPLASH DA LOGO (após PIN correto) ── */
     #logo-splash {
       position: fixed; inset: 0; z-index: 900;
@@ -324,6 +411,74 @@
       <div class="home-version" id="home-version-display"></div>
     </div>
     <div class="apps-grid" id="apps-grid"></div>
+  </div>
+
+  <!-- ── Dashboard Desktop (telas largas — ver ehDesktop()) ── -->
+  <div id="dashboard-desktop">
+    <aside class="dd-sidebar">
+      <div class="dd-brand">
+        <img src="./Logo-gw.png" alt="GW" />
+        <div>
+          <div class="dd-brand-title">GREEN WALL</div>
+          <div class="dd-brand-sub">SISTEMA DE GESTÃO</div>
+        </div>
+      </div>
+      <nav class="dd-nav" id="dd-nav"></nav>
+    </aside>
+    <main class="dd-main">
+      <div class="dd-topbar">
+        <div class="dd-topbar-datas" id="dd-data-hoje">—</div>
+        <div class="dd-topbar-user">
+          <span>Olá, João</span>
+          <div class="dd-avatar">👤</div>
+        </div>
+      </div>
+      <div class="dd-h1">Visão Geral</div>
+      <div class="dd-h1-sub">Acompanhe o desempenho da sua empresa em tempo real</div>
+
+      <div class="dd-kpis" id="dd-kpis"></div>
+
+      <div class="dd-row2">
+        <div class="dd-card">
+          <div class="dd-card-header"><span class="dd-card-header-title">Faturamento — Últimos 6 meses</span></div>
+          <div id="dd-chart-faturamento"></div>
+        </div>
+        <div class="dd-card">
+          <div class="dd-card-header"><span class="dd-card-header-title">Resumo Financeiro</span></div>
+          <div id="dd-donut-financeiro"></div>
+        </div>
+      </div>
+
+      <div class="dd-row3">
+        <div class="dd-card">
+          <div class="dd-card-header"><span class="dd-card-header-title">Últimas Medições</span></div>
+          <div id="dd-lista-medicoes"></div>
+        </div>
+        <div class="dd-card">
+          <div class="dd-card-header"><span class="dd-card-header-title">Progresso dos Serviços</span></div>
+          <div id="dd-donut-servicos"></div>
+        </div>
+        <div class="dd-card">
+          <div class="dd-card-header"><span class="dd-card-header-title">Alertas e Pendências</span></div>
+          <div id="dd-alertas"></div>
+        </div>
+      </div>
+
+      <div class="dd-row3">
+        <div class="dd-card">
+          <div class="dd-card-header"><span class="dd-card-header-title">Atividades Recentes</span></div>
+          <div id="dd-atividades"></div>
+        </div>
+        <div class="dd-card">
+          <div class="dd-card-header"><span class="dd-card-header-title">Funcionários</span></div>
+          <div id="dd-funcionarios"></div>
+        </div>
+        <div class="dd-card">
+          <div class="dd-card-header"><span class="dd-card-header-title">Contas a Receber (em aberto)</span></div>
+          <div id="dd-lista-receber"></div>
+        </div>
+      </div>
+    </main>
   </div>
 
   <!-- Splash da logo (após PIN correto) -->
@@ -519,7 +674,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.56';
+    const VERSAO = '4.57';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -663,9 +818,12 @@
       }, 1200);
     }
 
+    function ehDesktop() {
+      return !ehMobile() && window.innerWidth >= 980;
+    }
+
     function mostrarHome(animar) {
       const pin  = document.getElementById('pin-screen');
-      const home = document.getElementById('home-screen');
       pin.style.display = 'none';
 
       if (ehMobile() && !estaComoApp()) {
@@ -673,11 +831,345 @@
         return;
       }
 
+      if (ehDesktop()) {
+        mostrarDashboardDesktop();
+        return;
+      }
+
+      const home = document.getElementById('home-screen');
       home.style.display = 'flex';
       renderApps();
       if (animar) requestAnimationFrame(() => requestAnimationFrame(() => home.classList.add('visible')));
       else home.classList.add('visible');
     }
+
+    // ══════════════ Dashboard Desktop ══════════════
+
+    function mostrarDashboardDesktop() {
+      const dd = document.getElementById('dashboard-desktop');
+      dd.classList.add('visible');
+      requestAnimationFrame(() => requestAnimationFrame(() => dd.classList.add('show')));
+      renderSidebarNav();
+      const hoje = new Date();
+      document.getElementById('dd-data-hoje').textContent =
+        hoje.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+      carregarDashboard().catch(err => console.error('Erro ao carregar dashboard:', err));
+    }
+
+    function renderSidebarNav() {
+      const nav = document.getElementById('dd-nav');
+      let lista = APPS;
+      if (modo === 'restrito') lista = APPS.filter(a => APPS_RESTRITO.includes(a.name));
+      else if (modo === 'limitado') lista = APPS.filter(a => APPS_LIMITADO.includes(a.name));
+
+      nav.innerHTML = lista.map(app => {
+        const bloq    = modo === 'parcial' && !APPS_PARCIAL_ACESSO.includes(app.name);
+        const href    = bloq ? '' : `href="${app.url}"`;
+        const opacity = bloq ? 'opacity:0.35;cursor:default;pointer-events:none;' : '';
+        return `<a class="dd-nav-item" ${href} style="${opacity}">
+          <span class="dd-nav-icon">${app.icon}</span><span>${app.name}</span>
+        </a>`;
+      }).join('');
+    }
+
+    // ── Helpers de dados/formatação (mesmo padrão DD/MM/AAAA usado em todo o sistema) ──
+    function ddParseData(s) {
+      const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec((s || '').trim());
+      if (!m) return null;
+      const [, d, mo, a] = m;
+      const ano = a.length === 2 ? '20' + a : a;
+      return new Date(Number(ano), Number(mo) - 1, Number(d));
+    }
+    function ddFmtMoeda(v) {
+      return 'R$ ' + (v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function ddFmtMoedaCompacta(v) {
+      v = v || 0;
+      if (Math.abs(v) >= 1000) return 'R$ ' + (v / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + 'k';
+      return ddFmtMoeda(v);
+    }
+    function ddEscHtml(s) {
+      return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function ddChaveMes(date) { return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0'); }
+    function ddMesAbrev(date) {
+      return date.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '');
+    }
+
+    async function carregarDashboard() {
+      const db = firebase.firestore();
+      const hoje = new Date();
+      const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+      const em7dias = new Date(hoje); em7dias.setDate(em7dias.getDate() + 7);
+
+      const [receberSnap, pagarSnap, lancSnap, medicoesSnap, funcSnap, locaisSnap] = await Promise.all([
+        db.collection('contasReceber').get().catch(() => ({ docs: [] })),
+        db.collection('contasPagar').get().catch(() => ({ docs: [] })),
+        db.collection('lancamentos').get().catch(() => ({ docs: [] })),
+        db.collection('medicoes').get().catch(() => ({ docs: [] })),
+        db.collection('funcionarios').get().catch(() => ({ docs: [] })),
+        db.collection('locais').get().catch(() => ({ docs: [] })),
+      ]);
+
+      const receber  = receberSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const pagar     = pagarSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const lanc       = lancSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const medicoes  = medicoesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const func        = funcSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const locais     = locaisSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      // ── KPIs ──
+      const receberAberto = receber.filter(r => r.status !== 'baixado');
+      const pagarAberto    = pagar.filter(p => p.status !== 'baixado');
+      const totalReceberAberto = receberAberto.reduce((s, r) => s + (r.valor || 0), 0);
+      const totalPagarAberto    = pagarAberto.reduce((s, p) => s + (p.valor || 0), 0);
+
+      const lancComData = lanc.map(l => ({ ...l, _data: ddParseData(l.data) })).filter(l => l._data);
+      const faturamentoMes = lancComData
+        .filter(l => l._data >= inicioMes)
+        .reduce((s, l) => s + (l.entrada || 0), 0);
+      const inicioMesAnterior = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+      const faturamentoMesAnterior = lancComData
+        .filter(l => l._data >= inicioMesAnterior && l._data < inicioMes)
+        .reduce((s, l) => s + (l.entrada || 0), 0);
+      const deltaFaturamento = faturamentoMesAnterior > 0
+        ? ((faturamentoMes - faturamentoMesAnterior) / faturamentoMesAnterior) * 100
+        : null;
+
+      let servTotal = 0, servConcluidos = 0;
+      locais.forEach(l => (l.servicos || []).forEach(s => {
+        servTotal++;
+        if (s.status === 'concluido') servConcluidos++;
+      }));
+      const pctServicos = servTotal > 0 ? Math.round((servConcluidos / servTotal) * 100) : 0;
+
+      const medicoesComData = medicoes.map(m => ({ ...m, _data: ddParseData(m.data) }));
+      const medicoesMes = medicoesComData.filter(m => m._data && m._data >= inicioMes);
+      const producaoMes = medicoesMes.reduce((s, m) => s + (m.valorNotaFiscal || 0), 0);
+
+      document.getElementById('dd-kpis').innerHTML = [
+        {
+          icon: '💰', bg: 'rgba(105,240,174,0.14)', titulo: 'FATURAMENTO (MÊS)',
+          valor: ddFmtMoeda(faturamentoMes),
+          delta: deltaFaturamento === null ? null : `${deltaFaturamento >= 0 ? '↑' : '↓'} ${Math.abs(deltaFaturamento).toFixed(1)}% vs mês anterior`,
+          pos: deltaFaturamento === null || deltaFaturamento >= 0,
+        },
+        {
+          icon: '🧾', bg: 'rgba(255,193,7,0.14)', titulo: 'RECEBER (EM ABERTO)',
+          valor: ddFmtMoeda(totalReceberAberto),
+          delta: `${receberAberto.length} título${receberAberto.length !== 1 ? 's' : ''} em aberto`, pos: true,
+        },
+        {
+          icon: '💸', bg: 'rgba(255,138,128,0.14)', titulo: 'A PAGAR (EM ABERTO)',
+          valor: ddFmtMoeda(totalPagarAberto),
+          delta: `${pagarAberto.length} título${pagarAberto.length !== 1 ? 's' : ''} em aberto`, pos: false,
+        },
+        {
+          icon: '🏢', bg: 'rgba(105,240,174,0.14)', titulo: 'LOCAIS / UNIDADES',
+          valor: String(locais.length),
+          delta: `${pctServicos}% dos serviços concluídos`, pos: true,
+        },
+        {
+          icon: '📐', bg: 'rgba(105,178,240,0.14)', titulo: 'MEDIÇÕES (MÊS)',
+          valor: String(medicoesMes.length),
+          delta: ddFmtMoeda(producaoMes) + ' em produção', pos: true,
+        },
+      ].map(k => `
+        <div class="dd-card">
+          <div class="dd-card-icon" style="background:${k.bg}">${k.icon}</div>
+          <div class="dd-card-title">${k.titulo}</div>
+          <div class="dd-card-value">${k.valor}</div>
+          ${k.delta ? `<div class="dd-card-delta ${k.pos ? 'pos' : 'neg'}">${k.delta}</div>` : ''}
+        </div>`).join('');
+
+      // ── Faturamento últimos 6 meses (linha) ──
+      const meses6 = [];
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+        meses6.push({ chave: ddChaveMes(d), label: ddMesAbrev(d), valor: 0 });
+      }
+      lancComData.forEach(l => {
+        const chave = ddChaveMes(l._data);
+        const alvo = meses6.find(m => m.chave === chave);
+        if (alvo) alvo.valor += (l.entrada || 0);
+      });
+      document.getElementById('dd-chart-faturamento').innerHTML = ddSvgLinha(meses6);
+
+      // ── Resumo financeiro (donut Receber vs Pagar) ──
+      const saldoCaixa = lanc.reduce((s, l) => s + (l.entrada || 0) - (l.saida || 0), 0);
+      document.getElementById('dd-donut-financeiro').innerHTML = ddSvgDonutFinanceiro(totalReceberAberto, totalPagarAberto, saldoCaixa);
+
+      // ── Últimas medições ──
+      const ultimasMedicoes = [...medicoesComData]
+        .sort((a, b) => (b.criadoEm && b.criadoEm.toMillis ? b.criadoEm.toMillis() : 0) - (a.criadoEm && a.criadoEm.toMillis ? a.criadoEm.toMillis() : 0))
+        .slice(0, 5);
+      document.getElementById('dd-lista-medicoes').innerHTML = ultimasMedicoes.length
+        ? ultimasMedicoes.map(m => `
+          <div class="dd-lista-item">
+            <div><div class="dd-lista-nome">${ddEscHtml(m.nome || '(sem nome)')}</div><div class="dd-lista-sub">${ddEscHtml(m.data)}</div></div>
+            <div class="dd-lista-valor">${ddFmtMoedaCompacta(m.valorNotaFiscal)}</div>
+          </div>`).join('')
+        : '<div class="dd-empty">Nenhuma medição cadastrada ainda.</div>';
+
+      // ── Progresso dos serviços (donut) ──
+      document.getElementById('dd-donut-servicos').innerHTML = ddSvgDonutServicos(servConcluidos, servTotal - servConcluidos);
+
+      // ── Alertas e pendências ──
+      const pagarVencendo = pagarAberto.filter(p => { const d = ddParseData(p.data); return d && d >= hoje && d <= em7dias; });
+      const receberVencendo = receberAberto.filter(r => { const d = ddParseData(r.data); return d && d >= hoje && d <= em7dias; });
+      const alertas = [];
+      if (pagarVencendo.length) alertas.push({ icon: '⚠️', texto: `${pagarVencendo.length} conta${pagarVencendo.length !== 1 ? 's' : ''} a pagar vencendo nos próximos 7 dias` });
+      if (receberVencendo.length) alertas.push({ icon: '💵', texto: `${receberVencendo.length} conta${receberVencendo.length !== 1 ? 's' : ''} a receber vencendo nos próximos 7 dias` });
+      if (servTotal - servConcluidos > 0) alertas.push({ icon: '🔧', texto: `${servTotal - servConcluidos} serviço${servTotal - servConcluidos !== 1 ? 's' : ''} pendente${servTotal - servConcluidos !== 1 ? 's' : ''} no total` });
+      document.getElementById('dd-alertas').innerHTML = alertas.length
+        ? alertas.map(a => `<div class="dd-alerta"><span class="dd-alerta-icon">${a.icon}</span><span>${a.texto}</span></div>`).join('')
+        : '<div class="dd-empty">Nenhum alerta no momento.</div>';
+
+      // ── Atividades recentes (mistura lançamentos + medições + baixas) ──
+      const atividades = [];
+      lanc.forEach(l => atividades.push({
+        ts: l.criadoEm && l.criadoEm.toMillis ? l.criadoEm.toMillis() : 0,
+        icon: (l.entrada || 0) > 0 ? '🟢' : '🔴',
+        texto: ddEscHtml(l.descricao || l.origem || 'Lançamento'),
+        valor: ddFmtMoedaCompacta((l.entrada || 0) - (l.saida || 0)),
+        quando: ddEscHtml(l.data),
+      }));
+      medicoes.forEach(m => atividades.push({
+        ts: m.criadoEm && m.criadoEm.toMillis ? m.criadoEm.toMillis() : 0,
+        icon: '📐',
+        texto: 'Medição — ' + ddEscHtml(m.nome || ''),
+        valor: ddFmtMoedaCompacta(m.valorNotaFiscal),
+        quando: ddEscHtml(m.data),
+      }));
+      atividades.sort((a, b) => b.ts - a.ts);
+      document.getElementById('dd-atividades').innerHTML = atividades.length
+        ? atividades.slice(0, 6).map(a => `
+          <div class="dd-lista-item">
+            <div><div class="dd-lista-nome">${a.icon} ${a.texto}</div><div class="dd-lista-sub">${a.quando}</div></div>
+            <div class="dd-lista-valor">${a.valor}</div>
+          </div>`).join('')
+        : '<div class="dd-empty">Nenhuma atividade registrada ainda.</div>';
+
+      // ── Funcionários ──
+      const ativos = func.filter(f => f.ativo !== false).length;
+      document.getElementById('dd-funcionarios').innerHTML = `
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px;">
+          <div class="dd-card-icon" style="background:rgba(105,240,174,0.14);margin:0;">👥</div>
+          <div><div class="dd-card-value">${func.length}</div><div class="dd-card-title" style="margin:0;">TOTAL DE FUNCIONÁRIOS</div></div>
+        </div>
+        <div class="dd-lista-item"><span class="dd-lista-sub">Ativos</span><span class="dd-lista-valor">${ativos}</span></div>
+        <div class="dd-lista-item"><span class="dd-lista-sub">Inativos</span><span class="dd-lista-valor" style="color:#ff8a80;">${func.length - ativos}</span></div>`;
+
+      // ── Contas a receber em aberto (lista) ──
+      const receberOrdenado = [...receberAberto].sort((a, b) => (ddParseData(a.data) || 0) - (ddParseData(b.data) || 0)).slice(0, 5);
+      document.getElementById('dd-lista-receber').innerHTML = receberOrdenado.length
+        ? receberOrdenado.map(r => `
+          <div class="dd-lista-item">
+            <div><div class="dd-lista-nome">${ddEscHtml(r.descricao)}</div><div class="dd-lista-sub">${ddEscHtml(r.data)}</div></div>
+            <div class="dd-lista-valor">${ddFmtMoedaCompacta(r.valor)}</div>
+          </div>`).join('')
+        : '<div class="dd-empty">Nenhuma conta a receber em aberto.</div>';
+    }
+
+    // ── SVG: gráfico de linha simples (faturamento últimos 6 meses) ──
+    function ddSvgLinha(meses) {
+      const W = 460, H = 160, padL = 34, padB = 20, padT = 10;
+      const max = Math.max(1, ...meses.map(m => m.valor));
+      const stepX = (W - padL - 10) / (meses.length - 1 || 1);
+      const pontos = meses.map((m, i) => {
+        const x = padL + i * stepX;
+        const y = padT + (1 - m.valor / max) * (H - padT - padB);
+        return { x, y, m };
+      });
+      const path = pontos.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+      const area = path + ` L ${pontos[pontos.length - 1].x.toFixed(1)} ${H - padB} L ${pontos[0].x.toFixed(1)} ${H - padB} Z`;
+      const labels = pontos.map(p => `<text x="${p.x.toFixed(1)}" y="${H - 4}" font-size="10" fill="#8fb391" text-anchor="middle">${p.m.label}</text>`).join('');
+      const dots = pontos.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="#69f0ae"/>`).join('');
+      const gridY = [0.25, 0.5, 0.75].map(f => {
+        const y = padT + f * (H - padT - padB);
+        return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W - 10}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.05)"/>`;
+      }).join('');
+      return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:170px;">
+        ${gridY}
+        <path d="${area}" fill="rgba(105,240,174,0.12)" stroke="none"/>
+        <path d="${path}" fill="none" stroke="#69f0ae" stroke-width="2" stroke-linejoin="round"/>
+        ${dots}${labels}
+      </svg>`;
+    }
+
+    // ── SVG: donut genérico ──
+    function ddDonutArc(cx, cy, r, sw, pctInicio, pctFim, cor) {
+      const a0 = (pctInicio * 360 - 90) * Math.PI / 180;
+      const a1 = (pctFim * 360 - 90) * Math.PI / 180;
+      const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
+      const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
+      const largeArc = (pctFim - pctInicio) > 0.5 ? 1 : 0;
+      return `<path d="M ${x0.toFixed(1)} ${y0.toFixed(1)} A ${r} ${r} 0 ${largeArc} 1 ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="${cor}" stroke-width="${sw}" stroke-linecap="round"/>`;
+    }
+
+    function ddSvgDonutFinanceiro(receber, pagar, saldo) {
+      const total = receber + pagar;
+      const pctReceber = total > 0 ? receber / total : 0;
+      const cx = 70, cy = 70, r = 54, sw = 16;
+      let html = '';
+      if (total <= 0) {
+        html += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="${sw}"/>`;
+      } else {
+        html += ddDonutArc(cx, cy, r, sw, 0, pctReceber, '#69f0ae');
+        if (pctReceber < 1) html += ddDonutArc(cx, cy, r, sw, pctReceber, 1, '#ff8a80');
+      }
+      const pctLabel = total > 0 ? Math.round(pctReceber * 100) : 0;
+      html += `<text x="${cx}" y="${cy - 4}" font-size="22" font-weight="800" fill="#f1f8f2" text-anchor="middle">${pctLabel}%</text>`;
+      html += `<text x="${cx}" y="${cy + 14}" font-size="9" fill="#8fb391" text-anchor="middle">Receber</text>`;
+      return `<div style="display:flex;align-items:center;gap:10px;">
+        <svg viewBox="0 0 140 140" style="width:140px;height:140px;flex-shrink:0;">${html}</svg>
+        <div class="dd-donut-legend">
+          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#69f0ae"></span>A Receber<br>${ddFmtMoeda(receber)}</div>
+          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#ff8a80"></span>A Pagar<br>${ddFmtMoeda(pagar)}</div>
+          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#6ab2f0"></span>Saldo em Caixa<br>${ddFmtMoeda(saldo)}</div>
+        </div>
+      </div>`;
+    }
+
+    function ddSvgDonutServicos(concluidos, pendentes) {
+      const total = concluidos + pendentes;
+      const pct = total > 0 ? concluidos / total : 0;
+      const cx = 70, cy = 70, r = 54, sw = 16;
+      let html = '';
+      if (total <= 0) {
+        html += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="${sw}"/>`;
+      } else {
+        html += ddDonutArc(cx, cy, r, sw, 0, pct, '#69f0ae');
+        if (pct < 1) html += ddDonutArc(cx, cy, r, sw, pct, 1, '#ffc107');
+      }
+      html += `<text x="${cx}" y="${cy - 4}" font-size="22" font-weight="800" fill="#f1f8f2" text-anchor="middle">${total > 0 ? Math.round(pct * 100) : 0}%</text>`;
+      html += `<text x="${cx}" y="${cy + 14}" font-size="9" fill="#8fb391" text-anchor="middle">Concluído</text>`;
+      return `<div style="display:flex;align-items:center;gap:10px;">
+        <svg viewBox="0 0 140 140" style="width:140px;height:140px;flex-shrink:0;">${html}</svg>
+        <div class="dd-donut-legend">
+          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#69f0ae"></span>Concluídos: ${concluidos}</div>
+          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#ffc107"></span>Pendentes: ${pendentes}</div>
+          <div class="dd-donut-legend-item">Total: ${total}</div>
+        </div>
+      </div>`;
+    }
+
+    window.addEventListener('resize', () => {
+      const dd = document.getElementById('dashboard-desktop');
+      const home = document.getElementById('home-screen');
+      const jaEntrou = dd.classList.contains('visible') || home.classList.contains('visible');
+      if (!jaEntrou) return;
+      if (ehDesktop() && !dd.classList.contains('visible')) {
+        home.classList.remove('visible');
+        home.style.display = 'none';
+        mostrarDashboardDesktop();
+      } else if (!ehDesktop() && dd.classList.contains('visible')) {
+        dd.classList.remove('visible', 'show');
+        home.style.display = 'flex';
+        renderApps();
+        home.classList.add('visible');
+      }
+    });
 
     function mostrarAvisoInstalacao() {
       const isIOS     = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
