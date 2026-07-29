@@ -680,7 +680,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.71';
+    const VERSAO = '4.72';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -921,6 +921,43 @@
       return count;
     }
 
+    // ── Saldo em Caixa = CEF (conta ANE) + INTER (conta JOAO) — mesma lógica
+    // de atribuição por 'origem' do lançamento usada em caixa/app.js (render),
+    // só os dois totais de saldo bancário, sem os outros acumuladores
+    // (Horácio/João pessoa física) que não entram no saldo em caixa. ──
+    function ddSaldoCefInter(lanc) {
+      let cefE = 0, cefS = 0, interE = 0, interS = 0;
+      lanc.forEach(r => {
+        if (r.origem === 'ANE->GW-INTER') {
+          cefS   += r.saida || 0;
+          interE += r.saida || 0;
+        } else if (r.origem === 'JOAO->CREDITO DE PROLABORE') {
+          // não afeta CEF nem INTER
+        } else if (r.origem === 'ANE' || r.origem === 'ANE->HORACIO') {
+          cefE += r.entrada || 0;
+          cefS += r.saida || 0;
+        } else if (r.origem === 'ANE->FOLHA DE PAGAMENTO' || r.origem === 'ANE->PASSAGENS'
+                || r.origem === 'ANE->JOAO' || r.origem === 'ANE->RETENCAO PARADIGMA 5%'
+                || r.origem === 'ANE->ADIANTAMENTO' || r.origem === 'ANE->ANTECIPACAO'
+                || r.origem === 'ANE->BAIXA CTAS A PAGAR') {
+          cefS += r.saida || 0;
+        } else if (r.origem === 'ANE->CREDITO A REPASSAR P BBS FOMENTO') {
+          cefE += r.entrada || 0;
+        } else if (r.origem === 'JOAO') {
+          interE += r.entrada || 0;
+          interS += r.saida || 0;
+        } else if (r.origem === 'JOAO->JOAO' || r.origem === 'JOAO->HORACIO'
+                || r.origem === 'JOAO->RETENCAO PARADIGMA 5%' || r.origem === 'JOAO->ADIANTAMENTO'
+                || r.origem === 'JOAO->ANTECIPACAO' || r.origem === 'JOAO->CTAS A RECEBER'
+                || r.origem === 'JOAO->BAIXA CTAS A PAGAR') {
+          interS += r.saida || 0;
+        } else if (r.origem === 'JOAO->BAIXA CTAS A RECEBER' || r.origem === 'JOAO->CTAS A PAGAR') {
+          interE += r.entrada || 0;
+        }
+      });
+      return { cef: cefE - cefS, inter: interE - interS };
+    }
+
     async function carregarDashboard() {
       const db = firebase.firestore();
       const hoje = new Date();
@@ -1030,7 +1067,8 @@
       document.getElementById('dd-chart-faturamento').innerHTML = ddSvgLinha(meses6);
 
       // ── Resumo financeiro (donut Receber vs Pagar) ──
-      const saldoCaixa = lanc.reduce((s, l) => s + (l.entrada || 0) - (l.saida || 0), 0);
+      const { cef: saldoCef, inter: saldoInter } = ddSaldoCefInter(lanc);
+      const saldoCaixa = saldoCef + saldoInter;
       document.getElementById('dd-donut-financeiro').innerHTML = ddSvgDonutFinanceiro(totalReceberAberto, totalPagarAberto, saldoCaixa);
 
       // ── Últimas medições ──
