@@ -1,4 +1,4 @@
-const VERSION = "locais-v18";
+const VERSION = "locais-v19";
 const ASSETS = [
   "./index.html",
   "./style.css?v=15",

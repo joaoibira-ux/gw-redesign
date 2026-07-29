@@ -1,4 +1,4 @@
-const VERSION = "alm-v2";
+const VERSION = "alm-v3";
 const ASSETS = [
   "./index.html",
   "./style.css?v=1",

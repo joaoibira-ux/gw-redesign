@@ -680,7 +680,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.64';
+    const VERSAO = '4.65';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -731,7 +731,6 @@
     function entrarComoConfiavel() {
       modo = localStorage.getItem('gw_pc_modo') || 'completo';
       sessionStorage.setItem('gw_auth', modo);
-      entrarFullscreen();
       document.getElementById('pin-screen').style.opacity = '0';
       setTimeout(() => mostrarSplashLogo(() => mostrarHome(true)), 320);
     }
@@ -761,27 +760,6 @@
       });
     }
 
-    function entrarFullscreen() {
-      // Instalado como app (PWA desktop/iOS), a janela já nasce sem moldura —
-      // chamar a Fullscreen API aqui só reintroduziria o abre-e-fecha a cada
-      // navegação (ela sai sozinha a cada troca de página, sem exceção),
-      // sem ganho nenhum. Só faz sentido rodando dentro do navegador comum.
-      if (estaComoApp()) return;
-      // Marca a intenção de ficar em tela cheia — lida pelo fullscreen-guard.js
-      // em toda tela do sistema, pra reentrar sozinho depois de navegar.
-      try { localStorage.setItem('gw_modo_tela_cheia', '1'); } catch (e) {}
-      const el = document.documentElement;
-      try {
-        if (el.requestFullscreen)            el.requestFullscreen();
-        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-      } catch(e) {}
-    }
-
-    // Mantém fullscreen ao tocar na tela (Android sai ao tocar)
-    document.addEventListener('touchstart', () => {
-      if (!estaComoApp() && !document.fullscreenElement && !document.webkitFullscreenElement) entrarFullscreen();
-    }, { passive: true });
-
     async function verificarPin() {
       await pinsCarregados;
       const pins = { [PIN_COMPLETO]: 'completo', [PIN_PARCIAL]: 'parcial', [PIN_RESTRITO]: 'restrito', [PIN_LIMITADO]: 'limitado', [PIN_CADASTRO]: 'cadastro' };
@@ -792,7 +770,6 @@
           localStorage.setItem('gw_pc_confiavel', '1');
           localStorage.setItem('gw_pc_modo', modo);
         }
-        entrarFullscreen();
         document.getElementById('pin-screen').style.opacity = '0';
         setTimeout(() => mostrarSplashLogo(() => mostrarHome(true)), 320);
       } else {
@@ -1235,6 +1212,5 @@
     }
   </script>
   <script src="./agente.js"></script>
-  <script src="./pc-confiavel.js"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-const VERSION = "areceber-v3";
+const VERSION = "areceber-v4";
 const ASSETS = [
   "./index.html",
   "./style.css?v=1",

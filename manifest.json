@@ -3,7 +3,7 @@
   "short_name": "GW",
   "start_url": "/index.html",
   "scope": "/",
-  "display": "fullscreen",
+  "display": "standalone",
   "background_color": "#0a1a0f",
   "theme_color": "#0a1a0f",
   "icons": [
