@@ -464,8 +464,8 @@
             <div id="dd-donut-servicos" style="flex:1;min-height:0;"></div>
           </div>
           <div class="dd-card">
-            <div class="dd-card-header"><span class="dd-card-header-title">Alertas e Pendências</span></div>
-            <div id="dd-alertas" class="dd-card-scroll"></div>
+            <div class="dd-card-header"><span class="dd-card-header-title">Próxima Medição</span></div>
+            <div id="dd-proxima-medicao" class="dd-card-scroll"></div>
           </div>
         </div>
 
@@ -479,8 +479,8 @@
             <div id="dd-lista-medicoes" class="dd-card-scroll"></div>
           </div>
           <div class="dd-card">
-            <div class="dd-card-header"><span class="dd-card-header-title">Próxima Medição</span></div>
-            <div id="dd-proxima-medicao" class="dd-card-scroll"></div>
+            <div class="dd-card-header"><span class="dd-card-header-title">Alertas e Pendências</span></div>
+            <div id="dd-alertas" class="dd-card-scroll"></div>
           </div>
         </div>
       </div>
@@ -680,7 +680,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.68';
+    const VERSAO = '4.69';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
