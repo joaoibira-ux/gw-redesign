@@ -680,7 +680,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.65';
+    const VERSAO = '4.66';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -1064,7 +1064,7 @@
 
     // ── SVG: gráfico de linha simples (faturamento últimos 6 meses) ──
     function ddSvgLinha(meses) {
-      const W = 460, H = 160, padL = 34, padB = 20, padT = 10;
+      const W = 460, H = 125, padL = 34, padB = 20, padT = 10;
       const max = Math.max(1, ...meses.map(m => m.valor));
       const stepX = (W - padL - 10) / (meses.length - 1 || 1);
       const pontos = meses.map((m, i) => {
@@ -1080,7 +1080,7 @@
         const y = padT + f * (H - padT - padB);
         return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W - 10}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.05)"/>`;
       }).join('');
-      return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:170px;">
+      return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100%;max-height:135px;">
         ${gridY}
         <path d="${area}" fill="rgba(74,207,84,0.14)" stroke="none"/>
         <path d="${path}" fill="none" stroke="#4acf54" stroke-width="2" stroke-linejoin="round"/>
