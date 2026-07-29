@@ -680,7 +680,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.69';
+    const VERSAO = '4.70';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -887,6 +887,40 @@
       return date.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '');
     }
 
+    // ── Próximo fechamento de medição: todo dia 15 e todo último dia do mês,
+    // adiado pro próximo dia útil se cair em fim de semana. ──
+    function ddAdiaFimDeSemana(d) {
+      const dia = d.getDay(); // 0 = domingo, 6 = sábado
+      if (dia === 6) d.setDate(d.getDate() + 2);
+      else if (dia === 0) d.setDate(d.getDate() + 1);
+      return d;
+    }
+    function ddFechamentosDoMes(ano, mes) {
+      return [
+        ddAdiaFimDeSemana(new Date(ano, mes, 15)),
+        ddAdiaFimDeSemana(new Date(ano, mes + 1, 0)),
+      ];
+    }
+    function ddProximoFechamento(hoje) {
+      const hojeSemHora = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+      const opcoes = [
+        ...ddFechamentosDoMes(hoje.getFullYear(), hoje.getMonth()),
+        ...ddFechamentosDoMes(hoje.getFullYear(), hoje.getMonth() + 1),
+      ].filter(d => d >= hojeSemHora).sort((a, b) => a - b);
+      return opcoes[0];
+    }
+    // conta dias úteis entre hoje (exclusive) e alvo (inclusive)
+    function ddDiasUteisAte(hoje, alvo) {
+      const d = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+      let count = 0;
+      while (d < alvo) {
+        d.setDate(d.getDate() + 1);
+        const dia = d.getDay();
+        if (dia !== 0 && dia !== 6) count++;
+      }
+      return count;
+    }
+
     async function carregarDashboard() {
       const db = firebase.firestore();
       const hoje = new Date();
@@ -1067,8 +1101,17 @@
       }));
       const totalRetencaoPrev = totalMedicaoPrev * 0.05;
       const totalAReceberPrev = totalMedicaoPrev - totalRetencaoPrev;
-      document.getElementById('dd-proxima-medicao').innerHTML = servPendentes
-        ? `
+
+      const proximoFechamento = ddProximoFechamento(hoje);
+      const diasUteisFechamento = ddDiasUteisAte(hoje, proximoFechamento);
+      const fechamentoStr = String(proximoFechamento.getDate()).padStart(2, '0') + '/' + String(proximoFechamento.getMonth() + 1).padStart(2, '0');
+      const diasUteisLabel = diasUteisFechamento === 0 ? 'fecha hoje'
+        : diasUteisFechamento === 1 ? 'falta 1 dia útil'
+        : `faltam ${diasUteisFechamento} dias úteis`;
+
+      document.getElementById('dd-proxima-medicao').innerHTML = `
+        <div class="dd-card-delta ${diasUteisFechamento <= 1 ? 'neg' : 'pos'}" style="margin-bottom:8px;">📅 Fecha em ${fechamentoStr} · ${diasUteisLabel}</div>
+        ${servPendentes ? `
           <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px;">
             <div class="dd-card-icon" style="background:rgba(105,178,240,0.14);margin:0;">📐</div>
             <div><div class="dd-card-value">${servPendentes}</div><div class="dd-card-title" style="margin:0;">SERVIÇO${servPendentes !== 1 ? 'S' : ''} EM MEDIÇÃO</div></div>
@@ -1076,7 +1119,7 @@
           <div class="dd-lista-item"><span class="dd-lista-sub">Medição</span><span class="dd-lista-valor">${ddFmtMoeda(totalMedicaoPrev)}</span></div>
           <div class="dd-lista-item"><span class="dd-lista-sub">Retenção (5%)</span><span class="dd-lista-valor" style="color:#ef4943;">${totalRetencaoPrev > 0 ? '- ' + ddFmtMoeda(totalRetencaoPrev) : '—'}</span></div>
           <div class="dd-lista-item"><span class="dd-lista-sub">A Receber</span><span class="dd-lista-valor" style="color:#4acf54;">${ddFmtMoeda(totalAReceberPrev)}</span></div>`
-        : '<div class="dd-empty">Nenhum serviço aguardando fechamento de medição.</div>';
+        : '<div class="dd-empty">Nenhum serviço aguardando fechamento de medição.</div>'}`;
     }
 
     // ── SVG: gráfico de linha simples (faturamento últimos 6 meses) ──
