@@ -1,4 +1,4 @@
-const VERSION = "serv-v8";
+const VERSION = "serv-v9";
 const ASSETS = [
   "./index.html",
   "./style.css?v=6",

@@ -1,4 +1,4 @@
-const VERSION = "mapa-v35";
+const VERSION = "mapa-v36";
 const ASSETS = [
   "./index.html",
   "./style.css?v=28",

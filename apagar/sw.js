@@ -1,4 +1,4 @@
-const VERSION = "apagar-v6";
+const VERSION = "apagar-v7";
 const ASSETS = [
   "./index.html",
   "./style.css?v=3",
