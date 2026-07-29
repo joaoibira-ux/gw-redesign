@@ -244,9 +244,9 @@
       overflow-y: auto;
     }
     .dd-brand { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 4px 6px 20px; }
-    .dd-brand img { width: 92px; height: 92px; object-fit: contain; border-radius: 18px; }
-    .dd-brand-title { font-size: 1rem; font-weight: 800; letter-spacing: 1px; color: #f1f8f2; line-height: 1.2; }
-    .dd-brand-sub { font-size: 0.58rem; letter-spacing: 1.5px; color: #7bc47f; font-weight: 700; }
+    .dd-brand img { width: 140px; height: 140px; object-fit: contain; border-radius: 24px; }
+    .dd-brand-title { font-size: 1.15rem; font-weight: 800; letter-spacing: 1px; color: #f1f8f2; line-height: 1.2; }
+    .dd-brand-sub { font-size: 0.64rem; letter-spacing: 1.5px; color: #7bc47f; font-weight: 700; }
 
     .dd-nav-item {
       display: flex; align-items: center; gap: 12px;
@@ -680,7 +680,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.59';
+    const VERSAO = '4.60';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
