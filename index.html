@@ -243,69 +243,75 @@
       padding: 20px 14px;
       overflow-y: auto;
     }
-    .dd-brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 22px; }
-    .dd-brand img { width: 34px; height: 34px; object-fit: contain; border-radius: 8px; }
-    .dd-brand-title { font-size: 0.85rem; font-weight: 800; letter-spacing: 1px; color: #f1f8f2; line-height: 1.2; }
-    .dd-brand-sub { font-size: 0.55rem; letter-spacing: 1.5px; color: #7bc47f; font-weight: 700; }
+    .dd-brand { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 4px 6px 20px; }
+    .dd-brand img { width: 64px; height: 64px; object-fit: contain; border-radius: 14px; }
+    .dd-brand-title { font-size: 0.88rem; font-weight: 800; letter-spacing: 1px; color: #f1f8f2; line-height: 1.2; }
+    .dd-brand-sub { font-size: 0.52rem; letter-spacing: 1.5px; color: #7bc47f; font-weight: 700; }
 
     .dd-nav-item {
       display: flex; align-items: center; gap: 12px;
-      padding: 10px 12px; border-radius: 10px;
+      padding: 8px 12px; border-radius: 10px;
       color: #cfe8d1; text-decoration: none;
-      font-size: 0.82rem; font-weight: 600;
+      font-size: 0.78rem; font-weight: 600;
       cursor: pointer; transition: background .12s;
     }
     .dd-nav-item:hover { background: rgba(255,255,255,0.06); }
     .dd-nav-item.ativo { background: rgba(105,240,174,0.14); color: #69f0ae; }
-    .dd-nav-icon { font-size: 1rem; width: 20px; text-align: center; }
+    .dd-nav-icon { font-size: 0.95rem; width: 20px; text-align: center; }
 
-    .dd-main { flex: 1; overflow-y: auto; padding: 24px 28px 40px; }
-    .dd-topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
-    .dd-topbar-datas { display: flex; align-items: center; gap: 10px; color: #9fc9a2; font-size: 0.78rem; }
-    .dd-topbar-user { display: flex; align-items: center; gap: 10px; color: #cfe8d1; font-size: 0.8rem; }
-    .dd-avatar { width: 30px; height: 30px; border-radius: 50%; background: #1b3322; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; }
+    .dd-main { flex: 1; overflow: hidden; padding: 14px 22px; display: flex; flex-direction: column; min-height: 0; }
+    .dd-topbar { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .dd-topbar-datas { display: flex; align-items: center; gap: 10px; color: #9fc9a2; font-size: 0.72rem; }
+    .dd-topbar-user { display: flex; align-items: center; gap: 8px; color: #cfe8d1; font-size: 0.74rem; }
+    .dd-avatar { width: 26px; height: 26px; border-radius: 50%; background: #1b3322; display: flex; align-items: center; justify-content: center; font-size: 0.74rem; }
 
-    .dd-h1 { font-size: 1.35rem; font-weight: 800; color: #f1f8f2; margin-bottom: 2px; }
-    .dd-h1-sub { font-size: 0.8rem; color: #8fb391; margin-bottom: 20px; }
+    .dd-h1 { flex: 0 0 auto; font-size: 1.05rem; font-weight: 800; color: #f1f8f2; margin-bottom: 1px; }
+    .dd-h1-sub { flex: 0 0 auto; font-size: 0.68rem; color: #8fb391; margin-bottom: 10px; }
 
     .dd-card {
       background: #101f15;
       border: 1px solid rgba(255,255,255,0.06);
-      border-radius: 16px;
-      padding: 16px 18px;
+      border-radius: 14px;
+      padding: 10px 14px;
+      min-height: 0;
+      overflow: hidden;
     }
-    .dd-card-title { font-size: 0.72rem; color: #8fb391; font-weight: 700; letter-spacing: 0.3px; margin-bottom: 4px; }
-    .dd-card-value { font-size: 1.35rem; font-weight: 800; color: #f1f8f2; }
-    .dd-card-delta { font-size: 0.68rem; font-weight: 700; margin-top: 4px; }
-    .dd-card-delta.pos { color: #69f0ae; }
-    .dd-card-delta.neg { color: #ff8a80; }
+    .dd-card-title { font-size: 0.62rem; color: #8fb391; font-weight: 700; letter-spacing: 0.3px; margin-bottom: 2px; }
+    .dd-card-value { font-size: 1.08rem; font-weight: 800; color: #f1f8f2; }
+    .dd-card-delta { font-size: 0.6rem; font-weight: 700; margin-top: 2px; }
+    .dd-card-delta.pos { color: #63b669; }
+    .dd-card-delta.neg { color: #cf6763; }
     .dd-card-icon {
-      width: 38px; height: 38px; border-radius: 10px;
+      width: 28px; height: 28px; border-radius: 8px;
       display: flex; align-items: center; justify-content: center;
-      font-size: 1.1rem; margin-bottom: 10px;
+      font-size: 0.9rem; margin-bottom: 6px;
     }
 
-    .dd-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 16px; }
-    .dd-row2 { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-bottom: 16px; }
-    .dd-row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 16px; }
+    .dd-kpis { flex: 0 0 auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 10px; }
+    .dd-content-rows { flex: 1; min-height: 0; display: grid; grid-template-rows: 1fr 1fr 1fr; gap: 10px; }
+    .dd-row2 { min-height: 0; display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
+    .dd-row3 { min-height: 0; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .dd-row2 .dd-card, .dd-row3 .dd-card { display: flex; flex-direction: column; min-height: 0; }
 
-    .dd-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-    .dd-card-header-title { font-size: 0.85rem; font-weight: 700; color: #f1f8f2; }
+    .dd-card-header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .dd-card-header-title { font-size: 0.72rem; font-weight: 700; color: #f1f8f2; }
 
-    .dd-lista-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.76rem; }
+    .dd-card-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+
+    .dd-lista-item { display: flex; align-items: center; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.68rem; }
     .dd-lista-item:last-child { border-bottom: none; }
     .dd-lista-nome { color: #e8f5e9; font-weight: 600; }
-    .dd-lista-sub { color: #8fb391; font-size: 0.66rem; }
-    .dd-lista-valor { color: #69f0ae; font-weight: 700; }
+    .dd-lista-sub { color: #8fb391; font-size: 0.6rem; }
+    .dd-lista-valor { color: #63b669; font-weight: 700; }
 
-    .dd-alerta { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; font-size: 0.76rem; color: #dcece0; }
-    .dd-alerta-icon { font-size: 0.9rem; }
+    .dd-alerta { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; font-size: 0.68rem; color: #dcece0; }
+    .dd-alerta-icon { font-size: 0.8rem; }
 
-    .dd-empty { color: #7a9c7d; font-size: 0.76rem; padding: 10px 0; }
+    .dd-empty { color: #7a9c7d; font-size: 0.68rem; padding: 6px 0; }
 
-    .dd-donut-legend { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; font-size: 0.7rem; }
-    .dd-donut-legend-item { display: flex; align-items: center; gap: 8px; color: #cfe8d1; }
-    .dd-donut-legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .dd-donut-legend { display: flex; flex-direction: column; gap: 4px; margin-top: 0; font-size: 0.62rem; }
+    .dd-donut-legend-item { display: flex; align-items: center; gap: 6px; color: #cfe8d1; line-height: 1.3; }
+    .dd-donut-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 2px; }
 
     /* ── SPLASH DA LOGO (após PIN correto) ── */
     #logo-splash {
@@ -418,10 +424,8 @@
     <aside class="dd-sidebar">
       <div class="dd-brand">
         <img src="./Logo-gw.png" alt="GW" />
-        <div>
-          <div class="dd-brand-title">GREEN WALL</div>
-          <div class="dd-brand-sub">SISTEMA DE GESTÃO</div>
-        </div>
+        <div class="dd-brand-title">GREEN WALL</div>
+        <div class="dd-brand-sub">SISTEMA DE GESTÃO</div>
       </div>
       <nav class="dd-nav" id="dd-nav"></nav>
     </aside>
@@ -438,44 +442,46 @@
 
       <div class="dd-kpis" id="dd-kpis"></div>
 
-      <div class="dd-row2">
-        <div class="dd-card">
-          <div class="dd-card-header"><span class="dd-card-header-title">Faturamento — Últimos 6 meses</span></div>
-          <div id="dd-chart-faturamento"></div>
+      <div class="dd-content-rows">
+        <div class="dd-row2">
+          <div class="dd-card">
+            <div class="dd-card-header"><span class="dd-card-header-title">Faturamento — Últimos 6 meses</span></div>
+            <div id="dd-chart-faturamento" style="flex:1;min-height:0;"></div>
+          </div>
+          <div class="dd-card">
+            <div class="dd-card-header"><span class="dd-card-header-title">Resumo Financeiro</span></div>
+            <div id="dd-donut-financeiro" style="flex:1;min-height:0;"></div>
+          </div>
         </div>
-        <div class="dd-card">
-          <div class="dd-card-header"><span class="dd-card-header-title">Resumo Financeiro</span></div>
-          <div id="dd-donut-financeiro"></div>
-        </div>
-      </div>
 
-      <div class="dd-row3">
-        <div class="dd-card">
-          <div class="dd-card-header"><span class="dd-card-header-title">Últimas Medições</span></div>
-          <div id="dd-lista-medicoes"></div>
+        <div class="dd-row3">
+          <div class="dd-card">
+            <div class="dd-card-header"><span class="dd-card-header-title">Últimas Medições</span></div>
+            <div id="dd-lista-medicoes" class="dd-card-scroll"></div>
+          </div>
+          <div class="dd-card">
+            <div class="dd-card-header"><span class="dd-card-header-title">Progresso dos Serviços</span></div>
+            <div id="dd-donut-servicos" style="flex:1;min-height:0;"></div>
+          </div>
+          <div class="dd-card">
+            <div class="dd-card-header"><span class="dd-card-header-title">Alertas e Pendências</span></div>
+            <div id="dd-alertas" class="dd-card-scroll"></div>
+          </div>
         </div>
-        <div class="dd-card">
-          <div class="dd-card-header"><span class="dd-card-header-title">Progresso dos Serviços</span></div>
-          <div id="dd-donut-servicos"></div>
-        </div>
-        <div class="dd-card">
-          <div class="dd-card-header"><span class="dd-card-header-title">Alertas e Pendências</span></div>
-          <div id="dd-alertas"></div>
-        </div>
-      </div>
 
-      <div class="dd-row3">
-        <div class="dd-card">
-          <div class="dd-card-header"><span class="dd-card-header-title">Atividades Recentes</span></div>
-          <div id="dd-atividades"></div>
-        </div>
-        <div class="dd-card">
-          <div class="dd-card-header"><span class="dd-card-header-title">Funcionários</span></div>
-          <div id="dd-funcionarios"></div>
-        </div>
-        <div class="dd-card">
-          <div class="dd-card-header"><span class="dd-card-header-title">Contas a Receber (em aberto)</span></div>
-          <div id="dd-lista-receber"></div>
+        <div class="dd-row3">
+          <div class="dd-card">
+            <div class="dd-card-header"><span class="dd-card-header-title">Atividades Recentes</span></div>
+            <div id="dd-atividades" class="dd-card-scroll"></div>
+          </div>
+          <div class="dd-card">
+            <div class="dd-card-header"><span class="dd-card-header-title">Funcionários</span></div>
+            <div id="dd-funcionarios" class="dd-card-scroll"></div>
+          </div>
+          <div class="dd-card">
+            <div class="dd-card-header"><span class="dd-card-header-title">Contas a Receber (em aberto)</span></div>
+            <div id="dd-lista-receber" class="dd-card-scroll"></div>
+          </div>
         </div>
       </div>
     </main>
@@ -674,7 +680,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.57';
+    const VERSAO = '4.58';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -1058,7 +1064,7 @@
           <div><div class="dd-card-value">${func.length}</div><div class="dd-card-title" style="margin:0;">TOTAL DE FUNCIONÁRIOS</div></div>
         </div>
         <div class="dd-lista-item"><span class="dd-lista-sub">Ativos</span><span class="dd-lista-valor">${ativos}</span></div>
-        <div class="dd-lista-item"><span class="dd-lista-sub">Inativos</span><span class="dd-lista-valor" style="color:#ff8a80;">${func.length - ativos}</span></div>`;
+        <div class="dd-lista-item"><span class="dd-lista-sub">Inativos</span><span class="dd-lista-valor" style="color:#cf6763;">${func.length - ativos}</span></div>`;
 
       // ── Contas a receber em aberto (lista) ──
       const receberOrdenado = [...receberAberto].sort((a, b) => (ddParseData(a.data) || 0) - (ddParseData(b.data) || 0)).slice(0, 5);
@@ -1084,15 +1090,15 @@
       const path = pontos.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
       const area = path + ` L ${pontos[pontos.length - 1].x.toFixed(1)} ${H - padB} L ${pontos[0].x.toFixed(1)} ${H - padB} Z`;
       const labels = pontos.map(p => `<text x="${p.x.toFixed(1)}" y="${H - 4}" font-size="10" fill="#8fb391" text-anchor="middle">${p.m.label}</text>`).join('');
-      const dots = pontos.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="#69f0ae"/>`).join('');
+      const dots = pontos.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="#63b669"/>`).join('');
       const gridY = [0.25, 0.5, 0.75].map(f => {
         const y = padT + f * (H - padT - padB);
         return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W - 10}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.05)"/>`;
       }).join('');
       return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:170px;">
         ${gridY}
-        <path d="${area}" fill="rgba(105,240,174,0.12)" stroke="none"/>
-        <path d="${path}" fill="none" stroke="#69f0ae" stroke-width="2" stroke-linejoin="round"/>
+        <path d="${area}" fill="rgba(99,182,105,0.12)" stroke="none"/>
+        <path d="${path}" fill="none" stroke="#63b669" stroke-width="2" stroke-linejoin="round"/>
         ${dots}${labels}
       </svg>`;
     }
@@ -1110,23 +1116,23 @@
     function ddSvgDonutFinanceiro(receber, pagar, saldo) {
       const total = receber + pagar;
       const pctReceber = total > 0 ? receber / total : 0;
-      const cx = 70, cy = 70, r = 54, sw = 16;
+      const cx = 55, cy = 55, r = 42, sw = 13;
       let html = '';
       if (total <= 0) {
         html += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="${sw}"/>`;
       } else {
-        html += ddDonutArc(cx, cy, r, sw, 0, pctReceber, '#69f0ae');
-        if (pctReceber < 1) html += ddDonutArc(cx, cy, r, sw, pctReceber, 1, '#ff8a80');
+        html += ddDonutArc(cx, cy, r, sw, 0, pctReceber, '#63b669');
+        if (pctReceber < 1) html += ddDonutArc(cx, cy, r, sw, pctReceber, 1, '#cf6763');
       }
       const pctLabel = total > 0 ? Math.round(pctReceber * 100) : 0;
-      html += `<text x="${cx}" y="${cy - 4}" font-size="22" font-weight="800" fill="#f1f8f2" text-anchor="middle">${pctLabel}%</text>`;
-      html += `<text x="${cx}" y="${cy + 14}" font-size="9" fill="#8fb391" text-anchor="middle">Receber</text>`;
-      return `<div style="display:flex;align-items:center;gap:10px;">
-        <svg viewBox="0 0 140 140" style="width:140px;height:140px;flex-shrink:0;">${html}</svg>
+      html += `<text x="${cx}" y="${cy - 3}" font-size="17" font-weight="800" fill="#f1f8f2" text-anchor="middle">${pctLabel}%</text>`;
+      html += `<text x="${cx}" y="${cy + 11}" font-size="7.5" fill="#8fb391" text-anchor="middle">Receber</text>`;
+      return `<div style="display:flex;align-items:center;gap:8px;height:100%;">
+        <svg viewBox="0 0 110 110" style="width:100px;height:100px;flex-shrink:0;">${html}</svg>
         <div class="dd-donut-legend">
-          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#69f0ae"></span>A Receber<br>${ddFmtMoeda(receber)}</div>
-          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#ff8a80"></span>A Pagar<br>${ddFmtMoeda(pagar)}</div>
-          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#6ab2f0"></span>Saldo em Caixa<br>${ddFmtMoeda(saldo)}</div>
+          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#63b669"></span>A Receber<br>${ddFmtMoeda(receber)}</div>
+          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#cf6763"></span>A Pagar<br>${ddFmtMoeda(pagar)}</div>
+          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#5282dd"></span>Saldo em Caixa<br>${ddFmtMoeda(saldo)}</div>
         </div>
       </div>`;
     }
@@ -1134,21 +1140,21 @@
     function ddSvgDonutServicos(concluidos, pendentes) {
       const total = concluidos + pendentes;
       const pct = total > 0 ? concluidos / total : 0;
-      const cx = 70, cy = 70, r = 54, sw = 16;
+      const cx = 55, cy = 55, r = 42, sw = 13;
       let html = '';
       if (total <= 0) {
         html += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="${sw}"/>`;
       } else {
-        html += ddDonutArc(cx, cy, r, sw, 0, pct, '#69f0ae');
-        if (pct < 1) html += ddDonutArc(cx, cy, r, sw, pct, 1, '#ffc107');
+        html += ddDonutArc(cx, cy, r, sw, 0, pct, '#63b669');
+        if (pct < 1) html += ddDonutArc(cx, cy, r, sw, pct, 1, '#cf6763');
       }
-      html += `<text x="${cx}" y="${cy - 4}" font-size="22" font-weight="800" fill="#f1f8f2" text-anchor="middle">${total > 0 ? Math.round(pct * 100) : 0}%</text>`;
-      html += `<text x="${cx}" y="${cy + 14}" font-size="9" fill="#8fb391" text-anchor="middle">Concluído</text>`;
-      return `<div style="display:flex;align-items:center;gap:10px;">
-        <svg viewBox="0 0 140 140" style="width:140px;height:140px;flex-shrink:0;">${html}</svg>
+      html += `<text x="${cx}" y="${cy - 3}" font-size="17" font-weight="800" fill="#f1f8f2" text-anchor="middle">${total > 0 ? Math.round(pct * 100) : 0}%</text>`;
+      html += `<text x="${cx}" y="${cy + 11}" font-size="7.5" fill="#8fb391" text-anchor="middle">Concluído</text>`;
+      return `<div style="display:flex;align-items:center;gap:8px;height:100%;">
+        <svg viewBox="0 0 110 110" style="width:100px;height:100px;flex-shrink:0;">${html}</svg>
         <div class="dd-donut-legend">
-          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#69f0ae"></span>Concluídos: ${concluidos}</div>
-          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#ffc107"></span>Pendentes: ${pendentes}</div>
+          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#63b669"></span>Concluídos: ${concluidos}</div>
+          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#cf6763"></span>Pendentes: ${pendentes}</div>
           <div class="dd-donut-legend-item">Total: ${total}</div>
         </div>
       </div>`;
