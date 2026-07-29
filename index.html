@@ -479,8 +479,8 @@
             <div id="dd-lista-medicoes" class="dd-card-scroll"></div>
           </div>
           <div class="dd-card">
-            <div class="dd-card-header"><span class="dd-card-header-title">Contas a Receber (em aberto)</span></div>
-            <div id="dd-lista-receber" class="dd-card-scroll"></div>
+            <div class="dd-card-header"><span class="dd-card-header-title">Próxima Medição</span></div>
+            <div id="dd-proxima-medicao" class="dd-card-scroll"></div>
           </div>
         </div>
       </div>
@@ -680,7 +680,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.67';
+    const VERSAO = '4.68';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -893,13 +893,14 @@
       const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
       const em7dias = new Date(hoje); em7dias.setDate(em7dias.getDate() + 7);
 
-      const [receberSnap, pagarSnap, lancSnap, medicoesSnap, funcSnap, locaisSnap] = await Promise.all([
+      const [receberSnap, pagarSnap, lancSnap, medicoesSnap, funcSnap, locaisSnap, servicosSnap] = await Promise.all([
         db.collection('contasReceber').get().catch(() => ({ docs: [] })),
         db.collection('contasPagar').get().catch(() => ({ docs: [] })),
         db.collection('lancamentos').get().catch(() => ({ docs: [] })),
         db.collection('medicoes').get().catch(() => ({ docs: [] })),
         db.collection('funcionarios').get().catch(() => ({ docs: [] })),
         db.collection('locais').get().catch(() => ({ docs: [] })),
+        db.collection('servicos').get().catch(() => ({ docs: [] })),
       ]);
 
       const receber  = receberSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -908,6 +909,7 @@
       const medicoes  = medicoesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const func        = funcSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const locais     = locaisSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const servicosCad = servicosSnap.docs.map(d => d.data());
 
       // ── KPIs ──
       const receberAberto = receber.filter(r => r.status !== 'baixado');
@@ -1051,15 +1053,30 @@
         <div class="dd-lista-item"><span class="dd-lista-sub">Ativos</span><span class="dd-lista-valor">${ativos}</span></div>
         <div class="dd-lista-item"><span class="dd-lista-sub">Inativos</span><span class="dd-lista-valor" style="color:#ef4943;">${func.length - ativos}</span></div>`;
 
-      // ── Contas a receber em aberto (lista) ──
-      const receberOrdenado = [...receberAberto].sort((a, b) => (ddParseData(a.data) || 0) - (ddParseData(b.data) || 0)).slice(0, 5);
-      document.getElementById('dd-lista-receber').innerHTML = receberOrdenado.length
-        ? receberOrdenado.map(r => `
-          <div class="dd-lista-item">
-            <div><div class="dd-lista-nome">${ddEscHtml(r.descricao)}</div><div class="dd-lista-sub">${ddEscHtml(r.data)}</div></div>
-            <div class="dd-lista-valor">${ddFmtMoedaCompacta(r.valor)}</div>
-          </div>`).join('')
-        : '<div class="dd-empty">Nenhuma conta a receber em aberto.</div>';
+      // ── Próxima medição (previsão) — mesmo cálculo do relatório financeiro:
+      // serviços já em 'em_pagamento' (feitos, aguardando fechamento da
+      // medição), valor de medição por serviço vem do cadastro em
+      // 'servicos', retenção de 5% igual à da medição fechada de verdade.
+      const servMedicaoByNome = {};
+      servicosCad.forEach(s => { servMedicaoByNome[s.nome] = s.medicao || 0; });
+      let servPendentes = 0, totalMedicaoPrev = 0;
+      locais.forEach(l => (l.servicos || []).forEach(s => {
+        if (s.status !== 'em_pagamento') return;
+        servPendentes++;
+        totalMedicaoPrev += servMedicaoByNome[s.nome] || 0;
+      }));
+      const totalRetencaoPrev = totalMedicaoPrev * 0.05;
+      const totalAReceberPrev = totalMedicaoPrev - totalRetencaoPrev;
+      document.getElementById('dd-proxima-medicao').innerHTML = servPendentes
+        ? `
+          <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px;">
+            <div class="dd-card-icon" style="background:rgba(105,178,240,0.14);margin:0;">📐</div>
+            <div><div class="dd-card-value">${servPendentes}</div><div class="dd-card-title" style="margin:0;">SERVIÇO${servPendentes !== 1 ? 'S' : ''} EM MEDIÇÃO</div></div>
+          </div>
+          <div class="dd-lista-item"><span class="dd-lista-sub">Medição</span><span class="dd-lista-valor">${ddFmtMoeda(totalMedicaoPrev)}</span></div>
+          <div class="dd-lista-item"><span class="dd-lista-sub">Retenção (5%)</span><span class="dd-lista-valor" style="color:#ef4943;">${totalRetencaoPrev > 0 ? '- ' + ddFmtMoeda(totalRetencaoPrev) : '—'}</span></div>
+          <div class="dd-lista-item"><span class="dd-lista-sub">A Receber</span><span class="dd-lista-valor" style="color:#4acf54;">${ddFmtMoeda(totalAReceberPrev)}</span></div>`
+        : '<div class="dd-empty">Nenhum serviço aguardando fechamento de medição.</div>';
     }
 
     // ── SVG: gráfico de linha simples (faturamento últimos 6 meses) ──
