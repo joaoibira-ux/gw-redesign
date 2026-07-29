@@ -9,6 +9,11 @@
 // tinha pedido modo tela cheia (PIN do sistema GW, ver index.html),
 // marcado em localStorage — não força tela cheia em quem nunca pediu.
 (function () {
+  function estaComoApp() {
+    return window.navigator.standalone === true
+        || window.matchMedia('(display-mode: standalone)').matches
+        || window.matchMedia('(display-mode: fullscreen)').matches;
+  }
   function querTelaCheia() {
     try { return localStorage.getItem('gw_modo_tela_cheia') === '1'; }
     catch (e) { return false; }
@@ -16,7 +21,8 @@
   function estaEmTelaCheia() {
     return !!(document.fullscreenElement || document.webkitFullscreenElement);
   }
-  if (!querTelaCheia() || estaEmTelaCheia()) return;
+  // Instalado como app, a janela já é sem moldura — nada a reentrar aqui.
+  if (estaComoApp() || !querTelaCheia() || estaEmTelaCheia()) return;
 
   function tentarEntrar() {
     if (estaEmTelaCheia()) { pararDeEscutar(); return; }

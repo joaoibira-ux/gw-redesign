@@ -680,7 +680,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.63';
+    const VERSAO = '4.64';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -762,9 +762,13 @@
     }
 
     function entrarFullscreen() {
+      // Instalado como app (PWA desktop/iOS), a janela já nasce sem moldura —
+      // chamar a Fullscreen API aqui só reintroduziria o abre-e-fecha a cada
+      // navegação (ela sai sozinha a cada troca de página, sem exceção),
+      // sem ganho nenhum. Só faz sentido rodando dentro do navegador comum.
+      if (estaComoApp()) return;
       // Marca a intenção de ficar em tela cheia — lida pelo fullscreen-guard.js
-      // em toda tela do sistema, pra reentrar sozinho depois de navegar (o
-      // navegador sai da tela cheia a cada troca de página, sem exceção).
+      // em toda tela do sistema, pra reentrar sozinho depois de navegar.
       try { localStorage.setItem('gw_modo_tela_cheia', '1'); } catch (e) {}
       const el = document.documentElement;
       try {
@@ -775,7 +779,7 @@
 
     // Mantém fullscreen ao tocar na tela (Android sai ao tocar)
     document.addEventListener('touchstart', () => {
-      if (!document.fullscreenElement && !document.webkitFullscreenElement) entrarFullscreen();
+      if (!estaComoApp() && !document.fullscreenElement && !document.webkitFullscreenElement) entrarFullscreen();
     }, { passive: true });
 
     async function verificarPin() {
