@@ -471,8 +471,8 @@
 
         <div class="dd-row3">
           <div class="dd-card">
-            <div class="dd-card-header"><span class="dd-card-header-title">Atividades Recentes</span></div>
-            <div id="dd-atividades" class="dd-card-scroll"></div>
+            <div class="dd-card-header"><span class="dd-card-header-title">Ponto (Hoje)</span></div>
+            <div id="dd-ponto-hoje" class="dd-card-scroll"></div>
           </div>
           <div class="dd-card">
             <div class="dd-card-header"><span class="dd-card-header-title">Últimas Medições</span></div>
@@ -680,7 +680,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.70';
+    const VERSAO = '4.71';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -926,8 +926,10 @@
       const hoje = new Date();
       const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
       const em7dias = new Date(hoje); em7dias.setDate(em7dias.getDate() + 7);
+      const inicioHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+      const fimHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 1);
 
-      const [receberSnap, pagarSnap, lancSnap, medicoesSnap, funcSnap, locaisSnap, servicosSnap] = await Promise.all([
+      const [receberSnap, pagarSnap, lancSnap, medicoesSnap, funcSnap, locaisSnap, servicosSnap, pontosHojeSnap] = await Promise.all([
         db.collection('contasReceber').get().catch(() => ({ docs: [] })),
         db.collection('contasPagar').get().catch(() => ({ docs: [] })),
         db.collection('lancamentos').get().catch(() => ({ docs: [] })),
@@ -935,12 +937,17 @@
         db.collection('funcionarios').get().catch(() => ({ docs: [] })),
         db.collection('locais').get().catch(() => ({ docs: [] })),
         db.collection('servicos').get().catch(() => ({ docs: [] })),
+        db.collection('pontos')
+          .where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(inicioHoje))
+          .where('timestamp', '<', firebase.firestore.Timestamp.fromDate(fimHoje))
+          .get().catch(() => ({ docs: [] })),
       ]);
 
       const receber  = receberSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const pagar     = pagarSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const lanc       = lancSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const medicoes  = medicoesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const pontosHoje = pontosHojeSnap.docs.map(d => d.data());
       const func        = funcSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const locais     = locaisSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const servicosCad = servicosSnap.docs.map(d => d.data());
@@ -1052,30 +1059,36 @@
         ? alertas.map(a => `<div class="dd-alerta"><span class="dd-alerta-icon">${a.icon}</span><span>${a.texto}</span></div>`).join('')
         : '<div class="dd-empty">Nenhum alerta no momento.</div>';
 
-      // ── Atividades recentes (mistura lançamentos + medições + baixas) ──
-      const atividades = [];
-      lanc.forEach(l => atividades.push({
-        ts: l.criadoEm && l.criadoEm.toMillis ? l.criadoEm.toMillis() : 0,
-        icon: (l.entrada || 0) > 0 ? '🟢' : '🔴',
-        texto: ddEscHtml(l.descricao || l.origem || 'Lançamento'),
-        valor: ddFmtMoedaCompacta((l.entrada || 0) - (l.saida || 0)),
-        quando: ddEscHtml(l.data),
-      }));
-      medicoes.forEach(m => atividades.push({
-        ts: m.criadoEm && m.criadoEm.toMillis ? m.criadoEm.toMillis() : 0,
-        icon: '📐',
-        texto: 'Medição — ' + ddEscHtml(m.nome || ''),
-        valor: ddFmtMoedaCompacta(m.valorNotaFiscal),
-        quando: ddEscHtml(m.data),
-      }));
-      atividades.sort((a, b) => b.ts - a.ts);
-      document.getElementById('dd-atividades').innerHTML = atividades.length
-        ? atividades.slice(0, 6).map(a => `
-          <div class="dd-lista-item">
-            <div><div class="dd-lista-nome">${a.icon} ${a.texto}</div><div class="dd-lista-sub">${a.quando}</div></div>
-            <div class="dd-lista-valor">${a.valor}</div>
-          </div>`).join('')
-        : '<div class="dd-empty">Nenhuma atividade registrada ainda.</div>';
+      // ── Ponto (hoje) — cruza funcionários ativos com os registros de
+      // 'pontos' de hoje (mesmo agrupamento entrada/saída por funcionário
+      // usado no relatório de ponto). ──
+      const funcAtivos = func.filter(f => f.ativo !== false);
+      const pontoPorFunc = new Map();
+      pontosHoje.forEach(p => {
+        const key = p.funcionarioId || p.funcionarioNome;
+        if (!key) return;
+        if (!pontoPorFunc.has(key)) pontoPorFunc.set(key, { entrada: false, saida: false });
+        const item = pontoPorFunc.get(key);
+        if (p.tipo === 'entrada') item.entrada = true;
+        if (p.tipo === 'saida')   item.saida   = true;
+      });
+      let noTrabalho = 0, jaSairam = 0;
+      const naoBateram = [];
+      funcAtivos.forEach(f => {
+        const reg = pontoPorFunc.get(f.id) || pontoPorFunc.get(f.nome);
+        if (!reg || !reg.entrada) { naoBateram.push(f.nome || '(sem nome)'); return; }
+        if (reg.saida) jaSairam++; else noTrabalho++;
+      });
+      const bateramPonto = funcAtivos.length - naoBateram.length;
+      document.getElementById('dd-ponto-hoje').innerHTML = `
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px;">
+          <div class="dd-card-icon" style="background:rgba(105,240,174,0.14);margin:0;">🕐</div>
+          <div><div class="dd-card-value">${bateramPonto}/${funcAtivos.length}</div><div class="dd-card-title" style="margin:0;">BATERAM PONTO HOJE</div></div>
+        </div>
+        <div class="dd-lista-item"><span class="dd-lista-sub">No trabalho agora</span><span class="dd-lista-valor">${noTrabalho}</span></div>
+        <div class="dd-lista-item"><span class="dd-lista-sub">Já saíram</span><span class="dd-lista-valor">${jaSairam}</span></div>
+        <div class="dd-lista-item"><span class="dd-lista-sub">Não bateram ponto</span><span class="dd-lista-valor" style="color:${naoBateram.length ? '#ef4943' : '#4acf54'};">${naoBateram.length}</span></div>
+        ${naoBateram.length ? naoBateram.slice(0, 6).map(n => `<div class="dd-lista-item"><span class="dd-lista-nome" style="color:#ef4943;">⚠️ ${ddEscHtml(n)}</span></div>`).join('') + (naoBateram.length > 6 ? `<div class="dd-lista-sub" style="padding-top:4px;">+ ${naoBateram.length - 6} outro(s)</div>` : '') : ''}`;
 
       // ── Funcionários ──
       const ativos = func.filter(f => f.ativo !== false).length;
