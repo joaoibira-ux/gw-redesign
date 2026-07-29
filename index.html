@@ -9,6 +9,7 @@
   <title>GW</title>
   <link rel="manifest" href="./manifest.json" />
   <link rel="apple-touch-icon" href="./Logo-gw.png" />
+  <link rel="icon" href="./icon-192.png" type="image/png" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     html, body { height: 100%; height: 100dvh; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a1a0f; color: #e8f5e9; overflow: hidden; }
@@ -679,7 +680,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.62';
+    const VERSAO = '4.63';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
