@@ -680,7 +680,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.74';
+    const VERSAO = '4.75';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -973,7 +973,7 @@
                 || r.origem === 'ANE->ADIANTAMENTO' || r.origem === 'ANE->ANTECIPACAO'
                 || r.origem === 'ANE->BAIXA CTAS A PAGAR') {
           cefS += r.saida || 0;
-        } else if (r.origem === 'ANE->CREDITO A REPASSAR P BBS FOMENTO') {
+        } else if (r.origem === 'ANE->CREDITO A REPASSAR P BBS FOMENTO' || r.origem === 'ANE->BAIXA CTAS A RECEBER') {
           cefE += r.entrada || 0;
         } else if (r.origem === 'JOAO') {
           interE += r.entrada || 0;

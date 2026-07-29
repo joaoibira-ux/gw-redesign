@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.42";
+const VERSAO_CAIXA = "3.43";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -128,6 +128,8 @@ function render(docs) {
         interS += r.saida || 0;
       } else if (r.origem === "ANE->BAIXA CTAS A PAGAR") {
         cefS += r.saida || 0;
+      } else if (r.origem === "ANE->BAIXA CTAS A RECEBER") {
+        cefE += r.entrada || 0;
       } else if (r.origem === "ANE->CREDITO A REPASSAR P BBS FOMENTO") {
         cefE += r.entrada || 0;
       }
@@ -259,9 +261,9 @@ document.getElementById("form").addEventListener("submit", function(e) {
 
   if (origem === "JOAO->CTAS A RECEBER") {
     criarContaAReceber(data, desc, saida);
-  } else if (origem === "JOAO->BAIXA CTAS A RECEBER") {
+  } else if (origem === "JOAO->BAIXA CTAS A RECEBER" || origem === "ANE->BAIXA CTAS A RECEBER") {
     if (!contaReceberSelecionada) { alert("Selecione uma conta a receber. Selecione a origem novamente."); return; }
-    baixarContaAReceber(data, desc, entrada);
+    baixarContaAReceber(data, desc, entrada, origem);
   } else if (origem === "JOAO->CTAS A PAGAR") {
     criarContaAPagar(data, desc, entrada);
   } else if (origem === "JOAO->BAIXA CTAS A PAGAR" || origem === "ANE->BAIXA CTAS A PAGAR") {
@@ -303,7 +305,8 @@ const ORIGEM_GRUPOS = {
     { value: "ANE->JOAO", label: "JOÃO ALBÉRICO - Pagamento de Prólabore (Baixa do Crédito João)" },
     { value: "ANE->RETENCAO PARADIGMA 5%", label: "RETENÇÃO PARADIGMA 5% (A Receber)" },
     { value: "ANE->ADIANTAMENTO", label: "ADIANTAMENTO DE SALÁRIO (Debita da Folha)" },
-    { value: "ANE->BAIXA CTAS A PAGAR", label: "ANE → BAIXA CTAS A PAGAR" }
+    { value: "ANE->BAIXA CTAS A PAGAR", label: "ANE → BAIXA CTAS A PAGAR" },
+    { value: "ANE->BAIXA CTAS A RECEBER", label: "ANE → BAIXA CTAS A RECEBER" }
   ],
   "JOAO": [
     { value: "JOAO", label: "JOAO (Geral)" },
@@ -354,7 +357,7 @@ document.getElementById("f-origem").addEventListener("change", function() {
     if (autoDescs.includes(desc.value)) desc.value = "";
     abrirPickerFuncionario();
     return;
-  } else if (this.value === "JOAO->BAIXA CTAS A RECEBER") {
+  } else if (this.value === "JOAO->BAIXA CTAS A RECEBER" || this.value === "ANE->BAIXA CTAS A RECEBER") {
     if (autoDescs.includes(desc.value)) desc.value = "";
     abrirPickerContaReceber();
     return;
@@ -536,13 +539,13 @@ function criarContaAReceber(data, desc, saida) {
   batch.commit().catch(() => alert("Erro ao criar conta a receber. Tente novamente."));
 }
 
-function baixarContaAReceber(data, desc, entrada) {
+function baixarContaAReceber(data, desc, entrada, origem) {
   const { id, conta } = contaReceberSelecionada;
   const numero = String(Object.keys(docsCache).length + 1).padStart(4, "0");
   const batch = db.batch();
 
   batch.set(col.doc(), {
-    data, origem: "JOAO->BAIXA CTAS A RECEBER", descricao: desc,
+    data, origem: origem || "JOAO->BAIXA CTAS A RECEBER", descricao: desc,
     entrada, saida: 0,
     criadoEm: firebase.firestore.FieldValue.serverTimestamp()
   });
