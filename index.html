@@ -244,9 +244,9 @@
       overflow-y: auto;
     }
     .dd-brand { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 4px 6px 20px; }
-    .dd-brand img { width: 64px; height: 64px; object-fit: contain; border-radius: 14px; }
-    .dd-brand-title { font-size: 0.88rem; font-weight: 800; letter-spacing: 1px; color: #f1f8f2; line-height: 1.2; }
-    .dd-brand-sub { font-size: 0.52rem; letter-spacing: 1.5px; color: #7bc47f; font-weight: 700; }
+    .dd-brand img { width: 92px; height: 92px; object-fit: contain; border-radius: 18px; }
+    .dd-brand-title { font-size: 1rem; font-weight: 800; letter-spacing: 1px; color: #f1f8f2; line-height: 1.2; }
+    .dd-brand-sub { font-size: 0.58rem; letter-spacing: 1.5px; color: #7bc47f; font-weight: 700; }
 
     .dd-nav-item {
       display: flex; align-items: center; gap: 12px;
@@ -279,8 +279,8 @@
     .dd-card-title { font-size: 0.62rem; color: #8fb391; font-weight: 700; letter-spacing: 0.3px; margin-bottom: 2px; }
     .dd-card-value { font-size: 1.08rem; font-weight: 800; color: #f1f8f2; }
     .dd-card-delta { font-size: 0.6rem; font-weight: 700; margin-top: 2px; }
-    .dd-card-delta.pos { color: #63b669; }
-    .dd-card-delta.neg { color: #cf6763; }
+    .dd-card-delta.pos { color: #4acf54; }
+    .dd-card-delta.neg { color: #ef4943; }
     .dd-card-icon {
       width: 28px; height: 28px; border-radius: 8px;
       display: flex; align-items: center; justify-content: center;
@@ -302,7 +302,7 @@
     .dd-lista-item:last-child { border-bottom: none; }
     .dd-lista-nome { color: #e8f5e9; font-weight: 600; }
     .dd-lista-sub { color: #8fb391; font-size: 0.6rem; }
-    .dd-lista-valor { color: #63b669; font-weight: 700; }
+    .dd-lista-valor { color: #4acf54; font-weight: 700; }
 
     .dd-alerta { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; font-size: 0.68rem; color: #dcece0; }
     .dd-alerta-icon { font-size: 0.8rem; }
@@ -680,7 +680,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.58';
+    const VERSAO = '4.59';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -1064,7 +1064,7 @@
           <div><div class="dd-card-value">${func.length}</div><div class="dd-card-title" style="margin:0;">TOTAL DE FUNCIONÁRIOS</div></div>
         </div>
         <div class="dd-lista-item"><span class="dd-lista-sub">Ativos</span><span class="dd-lista-valor">${ativos}</span></div>
-        <div class="dd-lista-item"><span class="dd-lista-sub">Inativos</span><span class="dd-lista-valor" style="color:#cf6763;">${func.length - ativos}</span></div>`;
+        <div class="dd-lista-item"><span class="dd-lista-sub">Inativos</span><span class="dd-lista-valor" style="color:#ef4943;">${func.length - ativos}</span></div>`;
 
       // ── Contas a receber em aberto (lista) ──
       const receberOrdenado = [...receberAberto].sort((a, b) => (ddParseData(a.data) || 0) - (ddParseData(b.data) || 0)).slice(0, 5);
@@ -1090,15 +1090,15 @@
       const path = pontos.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
       const area = path + ` L ${pontos[pontos.length - 1].x.toFixed(1)} ${H - padB} L ${pontos[0].x.toFixed(1)} ${H - padB} Z`;
       const labels = pontos.map(p => `<text x="${p.x.toFixed(1)}" y="${H - 4}" font-size="10" fill="#8fb391" text-anchor="middle">${p.m.label}</text>`).join('');
-      const dots = pontos.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="#63b669"/>`).join('');
+      const dots = pontos.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="#4acf54"/>`).join('');
       const gridY = [0.25, 0.5, 0.75].map(f => {
         const y = padT + f * (H - padT - padB);
         return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W - 10}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.05)"/>`;
       }).join('');
       return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:170px;">
         ${gridY}
-        <path d="${area}" fill="rgba(99,182,105,0.12)" stroke="none"/>
-        <path d="${path}" fill="none" stroke="#63b669" stroke-width="2" stroke-linejoin="round"/>
+        <path d="${area}" fill="rgba(74,207,84,0.14)" stroke="none"/>
+        <path d="${path}" fill="none" stroke="#4acf54" stroke-width="2" stroke-linejoin="round"/>
         ${dots}${labels}
       </svg>`;
     }
@@ -1121,8 +1121,8 @@
       if (total <= 0) {
         html += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="${sw}"/>`;
       } else {
-        html += ddDonutArc(cx, cy, r, sw, 0, pctReceber, '#63b669');
-        if (pctReceber < 1) html += ddDonutArc(cx, cy, r, sw, pctReceber, 1, '#cf6763');
+        html += ddDonutArc(cx, cy, r, sw, 0, pctReceber, '#4acf54');
+        if (pctReceber < 1) html += ddDonutArc(cx, cy, r, sw, pctReceber, 1, '#ef4943');
       }
       const pctLabel = total > 0 ? Math.round(pctReceber * 100) : 0;
       html += `<text x="${cx}" y="${cy - 3}" font-size="17" font-weight="800" fill="#f1f8f2" text-anchor="middle">${pctLabel}%</text>`;
@@ -1130,9 +1130,9 @@
       return `<div style="display:flex;align-items:center;gap:8px;height:100%;">
         <svg viewBox="0 0 110 110" style="width:100px;height:100px;flex-shrink:0;">${html}</svg>
         <div class="dd-donut-legend">
-          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#63b669"></span>A Receber<br>${ddFmtMoeda(receber)}</div>
-          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#cf6763"></span>A Pagar<br>${ddFmtMoeda(pagar)}</div>
-          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#5282dd"></span>Saldo em Caixa<br>${ddFmtMoeda(saldo)}</div>
+          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#4acf54"></span>A Receber<br>${ddFmtMoeda(receber)}</div>
+          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#ef4943"></span>A Pagar<br>${ddFmtMoeda(pagar)}</div>
+          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#3679f9"></span>Saldo em Caixa<br>${ddFmtMoeda(saldo)}</div>
         </div>
       </div>`;
     }
@@ -1145,16 +1145,16 @@
       if (total <= 0) {
         html += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="${sw}"/>`;
       } else {
-        html += ddDonutArc(cx, cy, r, sw, 0, pct, '#63b669');
-        if (pct < 1) html += ddDonutArc(cx, cy, r, sw, pct, 1, '#cf6763');
+        html += ddDonutArc(cx, cy, r, sw, 0, pct, '#4acf54');
+        if (pct < 1) html += ddDonutArc(cx, cy, r, sw, pct, 1, '#ef4943');
       }
       html += `<text x="${cx}" y="${cy - 3}" font-size="17" font-weight="800" fill="#f1f8f2" text-anchor="middle">${total > 0 ? Math.round(pct * 100) : 0}%</text>`;
       html += `<text x="${cx}" y="${cy + 11}" font-size="7.5" fill="#8fb391" text-anchor="middle">Concluído</text>`;
       return `<div style="display:flex;align-items:center;gap:8px;height:100%;">
         <svg viewBox="0 0 110 110" style="width:100px;height:100px;flex-shrink:0;">${html}</svg>
         <div class="dd-donut-legend">
-          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#63b669"></span>Concluídos: ${concluidos}</div>
-          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#cf6763"></span>Pendentes: ${pendentes}</div>
+          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#4acf54"></span>Concluídos: ${concluidos}</div>
+          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#ef4943"></span>Pendentes: ${pendentes}</div>
           <div class="dd-donut-legend-item">Total: ${total}</div>
         </div>
       </div>`;
