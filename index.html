@@ -680,7 +680,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.73';
+    const VERSAO = '4.74';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -921,23 +921,36 @@
       return count;
     }
 
-    // ── Encolhe o conteúdo de um card (.dd-card-scroll, cujo primeiro filho
-    // deve ser um <div class="dd-fit-inner">) até caber sem precisar rolar —
-    // usado em cards cuja quantidade de linhas varia bastante (ex: lista de
-    // quem não bateu ponto). Mede a altura natural (zoom 1) contra a altura
-    // real disponível no card e calcula a razão exata numa tacada só (em vez
-    // de ir tentando zoom por zoom, o que mediria a própria altura já
-    // encolhida e erraria a conta). Não encolhe além de minZoom — se ainda
-    // assim não couber, o scroll normal do card continua como reforço. ──
-    function ddAutoFit(elId, minZoom = 0.55) {
-      const outer = document.getElementById(elId);
-      const inner = outer && outer.firstElementChild;
-      if (!inner) return;
-      inner.style.zoom = 1;
-      const alturaNatural = inner.scrollHeight;
-      const alturaDisponivel = outer.clientHeight;
-      if (!alturaNatural || alturaNatural <= alturaDisponivel) return;
-      inner.style.zoom = Math.max(minZoom, alturaDisponivel / alturaNatural);
+    // ── Mostra só quantos itens de uma lista dinâmica (dentro de listaId)
+    // cabem no espaço que sobra no card (containerId) sem precisar rolar —
+    // mede a altura real já renderizada de cada item (getBoundingClientRect,
+    // não depende de zoom/transform, que nem sempre encolhe o overflow do
+    // jeito esperado) contra o espaço livre até a borda do card, e troca o
+    // resto por um resumo "+N outros". Usado em listas cuja quantidade varia
+    // bastante (ex: quem não bateu ponto). ──
+    function ddFitLista(containerId, listaId) {
+      const container = document.getElementById(containerId);
+      const lista = document.getElementById(listaId);
+      if (!container || !lista) return;
+      const itens = Array.from(lista.children);
+      if (!itens.length) return;
+      const disponivel = container.getBoundingClientRect().bottom - lista.getBoundingClientRect().top;
+      let usado = 0, ultimoVisivel = -1;
+      for (let i = 0; i < itens.length; i++) {
+        usado += itens[i].getBoundingClientRect().height;
+        if (usado > disponivel) break;
+        ultimoVisivel = i;
+      }
+      if (ultimoVisivel >= itens.length - 1) return;
+      const restantes = itens.length - Math.max(0, ultimoVisivel + 1);
+      for (let i = ultimoVisivel + 1; i < itens.length; i++) itens[i].remove();
+      if (restantes > 0) {
+        const extra = document.createElement('div');
+        extra.className = 'dd-lista-sub';
+        extra.style.paddingTop = '4px';
+        extra.textContent = `+ ${restantes} outro(s)`;
+        lista.appendChild(extra);
+      }
     }
 
     // ── Saldo em Caixa = CEF (conta ANE) + INTER (conta JOAO) — mesma lógica
@@ -1138,17 +1151,15 @@
       });
       const bateramPonto = funcAtivos.length - naoBateram.length;
       document.getElementById('dd-ponto-hoje').innerHTML = `
-        <div class="dd-fit-inner">
-          <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px;">
-            <div class="dd-card-icon" style="background:rgba(105,240,174,0.14);margin:0;">🕐</div>
-            <div><div class="dd-card-value">${bateramPonto}/${funcAtivos.length}</div><div class="dd-card-title" style="margin:0;">BATERAM PONTO HOJE</div></div>
-          </div>
-          <div class="dd-lista-item"><span class="dd-lista-sub">No trabalho agora</span><span class="dd-lista-valor">${noTrabalho}</span></div>
-          <div class="dd-lista-item"><span class="dd-lista-sub">Já saíram</span><span class="dd-lista-valor">${jaSairam}</span></div>
-          <div class="dd-lista-item"><span class="dd-lista-sub">Não bateram ponto</span><span class="dd-lista-valor" style="color:${naoBateram.length ? '#ef4943' : '#4acf54'};">${naoBateram.length}</span></div>
-          ${naoBateram.length ? naoBateram.map(n => `<div class="dd-lista-item"><span class="dd-lista-nome" style="color:#ef4943;">⚠️ ${ddEscHtml(n)}</span></div>`).join('') : ''}
-        </div>`;
-      ddAutoFit('dd-ponto-hoje');
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px;">
+          <div class="dd-card-icon" style="background:rgba(105,240,174,0.14);margin:0;">🕐</div>
+          <div><div class="dd-card-value">${bateramPonto}/${funcAtivos.length}</div><div class="dd-card-title" style="margin:0;">BATERAM PONTO HOJE</div></div>
+        </div>
+        <div class="dd-lista-item"><span class="dd-lista-sub">No trabalho agora</span><span class="dd-lista-valor">${noTrabalho}</span></div>
+        <div class="dd-lista-item"><span class="dd-lista-sub">Já saíram</span><span class="dd-lista-valor">${jaSairam}</span></div>
+        <div class="dd-lista-item"><span class="dd-lista-sub">Não bateram ponto</span><span class="dd-lista-valor" style="color:${naoBateram.length ? '#ef4943' : '#4acf54'};">${naoBateram.length}</span></div>
+        <div id="dd-ponto-nomes">${naoBateram.map(n => `<div class="dd-lista-item"><span class="dd-lista-nome" style="color:#ef4943;">⚠️ ${ddEscHtml(n)}</span></div>`).join('')}</div>`;
+      ddFitLista('dd-ponto-hoje', 'dd-ponto-nomes');
 
       // ── Funcionários ──
       const ativos = func.filter(f => f.ativo !== false).length;
