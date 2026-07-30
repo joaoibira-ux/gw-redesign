@@ -125,7 +125,7 @@ const TOOLS_GW = [
   },
   {
     name: "extrato_refeicoes_imagem",
-    description: "Gera o extrato de refeições (mesmo cálculo de extrato_refeicoes) como uma imagem PNG estilizada com a logo da GW e envia pelo Telegram, pronta para encaminhar. Use quando o usuário pedir a imagem/arte do extrato, ou para 'enviar pelo Telegram', em vez da versão em texto.",
+    description: "Gera o extrato de refeições (mesmo cálculo de extrato_refeicoes) como uma imagem PNG estilizada com a logo da GW e envia pelo Telegram, pronta para encaminhar. Use quando o usuário pedir a imagem/arte do extrato, ou para 'enviar pelo Telegram', em vez da versão em texto. Depois de enviar com sucesso, SEMPRE pergunte ao usuário se ele quer registrar esse valor total no Contas a Pagar (ver registrar_pagamento_refeicoes) — a menos que o resultado já traga 'periodosJaPagos' preenchido, caso em que avise antes que esse período (ou parte dele) já foi pago.",
     input_schema: {
       type: "object",
       properties: {
@@ -133,6 +133,19 @@ const TOOLS_GW = [
         data_fim:    { type: "string", description: "Data final do período, formato YYYY-MM-DD" }
       },
       required: ["data_inicio", "data_fim"]
+    }
+  },
+  {
+    name: "registrar_pagamento_refeicoes",
+    description: "Cria um lançamento no Contas a Pagar com o valor total do extrato de refeições de um período, e marca esse período como pago (fica registrado pra qualquer consulta futura que envolva esse período, ou parte dele, avisar que já foi pago — evita pagar em dobro). Recalcula o extrato do zero a partir do período informado, não confia em números ditos antes na conversa. ALTERA O BANCO DE DADOS: exige senha de autorização, peça ao usuário antes de chamar. Só chame depois que o usuário confirmar explicitamente que quer registrar (normalmente depois de extrato_refeicoes_imagem).",
+    input_schema: {
+      type: "object",
+      properties: {
+        data_inicio: { type: "string", description: "Data inicial do período, formato YYYY-MM-DD" },
+        data_fim:    { type: "string", description: "Data final do período, formato YYYY-MM-DD" },
+        senha:       { type: "string", description: "Senha de autorização para alterar o banco de dados. Deve ser pedida ao usuário antes de chamar esta ferramenta." }
+      },
+      required: ["data_inicio", "data_fim", "senha"]
     }
   },
   {
@@ -328,6 +341,21 @@ async function enviarFotoTelegram(buffer, filename, caption) {
 
 // ── Extrato de refeições ────────────────────────────────────────────────
 
+// Períodos de refeição já registrados como pagos (coleção "refeicoesPagas")
+// se sobrepõem ao período pedido agora — compara datas YYYY-MM-DD como
+// string, que ordena/compara igual a data real nesse formato. Firestore não
+// permite range em dois campos diferentes na mesma query, então filtra só
+// por dataFim no banco e o resto (dataInicio <= data_fim) em JS — a coleção
+// é pequena (1 registro por período fechado), sem custo relevante.
+async function verificarSobreposicaoPagamento(data_inicio, data_fim) {
+  const snap = await db.collection("refeicoesPagas")
+    .where("dataFim", ">=", data_inicio)
+    .get();
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(r => r.dataInicio <= data_fim);
+}
+
 async function calcularExtratoRefeicoes(data_inicio, data_fim) {
   const PRECO_CAFE = 10;
   const PRECO_ALMOCO = 15;
@@ -378,6 +406,8 @@ async function calcularExtratoRefeicoes(data_inicio, data_fim) {
     };
   });
 
+  const periodosJaPagos = await verificarSobreposicaoPagamento(data_inicio, data_fim);
+
   return {
     periodo: { inicio: data_inicio, fim: data_fim },
     precoCafe: PRECO_CAFE,
@@ -389,7 +419,12 @@ async function calcularExtratoRefeicoes(data_inicio, data_fim) {
       custoCafe: totalCafe * PRECO_CAFE,
       custoAlmoco: totalAlmoco * PRECO_ALMOCO,
       custoGeral: totalCafe * PRECO_CAFE + totalAlmoco * PRECO_ALMOCO
-    }
+    },
+    // presente e não-vazio quando parte (ou tudo) desse período já foi
+    // registrado como pago antes — o assistente deve avisar o usuário.
+    periodosJaPagos: periodosJaPagos.map(p => ({
+      dataInicio: p.dataInicio, dataFim: p.dataFim, valorPago: p.custoTotal
+    }))
   };
 }
 
@@ -678,7 +713,64 @@ async function executarFerramenta(nome, input) {
     return {
       sucesso: true,
       mensagem: "Imagem do extrato de refeições gerada e enviada pelo Telegram com sucesso.",
-      totais: dados.totais
+      totais: dados.totais,
+      periodosJaPagos: dados.periodosJaPagos
+    };
+  }
+
+  if (nome === "registrar_pagamento_refeicoes") {
+    const { data_inicio, data_fim, senha } = input;
+    if (senha !== SENHA_ALTERACAO_BANCO) {
+      return { sucesso: false, erro: "senha_invalida", mensagem: "Senha incorreta. Peça a senha de autorização ao usuário para alterar o banco de dados." };
+    }
+    if (!data_inicio || !data_fim) {
+      return { sucesso: false, erro: "parametros_invalidos", mensagem: "data_inicio e data_fim são obrigatórios." };
+    }
+
+    // Recalcula do zero — nunca confia num total já dito antes na conversa.
+    const dados = await calcularExtratoRefeicoes(data_inicio, data_fim);
+    if (!dados.dias.length) {
+      return { sucesso: false, erro: "sem_dados", mensagem: "Nenhum registro de ponto encontrado nesse período — nada a registrar." };
+    }
+    if (dados.periodosJaPagos.length) {
+      return {
+        sucesso: false,
+        erro: "periodo_ja_pago",
+        mensagem: "Esse período (ou parte dele) já foi registrado como pago antes. Confirme com o usuário se ele quer registrar mesmo assim (ex: se o período pedido agora só sobrepõe uma parte) antes de insistir.",
+        periodosJaPagos: dados.periodosJaPagos
+      };
+    }
+
+    const dataHojeBR = new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+    const descricao = `Refeições (café da manhã e almoço) — ${data_inicio.split("-").reverse().join("/")} a ${data_fim.split("-").reverse().join("/")}`;
+
+    const refContaPagar = db.collection("contasPagar").doc();
+    const refPago = db.collection("refeicoesPagas").doc();
+    const batch = db.batch();
+    batch.set(refContaPagar, {
+      data: dataHojeBR,
+      descricao,
+      valor: dados.totais.custoGeral,
+      status: "aberto",
+      criadoEm: admin.firestore.FieldValue.serverTimestamp()
+    });
+    batch.set(refPago, {
+      dataInicio: data_inicio,
+      dataFim: data_fim,
+      totalCafe: dados.totais.cafeManha,
+      totalAlmoco: dados.totais.almoco,
+      custoTotal: dados.totais.custoGeral,
+      contaPagarId: refContaPagar.id,
+      criadoEm: admin.firestore.FieldValue.serverTimestamp()
+    });
+    await batch.commit();
+
+    return {
+      sucesso: true,
+      mensagem: "Lançamento criado no Contas a Pagar e período marcado como pago.",
+      contaPagarId: refContaPagar.id,
+      valor: dados.totais.custoGeral,
+      periodo: { inicio: data_inicio, fim: data_fim }
     };
   }
 
@@ -1093,7 +1185,8 @@ Responda sempre em português brasileiro, de forma direta e confirmando o que fo
 Quando o usuário mencionar um nome incompleto de funcionário, use listar_funcionarios primeiro para encontrar o ID correto.
 CRÍTICO: funcionarioId é sempre o ID real gerado pelo Firestore (retornado por listar_funcionarios), nunca um valor inventado a partir do nome (ex: "lucas.cristiano" ou "3" NÃO são funcionarioId válidos). Antes de chamar registrar_ponto ou editar_ponto, sempre confirme o funcionarioId real chamando listar_funcionarios — a menos que esse ID já tenha sido retornado por listar_funcionarios nesta mesma conversa. Nunca presuma ou monte um ID.
 Códigos de locais/apartamentos (ex: BM 06, BM06, BM006, BM 006, Bm 06) são equivalentes — passe o código exatamente como o usuário digitou, o sistema normaliza automaticamente.
-IMPORTANTE: qualquer ferramenta que altere o banco de dados (ex: registrar_ponto, editar_ponto, cancelar_ponto, criar_lancamento_caixa, editar_lancamento_caixa, excluir_lancamento_caixa) exige uma senha de autorização. Antes de chamar essa ferramenta, sempre pergunte ao usuário "Qual a senha de autorização para alterar o banco de dados?" e só prossiga depois que ele informar a senha. Nunca invente, sugira ou revele a senha.
+IMPORTANTE: qualquer ferramenta que altere o banco de dados (ex: registrar_ponto, editar_ponto, cancelar_ponto, criar_lancamento_caixa, editar_lancamento_caixa, excluir_lancamento_caixa, registrar_pagamento_refeicoes) exige uma senha de autorização. Antes de chamar essa ferramenta, sempre pergunte ao usuário "Qual a senha de autorização para alterar o banco de dados?" e só prossiga depois que ele informar a senha. Nunca invente, sugira ou revele a senha.
+Depois que extrato_refeicoes_imagem enviar a imagem com sucesso, pergunte ao usuário se ele quer registrar esse valor total no Contas a Pagar. Se ele confirmar, peça a senha de autorização e chame registrar_pagamento_refeicoes com o mesmo período. Se o resultado de qualquer ferramenta de refeições trouxer "periodosJaPagos" preenchido, avise o usuário que esse período (ou parte dele) já foi registrado como pago antes, ANTES de prosseguir — não insista em registrar de novo sem ele confirmar que quer mesmo assim.
 Para editar ou excluir um lançamento do caixa, use consultar_caixa primeiro para encontrar o id correto e confirme com o usuário qual lançamento é (data, descrição e valor) antes de aplicar a alteração.
 Para cancelar um registro de ponto, use consultar_ponto primeiro para encontrar o id correto e confirme com o usuário qual registro é (funcionário, tipo e horário) antes de cancelar.
 Para corrigir um registro de ponto já existente (mudar data, horário ou tipo), use editar_ponto com o id obtido via consultar_ponto — NÃO cancele e registre de novo manualmente em duas chamadas separadas; editar_ponto já faz isso internamente (substitui o registro e guarda um histórico da alteração).
