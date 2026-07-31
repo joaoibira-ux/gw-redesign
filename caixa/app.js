@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.43";
+const VERSAO_CAIXA = "3.44";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -110,6 +110,8 @@ function render(docs) {
       } else if (r.origem === "JOAO->HORACIO") {
         interS        += r.saida || 0;
         horacioSaidas += r.saida || 0;
+      } else if (r.origem === "ANE->EMPRESTIMO") {
+        cefE += r.entrada || 0;
       } else if (r.origem === "ANE->RETENCAO PARADIGMA 5%") {
         cefS += r.saida || 0;
       } else if (r.origem === "JOAO->RETENCAO PARADIGMA 5%") {
@@ -266,6 +268,8 @@ document.getElementById("form").addEventListener("submit", function(e) {
     baixarContaAReceber(data, desc, entrada, origem);
   } else if (origem === "JOAO->CTAS A PAGAR") {
     criarContaAPagar(data, desc, entrada);
+  } else if (origem === "ANE->EMPRESTIMO") {
+    criarEntradaEmprestimo(data, desc, entrada);
   } else if (origem === "JOAO->BAIXA CTAS A PAGAR" || origem === "ANE->BAIXA CTAS A PAGAR") {
     if (!contaPagarSelecionada) { alert("Selecione uma conta a pagar. Selecione a origem novamente."); return; }
     baixarContaAPagar(data, desc, saida, origem);
@@ -303,7 +307,7 @@ const ORIGEM_GRUPOS = {
     { value: "ANE->GW-INTER", label: "TRANSFERÊNCIA CEF → INTER" },
     { value: "ANE->HORACIO", label: "HORACIO-Pagamento de Empréstimo (Baixa do Crédito Horácio)" },
     { value: "ANE->JOAO", label: "JOÃO ALBÉRICO - Pagamento de Prólabore (Baixa do Crédito João)" },
-    { value: "ANE->RETENCAO PARADIGMA 5%", label: "RETENÇÃO PARADIGMA 5% (A Receber)" },
+    { value: "ANE->EMPRESTIMO", label: "ENTRADA DE EMPRÉSTIMO (Gera Conta a Pagar)" },
     { value: "ANE->ADIANTAMENTO", label: "ADIANTAMENTO DE SALÁRIO (Debita da Folha)" },
     { value: "ANE->BAIXA CTAS A PAGAR", label: "ANE → BAIXA CTAS A PAGAR" },
     { value: "ANE->BAIXA CTAS A RECEBER", label: "ANE → BAIXA CTAS A RECEBER" }
@@ -377,8 +381,6 @@ document.getElementById("f-origem").addEventListener("change", function() {
     desc.value = "Pró-labore JOAO: CEF -> JOAO";
   } else if (this.value === "JOAO->HORACIO") {
     desc.value = "Transferência Pix: INTER -> HORÁCIO";
-  } else if (this.value === "ANE->RETENCAO PARADIGMA 5%") {
-    desc.value = "Retenção 5% Paradigma";
   } else if (this.value === "JOAO->RETENCAO PARADIGMA 5%") {
     desc.value = "Retenção 5% Paradigma";
   } else if (this.value === "JOAO->CREDITO DE PROLABORE") {
@@ -573,6 +575,27 @@ function criarContaAPagar(data, desc, entrada) {
   });
 
   batch.commit().catch(() => alert("Erro ao criar conta a pagar. Tente novamente."));
+}
+
+// Entrada de empréstimo: dinheiro entra no caixa CEF (ANE) e, ao mesmo
+// tempo, vira uma dívida a pagar depois — mesmo padrão de criarContaAPagar,
+// só muda o lado (CEF em vez de INTER/JOAO) e a origem do lançamento.
+function criarEntradaEmprestimo(data, desc, entrada) {
+  const numero = String(Object.keys(docsCache).length + 1).padStart(4, "0");
+  const batch = db.batch();
+
+  batch.set(col.doc(), {
+    data, origem: "ANE->EMPRESTIMO", descricao: desc,
+    entrada, saida: 0,
+    criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+  });
+
+  batch.set(db.collection("contasPagar").doc(), {
+    numero, data, descricao: desc, valor: entrada, status: "aberto",
+    criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+  });
+
+  batch.commit().catch(() => alert("Erro ao registrar entrada de empréstimo. Tente novamente."));
 }
 
 function criarCreditoRepassarBBS(data, desc, entrada) {

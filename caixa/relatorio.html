@@ -599,6 +599,7 @@
           <option value="ANE->GW-INTER">Transferências</option>
           <option value="ANE->HORACIO">ANE → HORACIO</option>
           <option value="JOAO->HORACIO">JOÃO → HORÁCIO</option>
+          <option value="ANE->EMPRESTIMO">ANE → ENTRADA DE EMPRÉSTIMO</option>
           <option value="ANE->RETENCAO PARADIGMA 5%">ANE → RETENÇÃO PARADIGMA 5%</option>
           <option value="JOAO->RETENCAO PARADIGMA 5%">JOAO → RETENÇÃO PARADIGMA 5%</option>
           <option value="JOAO->JOAO">JOÃO → JOÃO</option>
@@ -675,7 +676,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.84";
+  const VERSAO = "1.85";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1053,7 +1054,7 @@
       } else if (r.origem === "JOAO") {
         interE += r.entrada || 0;
         interS += r.saida   || 0;
-      } else if (r.origem === "ANE->CREDITO A REPASSAR P BBS FOMENTO") {
+      } else if (r.origem === "ANE->CREDITO A REPASSAR P BBS FOMENTO" || r.origem === "ANE->EMPRESTIMO") {
         cefE += r.entrada || 0;
       }
     });
