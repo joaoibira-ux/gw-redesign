@@ -162,7 +162,7 @@ const TOOLS_GW = [
   },
   {
     name: "editar_conta_pagar",
-    description: "Edita a descrição e/ou o valor (ou data/status) de um lançamento já existente no Contas a Pagar. Use consultar_contas_pagar antes para obter o id correto e confirme com o usuário qual lançamento é (descrição e valor atuais) antes de aplicar a alteração. ALTERA O BANCO DE DADOS: exige senha de autorização, peça ao usuário antes de chamar.",
+    description: "Edita a descrição e/ou o valor (ou data/status) de um lançamento já existente no Contas a Pagar. Use consultar_contas_pagar antes para obter o id correto (NUNCA invente um id como '1', '2', '3' — só o id exato retornado por consultar_contas_pagar é válido) e confirme com o usuário qual lançamento é (descrição e valor atuais) antes de aplicar a alteração. Pra marcar como pago/quitado, prefira dar_baixa_conta_pagar (mais direto). ALTERA O BANCO DE DADOS: exige senha de autorização, peça ao usuário antes de chamar.",
     input_schema: {
       type: "object",
       properties: {
@@ -172,6 +172,18 @@ const TOOLS_GW = [
         data:      { type: "string", description: "Nova data DD/MM/YYYY (opcional, mantém a atual se omitido)" },
         status:    { type: "string", description: "Novo status: 'aberto' ou 'baixado' (opcional, mantém o atual se omitido)" },
         senha:     { type: "string", description: "Senha de autorização para alterar o banco de dados. Deve ser pedida ao usuário antes de chamar esta ferramenta." }
+      },
+      required: ["id", "senha"]
+    }
+  },
+  {
+    name: "dar_baixa_conta_pagar",
+    description: "Marca UM lançamento do Contas a Pagar como pago (status 'baixado'). Use quando o usuário pedir pra 'dar baixa', 'marcar como pago' ou 'quitar' um lançamento. Use consultar_contas_pagar ANTES pra obter o id real (NUNCA invente um id como '1', '2', '3' — só o id exato retornado por consultar_contas_pagar é válido) e confirme com o usuário qual lançamento é (descrição e valor) antes de aplicar. Se o usuário pedir baixa em MAIS DE UM lançamento, chame esta ferramenta UMA VEZ PARA CADA um deles, com o id real de cada — nunca responda como se tivesse dado baixa em algo sem ter chamado a ferramenta pra aquele item específico. ALTERA O BANCO DE DADOS: exige senha de autorização, peça ao usuário antes de chamar.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id:    { type: "string", description: "ID do lançamento (obtido via consultar_contas_pagar — nunca invente)" },
+        senha: { type: "string", description: "Senha de autorização para alterar o banco de dados. Deve ser pedida ao usuário antes de chamar esta ferramenta." }
       },
       required: ["id", "senha"]
     }
@@ -848,6 +860,23 @@ async function executarFerramenta(nome, input) {
     return { sucesso: true, id, atualizado: updates };
   }
 
+  if (nome === "dar_baixa_conta_pagar") {
+    const { id, senha } = input;
+    if (senha !== SENHA_ALTERACAO_BANCO) {
+      return { sucesso: false, erro: "senha_invalida", mensagem: "Senha incorreta. Peça a senha de autorização ao usuário para alterar o banco de dados." };
+    }
+    const ref = db.collection("contasPagar").doc(id);
+    const doc = await ref.get();
+    if (!doc.exists) return { sucesso: false, erro: "nao_encontrado", mensagem: "Lançamento não encontrado no Contas a Pagar." };
+    const atual = doc.data();
+    if (atual.status === "baixado") {
+      return { sucesso: false, erro: "ja_baixado", mensagem: "Esse lançamento já estava marcado como baixado — nada foi alterado.", descricao: atual.descricao, valor: atual.valor };
+    }
+
+    await ref.update({ status: "baixado" });
+    return { sucesso: true, id, descricao: atual.descricao, valor: atual.valor };
+  }
+
   if (nome === "cancelar_ponto") {
     const { id, senha } = input;
     if (senha !== SENHA_ALTERACAO_BANCO) {
@@ -1259,11 +1288,11 @@ Responda sempre em português brasileiro, de forma direta e confirmando o que fo
 Quando o usuário mencionar um nome incompleto de funcionário, use listar_funcionarios primeiro para encontrar o ID correto.
 CRÍTICO: funcionarioId é sempre o ID real gerado pelo Firestore (retornado por listar_funcionarios), nunca um valor inventado a partir do nome (ex: "lucas.cristiano" ou "3" NÃO são funcionarioId válidos). Antes de chamar registrar_ponto ou editar_ponto, sempre confirme o funcionarioId real chamando listar_funcionarios — a menos que esse ID já tenha sido retornado por listar_funcionarios nesta mesma conversa. Nunca presuma ou monte um ID.
 Códigos de locais/apartamentos (ex: BM 06, BM06, BM006, BM 006, Bm 06) são equivalentes — passe o código exatamente como o usuário digitou, o sistema normaliza automaticamente.
-IMPORTANTE: qualquer ferramenta que altere o banco de dados (ex: registrar_ponto, editar_ponto, cancelar_ponto, criar_lancamento_caixa, editar_lancamento_caixa, excluir_lancamento_caixa, registrar_pagamento_refeicoes, editar_conta_pagar) exige uma senha de autorização. Antes de chamar essa ferramenta, sempre pergunte ao usuário "Qual a senha de autorização para alterar o banco de dados?" e só prossiga depois que ele informar a senha. Nunca invente, sugira ou revele a senha.
-CRÍTICO: NUNCA diga ao usuário que uma ação foi concluída/registrada/salva com sucesso a menos que o resultado da ferramenta (o tool_result mais recente) traga explicitamente "sucesso": true. Se vier "sucesso": false, ou se você não tiver certeza de ter chamado a ferramenta de verdade, informe claramente que a ação FALHOU (use a "mensagem" do erro, se houver) e peça pra tentar de novo — nunca componha uma confirmação de sucesso a partir de memória da conversa ou suposição. Isso já causou um caso real: o assistente disse "Pagamento registrado com sucesso" sem a ferramenta ter sido executada de verdade, e nada foi gravado no banco.
+IMPORTANTE: qualquer ferramenta que altere o banco de dados (ex: registrar_ponto, editar_ponto, cancelar_ponto, criar_lancamento_caixa, editar_lancamento_caixa, excluir_lancamento_caixa, registrar_pagamento_refeicoes, editar_conta_pagar, dar_baixa_conta_pagar) exige uma senha de autorização. Antes de chamar essa ferramenta, sempre pergunte ao usuário "Qual a senha de autorização para alterar o banco de dados?" e só prossiga depois que ele informar a senha. Nunca invente, sugira ou revele a senha.
+CRÍTICO: NUNCA diga ao usuário que uma ação foi concluída/registrada/salva com sucesso a menos que o resultado da ferramenta (o tool_result mais recente) traga explicitamente "sucesso": true. Se vier "sucesso": false, ou se você não tiver certeza de ter chamado a ferramenta de verdade, informe claramente que a ação FALHOU (use a "mensagem" do erro, se houver) e peça pra tentar de novo — nunca componha uma confirmação de sucesso a partir de memória da conversa ou suposição. Isso já causou dois casos reais: (1) o assistente disse "Pagamento registrado com sucesso" sem a ferramenta ter sido executada de verdade, nada gravado no banco; (2) o usuário pediu baixa em 2 lançamentos do Contas a Pagar, o assistente confirmou os dois, mas NENHUMA ferramenta foi chamada pra nenhum dos dois. SE O USUÁRIO PEDIR UMA AÇÃO EM MAIS DE UM ITEM (ex: "dá baixa nesses dois", "edita esses três"), chame a ferramenta correspondente UMA VEZ PARA CADA item, com o id real de cada um — nunca responda como se todos tivessem sido feitos sem ter chamado a ferramenta pra cada um individualmente.
 Depois que extrato_refeicoes_imagem enviar a imagem com sucesso, pergunte ao usuário se ele quer registrar esse valor total no Contas a Pagar. Se ele confirmar, peça a senha de autorização e chame registrar_pagamento_refeicoes com o mesmo período. Se o resultado de qualquer ferramenta de refeições trouxer "periodosJaPagos" preenchido, avise o usuário que esse período (ou parte dele) já foi registrado como pago antes, ANTES de prosseguir — não insista em registrar de novo sem ele confirmar que quer mesmo assim.
 Para editar ou excluir um lançamento do caixa, use consultar_caixa primeiro para encontrar o id correto e confirme com o usuário qual lançamento é (data, descrição e valor) antes de aplicar a alteração.
-Para editar um lançamento do Contas a Pagar (mudar descrição, valor, data ou status), use consultar_contas_pagar primeiro para encontrar o id correto e confirme com o usuário qual lançamento é (descrição e valor atuais) antes de aplicar a alteração com editar_conta_pagar.
+Para editar ou dar baixa num lançamento do Contas a Pagar, use consultar_contas_pagar primeiro para encontrar o id correto — NUNCA invente um id (ex: "1", "2", "3" não são ids válidos, só o id exato que consultar_contas_pagar retornou) — e confirme com o usuário qual lançamento é (descrição e valor atuais) antes de aplicar. Pra "dar baixa"/"marcar como pago"/"quitar", use dar_baixa_conta_pagar. Pra mudar descrição, valor ou data, use editar_conta_pagar.
 Para cancelar um registro de ponto, use consultar_ponto primeiro para encontrar o id correto e confirme com o usuário qual registro é (funcionário, tipo e horário) antes de cancelar.
 Para corrigir um registro de ponto já existente (mudar data, horário ou tipo), use editar_ponto com o id obtido via consultar_ponto — NÃO cancele e registre de novo manualmente em duas chamadas separadas; editar_ponto já faz isso internamente (substitui o registro e guarda um histórico da alteração).
 Quando o usuário pedir para registrar ponto em uma data diferente de hoje (ex: "registre a saída de fulano dia 27/06"), SEMPRE preencha o campo "data" de registrar_ponto com essa data — nunca deixe em branco, senão o registro cai na data de hoje por engano.
