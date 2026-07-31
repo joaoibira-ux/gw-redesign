@@ -1,4 +1,4 @@
-const VERSAO = "1.1";
+const VERSAO = "1.2";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp({
@@ -11,6 +11,13 @@ firebase.initializeApp({
 });
 const db = firebase.firestore();
 const docRef = db.collection("configuracoes").doc("geral");
+const colRecorrentes = db.collection("despesasRecorrentes");
+
+function escHtml(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
 
 // Valores padrão caso o documento ainda não exista
 const DEFAULTS = {
@@ -27,11 +34,17 @@ const DEFAULTS = {
 };
 
 let cfg = { ...DEFAULTS };
+let recorrentes = [];
 
 // ── Carrega e renderiza ───────────────────────────────────────
 docRef.onSnapshot(snap => {
   if (snap.exists) cfg = { ...DEFAULTS, ...snap.data() };
   else             cfg = { ...DEFAULTS };
+  renderizar();
+});
+
+colRecorrentes.orderBy("diaMes").onSnapshot(snap => {
+  recorrentes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   renderizar();
 });
 
@@ -50,6 +63,12 @@ function renderizar() {
     ${item("Valor do Café", fmtMoeda(cfg.valorCafe), "valorCafe", false)}
     ${item("Valor do Almoço", fmtMoeda(cfg.valorAlmoco), "valorAlmoco", false)}
 
+    <div class="secao-titulo">📅 Despesas Recorrentes (lançadas no Contas a Pagar todo dia 01)</div>
+    ${recorrentes.length
+      ? recorrentes.map(recorrenteItemHtml).join("")
+      : '<div class="cfg-item" style="justify-content:center;color:#888">Nenhuma despesa recorrente cadastrada.</div>'}
+    <button class="btn-nova-recorrente" onclick="abrirModalRecorrente(null)">+ Nova Despesa Recorrente</button>
+
     <div class="secao-titulo">🔑 Senhas de Autorização</div>
     ${item("Excluir / Ativar / Desativar", cfg.senhaExcluir, "senhaExcluir", true)}
     ${item("Alterar Banco de Dados", cfg.senhaAlterarBanco, "senhaAlterarBanco", true)}
@@ -60,6 +79,17 @@ function renderizar() {
     ${item("PIN Restrito (acesso mínimo)", cfg.pinRestrito, "pinRestrito", true)}
     ${item("PIN Limitado (ponto, folha, funcionários, mapa)", cfg.pinLimitado, "pinLimitado", true)}
   `;
+}
+
+function recorrenteItemHtml(r) {
+  return `
+    <div class="cfg-item">
+      <div>
+        <div class="cfg-label">${escHtml(r.descricao)}</div>
+        <div class="cfg-valor">${fmtMoeda(r.valor)} · todo dia ${r.diaMes}</div>
+      </div>
+      <button class="btn-editar" onclick="abrirModalRecorrente('${r.id}')">Editar</button>
+    </div>`;
 }
 
 function item(label, valor, campo, oculto) {
@@ -150,6 +180,72 @@ function salvarModal() {
 // Enter no campo fecha modal salvando
 document.getElementById("modal-input").addEventListener("keydown", e => { if (e.key === "Enter") salvarModal(); });
 document.getElementById("modal-senha").addEventListener("keydown", e => { if (e.key === "Enter") salvarModal(); });
+
+// ── Modal despesa recorrente ────────────────────────────────────
+let _recorrenteEditandoId = null;
+
+function abrirModalRecorrente(id) {
+  _recorrenteEditandoId = id;
+  const r = id ? recorrentes.find(x => x.id === id) : null;
+
+  document.getElementById("modal-recorrente-titulo").textContent = id ? "Editar Despesa Recorrente" : "Nova Despesa Recorrente";
+  document.getElementById("rec-descricao").value = r ? r.descricao : "";
+  document.getElementById("rec-valor").value = r ? Number(r.valor || 0).toFixed(2).replace(".", ",") : "";
+  document.getElementById("rec-dia").value = r ? r.diaMes : "";
+  document.getElementById("rec-senha").value = "";
+  document.getElementById("rec-erro").textContent = "";
+  document.getElementById("rec-excluir-btn").style.display = id ? "block" : "none";
+  document.getElementById("modal-recorrente-overlay").style.display = "flex";
+  setTimeout(() => document.getElementById("rec-descricao").focus(), 50);
+}
+
+function fecharModalRecorrente() {
+  document.getElementById("modal-recorrente-overlay").style.display = "none";
+  _recorrenteEditandoId = null;
+}
+
+function salvarRecorrente() {
+  const erroEl = document.getElementById("rec-erro");
+  const senha = document.getElementById("rec-senha").value.trim();
+  if (senha !== cfg.pinCompleto) {
+    erroEl.textContent = "Senha de autorização incorreta.";
+    return;
+  }
+
+  const descricao = document.getElementById("rec-descricao").value.trim();
+  const valor = parseFloat(document.getElementById("rec-valor").value.trim().replace(",", "."));
+  const diaMes = parseInt(document.getElementById("rec-dia").value, 10);
+
+  if (!descricao) { erroEl.textContent = "Informe a descrição."; return; }
+  if (isNaN(valor) || valor <= 0) { erroEl.textContent = "Valor inválido."; return; }
+  if (isNaN(diaMes) || diaMes < 1 || diaMes > 31) { erroEl.textContent = "Dia do mês deve ser entre 1 e 31."; return; }
+
+  erroEl.textContent = "";
+  const dados = { descricao, valor, diaMes };
+
+  const salvar = _recorrenteEditandoId
+    ? colRecorrentes.doc(_recorrenteEditandoId).update(dados)
+    : colRecorrentes.add({ ...dados, criadoEm: firebase.firestore.FieldValue.serverTimestamp() });
+
+  salvar.then(() => fecharModalRecorrente())
+    .catch(() => { erroEl.textContent = "Erro ao salvar. Tente novamente."; });
+}
+
+function excluirRecorrente() {
+  const erroEl = document.getElementById("rec-erro");
+  const senha = document.getElementById("rec-senha").value.trim();
+  if (senha !== cfg.pinCompleto) {
+    erroEl.textContent = "Senha de autorização incorreta.";
+    return;
+  }
+  if (!_recorrenteEditandoId) return;
+
+  colRecorrentes.doc(_recorrenteEditandoId).delete()
+    .then(() => fecharModalRecorrente())
+    .catch(() => { erroEl.textContent = "Erro ao excluir. Tente novamente."; });
+}
+
+document.getElementById("rec-senha").addEventListener("keydown", e => { if (e.key === "Enter") salvarRecorrente(); });
 
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" })

@@ -1,5 +1,6 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
@@ -1540,3 +1541,48 @@ exports.protegerDiariasFechadas = onDocumentWritten("diarias/{funcionarioId}", a
     await depois.ref.delete();
   }
 });
+
+// Todo dia 01, lança no Contas a Pagar uma cópia de cada despesa
+// recorrente cadastrada em Configurações, com a data de vencimento no
+// dia cadastrado (dentro do mesmo mês do lançamento; se o mês for mais
+// curto que o dia cadastrado, usa o último dia do mês). Marca cada
+// despesa recorrente com o mês já lançado pra nunca duplicar, mesmo se
+// o Cloud Scheduler reexecutar a função.
+exports.lancarDespesasRecorrentes = onSchedule(
+  { schedule: "0 6 1 * *", timeZone: "America/Sao_Paulo" },
+  async () => {
+    const hoje = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+    const ano = hoje.getFullYear();
+    const mes = hoje.getMonth(); // 0-indexed
+    const chaveMes = `${ano}-${String(mes + 1).padStart(2, "0")}`;
+    const ultimoDiaMes = new Date(ano, mes + 1, 0).getDate();
+
+    const snap = await db.collection("despesasRecorrentes").get();
+    if (snap.empty) return;
+
+    const batch = db.batch();
+    let algumLancado = false;
+
+    for (const doc of snap.docs) {
+      const d = doc.data();
+      if (d.ultimoLancamento === chaveMes) continue;
+
+      const dia = Math.min(Math.max(1, Number(d.diaMes) || 1), ultimoDiaMes);
+      const dataVencimento = `${String(dia).padStart(2, "0")}/${String(mes + 1).padStart(2, "0")}/${ano}`;
+
+      batch.set(db.collection("contasPagar").doc(), {
+        data: dataVencimento,
+        descricao: d.descricao,
+        valor: d.valor,
+        status: "aberto",
+        despesaRecorrenteId: doc.id,
+        criadoEm: admin.firestore.FieldValue.serverTimestamp()
+      });
+      batch.update(doc.ref, { ultimoLancamento: chaveMes });
+      algumLancado = true;
+    }
+
+    if (algumLancado) await batch.commit();
+    logger.info(`[despesasRecorrentes] lançamento do mês ${chaveMes} concluído`, { totalCadastradas: snap.size });
+  }
+);
