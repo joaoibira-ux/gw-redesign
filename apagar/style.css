@@ -283,6 +283,17 @@ header {
 }
 .detalhe-linha span:first-child { color: #888; }
 
+.detalhe-extrato-titulo {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #888;
+  border-top: 1px solid #eee;
+  padding-top: 8px;
+  margin-top: 4px;
+}
+
 .detalhe-botoes {
   display: flex;
   gap: 10px;

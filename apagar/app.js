@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "1.5";
+const VERSAO = "1.6";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -180,6 +180,23 @@ function abrirDetalhe(id) {
 
   const linhas = [`<div class="detalhe-linha"><span>Data</span><span>${escHtml(c.data)}</span></div>`];
   if (baixado && c.dataBaixa) linhas.push(`<div class="detalhe-linha"><span>Pago em</span><span>${escHtml(c.dataBaixa)}</span></div>`);
+
+  const temPagamentoParcial = c.valorOriginal && c.valorOriginal > (c.valor || 0);
+  if (temPagamentoParcial) {
+    linhas.push(`<div class="detalhe-linha"><span>Valor original</span><span>${fmtMoeda(c.valorOriginal)}</span></div>`);
+    if (!baixado) linhas.push(`<div class="detalhe-linha"><span>Restante a pagar</span><span>${fmtMoeda(c.valor)}</span></div>`);
+  }
+
+  if (Array.isArray(c.pagamentos) && c.pagamentos.length) {
+    linhas.push(`<div class="detalhe-extrato-titulo">Extrato de pagamentos</div>`);
+    c.pagamentos
+      .slice()
+      .sort((a, b) => parseDataOrdenacao(a.data) - parseDataOrdenacao(b.data))
+      .forEach(p => {
+        linhas.push(`<div class="detalhe-linha"><span>${escHtml(p.data)}</span><span>${fmtMoeda(p.valor)}</span></div>`);
+      });
+  }
+
   document.getElementById("det-linhas").innerHTML = linhas.join("");
 
   document.getElementById("detalhe-overlay").style.display = "flex";

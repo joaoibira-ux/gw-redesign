@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.44";
+const VERSAO_CAIXA = "3.45";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -500,7 +500,7 @@ function selecionarContaPagar(id) {
   const saida = document.getElementById("f-saida");
   desc.value = `Pagamento Cta a Pagar${c.numero ? " Nº " + c.numero : ""}: ${c.descricao}`;
   saida.value = (c.valor || 0).toFixed(2).replace(".", ",");
-  saida.readOnly = true;
+  saida.readOnly = false;
 }
 
 document.getElementById("f-desc").addEventListener("keydown", function(e) {
@@ -627,9 +627,28 @@ function baixarContaAPagar(data, desc, saida, origem) {
     criadoEm: firebase.firestore.FieldValue.serverTimestamp()
   });
 
-  batch.update(db.collection("contasPagar").doc(id), {
-    status: "baixado", dataBaixa: data, numeroBaixa: numero
-  });
+  // Tolerância de arredondamento: valor digitado cobre (ou praticamente
+  // cobre) o que resta -> baixa integral. Menor que isso -> pagamento
+  // parcial, registra no extrato e diminui o valor restante da conta.
+  const valorAtual = conta.valor || 0;
+  const pagamentoIntegral = saida >= valorAtual - 0.005;
+  const contaPagarRef = db.collection("contasPagar").doc(id);
+  const pagamento = { data, valor: saida, criadoEm: new Date().toISOString() };
+
+  if (pagamentoIntegral) {
+    batch.update(contaPagarRef, {
+      status: "baixado", dataBaixa: data, numeroBaixa: numero,
+      valor: 0,
+      valorOriginal: conta.valorOriginal !== undefined ? conta.valorOriginal : valorAtual,
+      pagamentos: firebase.firestore.FieldValue.arrayUnion(pagamento)
+    });
+  } else {
+    batch.update(contaPagarRef, {
+      valor: valorAtual - saida,
+      valorOriginal: conta.valorOriginal !== undefined ? conta.valorOriginal : valorAtual,
+      pagamentos: firebase.firestore.FieldValue.arrayUnion(pagamento)
+    });
+  }
 
   batch.commit().catch(() => alert("Erro ao baixar conta a pagar. Tente novamente."));
 }
