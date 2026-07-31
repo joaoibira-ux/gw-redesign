@@ -1,6 +1,7 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { defineSecret } = require("firebase-functions/params");
+const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
 const ExcelJS = require("exceljs");
 const sharp = require("sharp");
@@ -1186,6 +1187,7 @@ Quando o usuário mencionar um nome incompleto de funcionário, use listar_funci
 CRÍTICO: funcionarioId é sempre o ID real gerado pelo Firestore (retornado por listar_funcionarios), nunca um valor inventado a partir do nome (ex: "lucas.cristiano" ou "3" NÃO são funcionarioId válidos). Antes de chamar registrar_ponto ou editar_ponto, sempre confirme o funcionarioId real chamando listar_funcionarios — a menos que esse ID já tenha sido retornado por listar_funcionarios nesta mesma conversa. Nunca presuma ou monte um ID.
 Códigos de locais/apartamentos (ex: BM 06, BM06, BM006, BM 006, Bm 06) são equivalentes — passe o código exatamente como o usuário digitou, o sistema normaliza automaticamente.
 IMPORTANTE: qualquer ferramenta que altere o banco de dados (ex: registrar_ponto, editar_ponto, cancelar_ponto, criar_lancamento_caixa, editar_lancamento_caixa, excluir_lancamento_caixa, registrar_pagamento_refeicoes) exige uma senha de autorização. Antes de chamar essa ferramenta, sempre pergunte ao usuário "Qual a senha de autorização para alterar o banco de dados?" e só prossiga depois que ele informar a senha. Nunca invente, sugira ou revele a senha.
+CRÍTICO: NUNCA diga ao usuário que uma ação foi concluída/registrada/salva com sucesso a menos que o resultado da ferramenta (o tool_result mais recente) traga explicitamente "sucesso": true. Se vier "sucesso": false, ou se você não tiver certeza de ter chamado a ferramenta de verdade, informe claramente que a ação FALHOU (use a "mensagem" do erro, se houver) e peça pra tentar de novo — nunca componha uma confirmação de sucesso a partir de memória da conversa ou suposição. Isso já causou um caso real: o assistente disse "Pagamento registrado com sucesso" sem a ferramenta ter sido executada de verdade, e nada foi gravado no banco.
 Depois que extrato_refeicoes_imagem enviar a imagem com sucesso, pergunte ao usuário se ele quer registrar esse valor total no Contas a Pagar. Se ele confirmar, peça a senha de autorização e chame registrar_pagamento_refeicoes com o mesmo período. Se o resultado de qualquer ferramenta de refeições trouxer "periodosJaPagos" preenchido, avise o usuário que esse período (ou parte dele) já foi registrado como pago antes, ANTES de prosseguir — não insista em registrar de novo sem ele confirmar que quer mesmo assim.
 Para editar ou excluir um lançamento do caixa, use consultar_caixa primeiro para encontrar o id correto e confirme com o usuário qual lançamento é (data, descrição e valor) antes de aplicar a alteração.
 Para cancelar um registro de ponto, use consultar_ponto primeiro para encontrar o id correto e confirme com o usuário qual registro é (funcionário, tipo e horário) antes de cancelar.
@@ -1225,7 +1227,29 @@ CRÍTICO: consultar_ponto só serve para UM dia. Quando o usuário pedir ponto d
         msgs.push({ role: "assistant", content: data.content });
 
         const toolResults = await Promise.all(toolUseBlocks.map(async b => {
-          const resultado = await executarFerramenta(b.name, b.input);
+          // Achado ao vivo em 2026-07-31: registrar_pagamento_refeicoes
+          // reportou sucesso pro usuário no WhatsApp, mas NADA foi gravado
+          // no Firestore (nem contasPagar, nem refeicoesPagas) — sem
+          // nenhum erro visível no log. Duas correções: (1) log explícito
+          // de toda chamada de ferramenta que altera o banco, pra próxima
+          // vez que isso acontecer dar pra ver a causa real no `firebase
+          // functions:log`; (2) captura qualquer exceção aqui em vez de
+          // deixar propagar — sem isso, uma falha nessa chamada quebraria
+          // o Promise.all inteiro (todas as ferramentas desse turno, não
+          // só essa), e o Claude nunca veria um tool_result de verdade pra
+          // relatar corretamente ao usuário que algo deu errado.
+          const alteraBanco = /senha/i.test(JSON.stringify(b.input || {})) || b.name.startsWith("registrar_")
+            || b.name.startsWith("cancelar_") || b.name.startsWith("editar_") || b.name.startsWith("criar_");
+          let resultado;
+          try {
+            resultado = await executarFerramenta(b.name, b.input);
+            if (alteraBanco) {
+              logger.info(`[ferramenta] ${b.name} concluída`, { input: b.input, resultado });
+            }
+          } catch (err) {
+            logger.error(`[ferramenta] ${b.name} lançou exceção`, { input: b.input, erro: err.message, stack: err.stack });
+            resultado = { sucesso: false, erro: "excecao_interna", mensagem: `Falha interna ao executar ${b.name}: ${err.message}. NÃO informe sucesso ao usuário — avise que a ação falhou e peça pra tentar de novo.` };
+          }
           return { type: "tool_result", tool_use_id: b.id, content: JSON.stringify(resultado) };
         }));
 
