@@ -150,6 +150,33 @@ const TOOLS_GW = [
     }
   },
   {
+    name: "consultar_contas_pagar",
+    description: "Consulta lançamentos do Contas a Pagar, com filtros opcionais por status ou palavra-chave na descrição. Use antes de editar_conta_pagar pra encontrar o id correto.",
+    input_schema: {
+      type: "object",
+      properties: {
+        status: { type: "string", description: "Filtrar por status: 'aberto' ou 'baixado' (opcional — sem isso, traz os dois)" },
+        busca:  { type: "string", description: "Palavra-chave para buscar na descrição (opcional)" }
+      }
+    }
+  },
+  {
+    name: "editar_conta_pagar",
+    description: "Edita a descrição e/ou o valor (ou data/status) de um lançamento já existente no Contas a Pagar. Use consultar_contas_pagar antes para obter o id correto e confirme com o usuário qual lançamento é (descrição e valor atuais) antes de aplicar a alteração. ALTERA O BANCO DE DADOS: exige senha de autorização, peça ao usuário antes de chamar.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id:        { type: "string", description: "ID do lançamento (obtido via consultar_contas_pagar)" },
+        descricao: { type: "string", description: "Nova descrição (opcional, mantém a atual se omitido)" },
+        valor:     { type: "number", description: "Novo valor (opcional, mantém o atual se omitido)" },
+        data:      { type: "string", description: "Nova data DD/MM/YYYY (opcional, mantém a atual se omitido)" },
+        status:    { type: "string", description: "Novo status: 'aberto' ou 'baixado' (opcional, mantém o atual se omitido)" },
+        senha:     { type: "string", description: "Senha de autorização para alterar o banco de dados. Deve ser pedida ao usuário antes de chamar esta ferramenta." }
+      },
+      required: ["id", "senha"]
+    }
+  },
+  {
     name: "cancelar_ponto",
     description: "Cancela (exclui) um registro de ponto já existente. Use consultar_ponto antes para obter o id do registro correto. ALTERA O BANCO DE DADOS: exige o campo senha, que deve ser pedido ao usuário antes de chamar esta ferramenta.",
     input_schema: {
@@ -775,6 +802,52 @@ async function executarFerramenta(nome, input) {
     };
   }
 
+  if (nome === "consultar_contas_pagar") {
+    const { status, busca } = input;
+    const snap = await db.collection("contasPagar").orderBy("criadoEm", "desc").get();
+    let itens = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    if (status) {
+      itens = itens.filter(c => (c.status || "").toLowerCase() === status.toLowerCase());
+    }
+    if (busca) {
+      itens = itens.filter(c => (c.descricao || "").toLowerCase().includes(busca.toLowerCase()));
+    }
+
+    const totalAberto = itens.filter(c => c.status !== "baixado").reduce((s, c) => s + (Number(c.valor) || 0), 0);
+
+    return {
+      lancamentos: itens.slice(0, 50).map(c => ({
+        id: c.id,
+        data: c.data,
+        descricao: c.descricao,
+        valor: Number(c.valor) || 0,
+        status: c.status || "aberto"
+      })),
+      totalAberto,
+      quantidade: itens.length
+    };
+  }
+
+  if (nome === "editar_conta_pagar") {
+    const { id, descricao, valor, data, status, senha } = input;
+    if (senha !== SENHA_ALTERACAO_BANCO) {
+      return { sucesso: false, erro: "senha_invalida", mensagem: "Senha incorreta. Peça a senha de autorização ao usuário para alterar o banco de dados." };
+    }
+    const ref = db.collection("contasPagar").doc(id);
+    const doc = await ref.get();
+    if (!doc.exists) return { sucesso: false, erro: "nao_encontrado", mensagem: "Lançamento não encontrado no Contas a Pagar." };
+
+    const updates = {};
+    if (descricao !== undefined) updates.descricao = descricao;
+    if (valor !== undefined) updates.valor = Number(valor) || 0;
+    if (data !== undefined) updates.data = data;
+    if (status !== undefined) updates.status = status;
+
+    await ref.update(updates);
+    return { sucesso: true, id, atualizado: updates };
+  }
+
   if (nome === "cancelar_ponto") {
     const { id, senha } = input;
     if (senha !== SENHA_ALTERACAO_BANCO) {
@@ -1186,10 +1259,11 @@ Responda sempre em português brasileiro, de forma direta e confirmando o que fo
 Quando o usuário mencionar um nome incompleto de funcionário, use listar_funcionarios primeiro para encontrar o ID correto.
 CRÍTICO: funcionarioId é sempre o ID real gerado pelo Firestore (retornado por listar_funcionarios), nunca um valor inventado a partir do nome (ex: "lucas.cristiano" ou "3" NÃO são funcionarioId válidos). Antes de chamar registrar_ponto ou editar_ponto, sempre confirme o funcionarioId real chamando listar_funcionarios — a menos que esse ID já tenha sido retornado por listar_funcionarios nesta mesma conversa. Nunca presuma ou monte um ID.
 Códigos de locais/apartamentos (ex: BM 06, BM06, BM006, BM 006, Bm 06) são equivalentes — passe o código exatamente como o usuário digitou, o sistema normaliza automaticamente.
-IMPORTANTE: qualquer ferramenta que altere o banco de dados (ex: registrar_ponto, editar_ponto, cancelar_ponto, criar_lancamento_caixa, editar_lancamento_caixa, excluir_lancamento_caixa, registrar_pagamento_refeicoes) exige uma senha de autorização. Antes de chamar essa ferramenta, sempre pergunte ao usuário "Qual a senha de autorização para alterar o banco de dados?" e só prossiga depois que ele informar a senha. Nunca invente, sugira ou revele a senha.
+IMPORTANTE: qualquer ferramenta que altere o banco de dados (ex: registrar_ponto, editar_ponto, cancelar_ponto, criar_lancamento_caixa, editar_lancamento_caixa, excluir_lancamento_caixa, registrar_pagamento_refeicoes, editar_conta_pagar) exige uma senha de autorização. Antes de chamar essa ferramenta, sempre pergunte ao usuário "Qual a senha de autorização para alterar o banco de dados?" e só prossiga depois que ele informar a senha. Nunca invente, sugira ou revele a senha.
 CRÍTICO: NUNCA diga ao usuário que uma ação foi concluída/registrada/salva com sucesso a menos que o resultado da ferramenta (o tool_result mais recente) traga explicitamente "sucesso": true. Se vier "sucesso": false, ou se você não tiver certeza de ter chamado a ferramenta de verdade, informe claramente que a ação FALHOU (use a "mensagem" do erro, se houver) e peça pra tentar de novo — nunca componha uma confirmação de sucesso a partir de memória da conversa ou suposição. Isso já causou um caso real: o assistente disse "Pagamento registrado com sucesso" sem a ferramenta ter sido executada de verdade, e nada foi gravado no banco.
 Depois que extrato_refeicoes_imagem enviar a imagem com sucesso, pergunte ao usuário se ele quer registrar esse valor total no Contas a Pagar. Se ele confirmar, peça a senha de autorização e chame registrar_pagamento_refeicoes com o mesmo período. Se o resultado de qualquer ferramenta de refeições trouxer "periodosJaPagos" preenchido, avise o usuário que esse período (ou parte dele) já foi registrado como pago antes, ANTES de prosseguir — não insista em registrar de novo sem ele confirmar que quer mesmo assim.
 Para editar ou excluir um lançamento do caixa, use consultar_caixa primeiro para encontrar o id correto e confirme com o usuário qual lançamento é (data, descrição e valor) antes de aplicar a alteração.
+Para editar um lançamento do Contas a Pagar (mudar descrição, valor, data ou status), use consultar_contas_pagar primeiro para encontrar o id correto e confirme com o usuário qual lançamento é (descrição e valor atuais) antes de aplicar a alteração com editar_conta_pagar.
 Para cancelar um registro de ponto, use consultar_ponto primeiro para encontrar o id correto e confirme com o usuário qual registro é (funcionário, tipo e horário) antes de cancelar.
 Para corrigir um registro de ponto já existente (mudar data, horário ou tipo), use editar_ponto com o id obtido via consultar_ponto — NÃO cancele e registre de novo manualmente em duas chamadas separadas; editar_ponto já faz isso internamente (substitui o registro e guarda um histórico da alteração).
 Quando o usuário pedir para registrar ponto em uma data diferente de hoje (ex: "registre a saída de fulano dia 27/06"), SEMPRE preencha o campo "data" de registrar_ponto com essa data — nunca deixe em branco, senão o registro cai na data de hoje por engano.
