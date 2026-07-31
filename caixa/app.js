@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.45";
+const VERSAO_CAIXA = "3.46";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -221,11 +221,39 @@ function deletar(id) {
     return;
   }
 
-  db.collection("deletados").add({
+  const ehBaixaContaPagar = (r.origem === "JOAO->BAIXA CTAS A PAGAR" || r.origem === "ANE->BAIXA CTAS A PAGAR") && r.contaPagarId;
+
+  const batch = db.batch();
+  batch.set(db.collection("deletados").doc(), {
     ...r,
     idOriginal: id,
     deletadoEm: firebase.firestore.FieldValue.serverTimestamp()
-  }).then(() => col.doc(id).delete());
+  });
+  batch.delete(col.doc(id));
+
+  // Desfaz exatamente o efeito desta baixa no Contas a Pagar: volta o
+  // valor e o status de antes, remove esse pagamento do extrato e, se
+  // era o primeiro pagamento do documento, tira valorOriginal/pagamentos
+  // por completo (documento fica idêntico a como estava antes de qualquer baixa).
+  if (ehBaixaContaPagar) {
+    const restaurar = {
+      valor: r.valorContaPagarAntes,
+      status: r.statusContaPagarAntes || "aberto"
+    };
+    if (r.statusContaPagarAntes !== "baixado") {
+      restaurar.dataBaixa = firebase.firestore.FieldValue.delete();
+      restaurar.numeroBaixa = firebase.firestore.FieldValue.delete();
+    }
+    if (r.eraPrimeiroPagamento) {
+      restaurar.valorOriginal = firebase.firestore.FieldValue.delete();
+      restaurar.pagamentos = firebase.firestore.FieldValue.delete();
+    } else if (r.pagamentoRegistrado) {
+      restaurar.pagamentos = firebase.firestore.FieldValue.arrayRemove(r.pagamentoRegistrado);
+    }
+    batch.update(db.collection("contasPagar").doc(r.contaPagarId), restaurar);
+  }
+
+  batch.commit().catch(() => alert("Erro ao excluir. Tente novamente."));
 }
 
 // Escuta em tempo real — atualiza os dois iPhones automaticamente
@@ -621,12 +649,6 @@ function baixarContaAPagar(data, desc, saida, origem) {
   const numero = String(Object.keys(docsCache).length + 1).padStart(4, "0");
   const batch = db.batch();
 
-  batch.set(col.doc(), {
-    data, origem: origem || "JOAO->BAIXA CTAS A PAGAR", descricao: desc,
-    entrada: 0, saida,
-    criadoEm: firebase.firestore.FieldValue.serverTimestamp()
-  });
-
   // Tolerância de arredondamento: valor digitado cobre (ou praticamente
   // cobre) o que resta -> baixa integral. Menor que isso -> pagamento
   // parcial, registra no extrato e diminui o valor restante da conta.
@@ -634,6 +656,20 @@ function baixarContaAPagar(data, desc, saida, origem) {
   const pagamentoIntegral = saida >= valorAtual - 0.005;
   const contaPagarRef = db.collection("contasPagar").doc(id);
   const pagamento = { data, valor: saida, criadoEm: new Date().toISOString() };
+  // Guardados no lançamento pra permitir desfazer exatamente esta baixa
+  // caso o lançamento seja excluído em seguida (ver deletar()).
+  const eraPrimeiroPagamento = conta.valorOriginal === undefined;
+
+  batch.set(col.doc(), {
+    data, origem: origem || "JOAO->BAIXA CTAS A PAGAR", descricao: desc,
+    entrada: 0, saida,
+    contaPagarId: id,
+    valorContaPagarAntes: valorAtual,
+    statusContaPagarAntes: conta.status || "aberto",
+    eraPrimeiroPagamento,
+    pagamentoRegistrado: pagamento,
+    criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+  });
 
   if (pagamentoIntegral) {
     batch.update(contaPagarRef, {
