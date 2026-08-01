@@ -139,7 +139,7 @@ const TOOLS_GW = [
   },
   {
     name: "extrato_ponto_individual_imagem",
-    description: "Gera o extrato de ponto (entrada, saída e horas trabalhadas por dia) de UM funcionário específico num período, como imagem PNG estilizada com a logo da GW (mesmo estilo visual do extrato_refeicoes_imagem) e envia pelo Telegram. Use listar_funcionarios antes para obter o funcionarioId correto — NUNCA invente um id. Use quando o usuário pedir o relatório/espelho de ponto de uma pessoa específica num período, em imagem ou pelo Telegram.",
+    description: "Gera o extrato de ponto (entrada, saída e horas trabalhadas por dia) de UM funcionário específico num período, como imagem PNG estilizada com a logo da GW (mesmo estilo visual do extrato_refeicoes_imagem) e envia pelo Telegram. Marca automaticamente como FALTA qualquer dia em que outros funcionários bateram ponto e esse não (dias sem ninguém trabalhando, como fim de semana, não contam falta). Saídas fechadas automaticamente pelo sistema às 14h (funcionário esqueceu de bater saída) aparecem marcadas com *, não como horário real. Use listar_funcionarios antes para obter o funcionarioId correto — NUNCA invente um id. Use quando o usuário pedir o relatório/espelho de ponto de uma pessoa específica num período, em imagem ou pelo Telegram.",
     input_schema: {
       type: "object",
       properties: {
@@ -610,7 +610,17 @@ function fmtHorasMin(decimalHoras) {
 // Pareia entrada->saída em ordem (cobre o caso de intervalo de almoço com
 // duas entradas/saídas no mesmo dia) e soma só os intervalos já fechados.
 // Uma entrada sem saída correspondente marca o dia como "incompleto" —
-// nunca chuta quantas horas o funcionário ainda ia trabalhar.
+// nunca chuta quantas horas o funcionário ainda ia trabalhar. Saídas
+// geradas pelo fechamento automático do ponto (index.html fecha, às 14h,
+// entradas esquecidas sem saída — flag "fechamentoAutomatico") são
+// marcadas como tal, pra não parecerem um horário real batido pela pessoa.
+//
+// Também traz os registros de TODOS os funcionários no período (não só o
+// alvo) pra descobrir em que dias outros bateram ponto e o funcionário
+// alvo não — esses dias entram no relatório como "falta". Como a
+// referência de "dia trabalhado pela empresa" vem só de entradas reais de
+// outras pessoas, dias sem ninguém trabalhando (fim de semana, feriado)
+// nunca são sinalizados como falta.
 async function calcularExtratoPonto(funcionarioId, data_inicio, data_fim) {
   const funcionarioDoc = await db.collection("funcionarios").doc(funcionarioId).get();
   const funcionarioNome = funcionarioDoc.exists ? funcionarioDoc.data().nome : null;
@@ -619,27 +629,46 @@ async function calcularExtratoPonto(funcionarioId, data_inicio, data_fim) {
   const fim    = new Date(data_fim + "T23:59:59-03:00");
 
   const snap = await db.collection("pontos")
-    .where("funcionarioId", "==", funcionarioId)
     .where("timestamp", ">=", inicio)
     .where("timestamp", "<=", fim)
     .orderBy("timestamp")
     .get();
 
-  const porDia = {};
+  const porDiaAlvo = {};
+  const diasComOutros = new Set();
+
   snap.docs.forEach(d => {
     const p = d.data();
+    if (!p.timestamp || !p.tipo) return;
     const ts = p.timestamp.toDate();
     const diaKey = ts.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
-    if (!porDia[diaKey]) porDia[diaKey] = [];
-    porDia[diaKey].push({ tipo: p.tipo, ts });
+
+    if (p.funcionarioId === funcionarioId) {
+      if (!porDiaAlvo[diaKey]) porDiaAlvo[diaKey] = [];
+      porDiaAlvo[diaKey].push({ tipo: p.tipo, ts, auto: !!p.fechamentoAutomatico });
+    } else if (p.tipo === "entrada") {
+      diasComOutros.add(diaKey);
+    }
   });
 
   const fmtHora = ts => ts.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+  const todasAsChaves = new Set([...Object.keys(porDiaAlvo), ...diasComOutros]);
 
   let totalHoras = 0;
   let diasIncompletos = 0;
-  const dias = Object.keys(porDia).sort().map(diaKey => {
-    const eventos = porDia[diaKey];
+  let diasFalta = 0;
+  let algumSaidaAuto = false;
+
+  const dias = [...todasAsChaves].sort().map(diaKey => {
+    const [ano, mes, dia] = diaKey.split("-");
+    const dataBR = `${dia}/${mes}/${ano}`;
+    const eventos = porDiaAlvo[diaKey];
+
+    if (!eventos) {
+      diasFalta++;
+      return { data: dataBR, falta: true };
+    }
+
     const primeiraEntrada = eventos.find(e => e.tipo === "entrada");
     const ultimaSaida = [...eventos].reverse().find(e => e.tipo === "saida");
 
@@ -657,14 +686,17 @@ async function calcularExtratoPonto(funcionarioId, data_inicio, data_fim) {
 
     totalHoras += horasDia;
     if (incompleto) diasIncompletos++;
+    const saidaAuto = !incompleto && !!(ultimaSaida && ultimaSaida.auto);
+    if (saidaAuto) algumSaidaAuto = true;
 
-    const [ano, mes, dia] = diaKey.split("-");
     return {
-      data: `${dia}/${mes}/${ano}`,
+      data: dataBR,
       entrada: primeiraEntrada ? fmtHora(primeiraEntrada.ts) : "—",
       saida: (ultimaSaida && !incompleto) ? fmtHora(ultimaSaida.ts) : "—",
       horas: horasDia,
-      incompleto
+      incompleto,
+      saidaAuto,
+      falta: false
     };
   });
 
@@ -673,10 +705,12 @@ async function calcularExtratoPonto(funcionarioId, data_inicio, data_fim) {
     funcionarioId,
     funcionarioNome,
     dias,
+    algumSaidaAuto,
     totais: {
-      diasTrabalhados: dias.length,
+      diasTrabalhados: dias.filter(d => !d.falta).length,
       totalHoras,
-      diasIncompletos
+      diasIncompletos,
+      diasFalta
     }
   };
 }
@@ -691,8 +725,9 @@ function construirSVGExtratoPonto(dados, logoBase64) {
   const ALT_TABELA_HEADER = 40;
   const ALT_TOTAIS = 150;
   const ALT_FOOTER = 50;
+  const ALT_LEGENDA = dados.algumSaidaAuto ? 22 : 0;
 
-  const ALTURA = ALT_HEADER + ALT_TABELA_HEADER + dados.dias.length * ALT_LINHA + ALT_TOTAIS + ALT_FOOTER + PAD;
+  const ALTURA = ALT_HEADER + ALT_TABELA_HEADER + dados.dias.length * ALT_LINHA + ALT_TOTAIS + ALT_LEGENDA + ALT_FOOTER + PAD;
 
   const larguraTabela = LARGURA - PAD * 2;
   const colData = PAD + 24;
@@ -714,27 +749,42 @@ function construirSVGExtratoPonto(dados, logoBase64) {
   const linhas = dados.dias.map((d, i) => {
     const bg = i % 2 === 0 ? "rgba(255,255,255,0.035)" : "transparent";
     const rowY = y;
-    const corHoras = d.incompleto ? "#ffb74d" : "#69f0ae";
-    const textoHoras = d.incompleto ? "em aberto" : fmtHorasMin(d.horas);
-    const linha = `
-      <rect x="${PAD}" y="${rowY}" width="${larguraTabela}" height="${ALT_LINHA}" fill="${bg}" rx="10"/>
-      <text x="${colData}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="16" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif">${d.data}</text>
-      <text x="${colEntrada}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="16" fill="#c8e6c9" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">${d.entrada}</text>
-      <text x="${colSaida}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="16" fill="#c8e6c9" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">${d.saida}</text>
-      <text x="${colHoras}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="16" font-weight="600" fill="${corHoras}" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${textoHoras}</text>
-    `;
+    let linha;
+    if (d.falta) {
+      linha = `
+        <rect x="${PAD}" y="${rowY}" width="${larguraTabela}" height="${ALT_LINHA}" fill="${bg}" rx="10"/>
+        <text x="${colData}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="16" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif">${d.data}</text>
+        <text x="${colHoras}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="15" font-weight="700" letter-spacing="1.5" fill="#ff8a80" font-family="Arial, Helvetica, sans-serif" text-anchor="end">FALTA</text>
+      `;
+    } else {
+      const corHoras = d.incompleto ? "#ffb74d" : "#69f0ae";
+      const textoHoras = d.incompleto ? "em aberto" : fmtHorasMin(d.horas);
+      const textoSaida = d.saidaAuto ? `${d.saida}*` : d.saida;
+      const corSaida = d.saidaAuto ? "#ffb74d" : "#c8e6c9";
+      linha = `
+        <rect x="${PAD}" y="${rowY}" width="${larguraTabela}" height="${ALT_LINHA}" fill="${bg}" rx="10"/>
+        <text x="${colData}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="16" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif">${d.data}</text>
+        <text x="${colEntrada}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="16" fill="#c8e6c9" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">${d.entrada}</text>
+        <text x="${colSaida}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="16" fill="${corSaida}" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">${textoSaida}</text>
+        <text x="${colHoras}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="16" font-weight="600" fill="${corHoras}" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${textoHoras}</text>
+      `;
+    }
     y += ALT_LINHA;
     return linha;
   }).join("");
 
   const totaisY = y + 20;
   const totaisAltura = ALT_TOTAIS - 20;
+  const extrasDias = [];
+  if (dados.totais.diasIncompletos) extrasDias.push(`${dados.totais.diasIncompletos} em aberto`);
+  if (dados.totais.diasFalta) extrasDias.push(`${dados.totais.diasFalta} falta${dados.totais.diasFalta > 1 ? "s" : ""}`);
+  const extrasDiasTxt = extrasDias.length ? ` <tspan font-size="13" fill="#ffb74d" font-weight="400">(${extrasDias.join(", ")})</tspan>` : "";
   const blocoTotais = `
     <rect x="${PAD}" y="${totaisY}" width="${larguraTabela}" height="${totaisAltura}" rx="16" fill="rgba(105,240,174,0.08)" stroke="rgba(105,240,174,0.35)" stroke-width="1.5"/>
     <text x="${PAD + 28}" y="${totaisY + 34}" font-size="14" font-weight="700" letter-spacing="1" fill="#a5d6a7" font-family="Arial, Helvetica, sans-serif">TOTAL DO PERÍODO</text>
 
     <text x="${PAD + 28}" y="${totaisY + 66}" font-size="14" fill="#c8e6c9" font-family="Arial, Helvetica, sans-serif">Dias trabalhados</text>
-    <text x="${PAD + 28}" y="${totaisY + 88}" font-size="20" font-weight="700" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif">${dados.totais.diasTrabalhados}${dados.totais.diasIncompletos ? ` <tspan font-size="13" fill="#ffb74d" font-weight="400">(${dados.totais.diasIncompletos} em aberto)</tspan>` : ""}</text>
+    <text x="${PAD + 28}" y="${totaisY + 88}" font-size="20" font-weight="700" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif">${dados.totais.diasTrabalhados}${extrasDiasTxt}</text>
 
     <line x1="${PAD + larguraTabela * 0.5}" y1="${totaisY + 20}" x2="${PAD + larguraTabela * 0.5}" y2="${totaisY + totaisAltura - 20}" stroke="rgba(165,214,167,0.3)" stroke-width="1"/>
 
@@ -742,7 +792,12 @@ function construirSVGExtratoPonto(dados, logoBase64) {
     <text x="${PAD + larguraTabela - 28}" y="${totaisY + 74}" font-size="30" font-weight="800" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${fmtHorasMin(dados.totais.totalHoras)}</text>
   `;
 
-  const footerY = totaisY + totaisAltura + 34;
+  const legendaY = totaisY + totaisAltura + 26;
+  const legenda = dados.algumSaidaAuto ? `
+    <text x="${PAD}" y="${legendaY}" font-size="11" fill="#ffb74d" font-family="Arial, Helvetica, sans-serif">* saída fechada automaticamente às 14h — sem registro manual nesse dia</text>
+  ` : "";
+
+  const footerY = legendaY + ALT_LEGENDA + 8;
   const footer = `
     <text x="${LARGURA / 2}" y="${footerY}" font-size="11" letter-spacing="1" fill="#5a8a63" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">Extrato de Ponto • Sistema GW • Gerado em ${new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</text>
   `;
@@ -779,6 +834,7 @@ function construirSVGExtratoPonto(dados, logoBase64) {
   ${headerTabela}
   ${linhas}
   ${blocoTotais}
+  ${legenda}
   ${footer}
 </svg>`;
 }
