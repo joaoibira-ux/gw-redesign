@@ -455,9 +455,10 @@
         </div>
 
         <div class="dd-row3x2">
-          <div class="dd-card" style="grid-column:1;grid-row:1;">
+          <div class="dd-card" style="grid-column:1;grid-row:1 / span 2;">
             <div class="dd-card-header"><span class="dd-card-header-title">Resumo Financeiro</span></div>
-            <div id="dd-donut-financeiro" style="flex:1;min-height:0;"></div>
+            <div id="dd-donut-financeiro" style="flex:0 0 auto;"></div>
+            <div id="dd-resumo-creditos" class="dd-card-scroll"></div>
           </div>
           <div class="dd-card" style="grid-column:2;grid-row:1;">
             <div class="dd-card-header"><span class="dd-card-header-title">Progresso dos Serviços</span></div>
@@ -671,7 +672,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.82';
+    const VERSAO = '4.83';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -950,6 +951,26 @@
       return { cef: cefE - cefS, inter: interE - interS };
     }
 
+    // Mesmo cálculo de crédito/débito de Horácio e João usado em
+    // caixa/app.js (render()) — duplicado aqui porque o dashboard não
+    // carrega aquele módulo. Se as bases (HORACIO_BASE/JOAO_BASE) ou as
+    // regras por origem mudarem lá, replicar aqui também.
+    function ddSaldoHoracioJoao(lanc) {
+      const HORACIO_BASE = -136306.23;
+      const JOAO_BASE = -32250;
+      let horacioSaidas = 0, joaoE = 0;
+      lanc.forEach(r => {
+        if (r.origem === 'JOAO->CREDITO DE PROLABORE') {
+          joaoE -= r.saida || 0;
+        } else if (r.origem === 'ANE->HORACIO' || r.origem === 'JOAO->HORACIO') {
+          horacioSaidas += r.saida || 0;
+        } else if (r.origem === 'ANE->JOAO' || r.origem === 'JOAO->JOAO') {
+          joaoE += r.saida || 0;
+        }
+      });
+      return { horacio: HORACIO_BASE + horacioSaidas, joao: JOAO_BASE + joaoE };
+    }
+
     async function carregarDashboard() {
       const db = firebase.firestore();
       const hoje = new Date();
@@ -1061,6 +1082,13 @@
       const { cef: saldoCef, inter: saldoInter } = ddSaldoCefInter(lanc);
       const saldoCaixa = saldoCef + saldoInter;
       document.getElementById('dd-donut-financeiro').innerHTML = ddSvgDonutFinanceiro(totalReceberAberto, totalPagarAberto, saldoCaixa);
+
+      const { horacio: creditoHoracio, joao: creditoJoao } = ddSaldoHoracioJoao(lanc);
+      const retencaoMedicoes = medicoesComData.reduce((s, m) => s + (m.valorNotaFiscal || 0) * 0.05, 0);
+      document.getElementById('dd-resumo-creditos').innerHTML = `
+        <div class="dd-lista-item"><span class="dd-lista-sub">Crédito de Horácio</span><span class="dd-lista-valor" style="color:${creditoHoracio >= 0 ? '#4acf54' : '#ef4943'};">${ddFmtMoeda(creditoHoracio)}</span></div>
+        <div class="dd-lista-item"><span class="dd-lista-sub">Crédito de João</span><span class="dd-lista-valor" style="color:${creditoJoao >= 0 ? '#4acf54' : '#ef4943'};">${ddFmtMoeda(creditoJoao)}</span></div>
+        <div class="dd-lista-item"><span class="dd-lista-sub">Retenção das Medições</span><span class="dd-lista-valor" style="color:#ef4943;">${ddFmtMoeda(retencaoMedicoes)}</span></div>`;
 
       // ── Progresso dos serviços (donut) ──
       document.getElementById('dd-donut-servicos').innerHTML = ddSvgDonutServicos(servConcluidos, servTotal - servConcluidos);
