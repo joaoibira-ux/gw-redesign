@@ -289,12 +289,10 @@
     }
 
     .dd-kpis { flex: 0 0 auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 10px; }
-    .dd-content-rows { flex: 1; min-height: 0; display: grid; grid-template-rows: 1fr 1fr 1fr; gap: 10px; }
+    .dd-content-rows { flex: 1; min-height: 0; display: grid; grid-template-rows: 1fr 2fr; gap: 10px; }
     .dd-row2 { min-height: 0; display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
-    .dd-row3 { min-height: 0; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
-    .dd-row2-even { min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .dd-row2-ponto { min-height: 0; display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
-    .dd-row2 .dd-card, .dd-row3 .dd-card, .dd-row2-even .dd-card, .dd-row2-ponto .dd-card { display: flex; flex-direction: column; min-height: 0; }
+    .dd-row3x2 { min-height: 0; display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 10px; }
+    .dd-row2 .dd-card, .dd-row3x2 .dd-card { display: flex; flex-direction: column; min-height: 0; }
 
     .dd-card-header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
     .dd-card-header-title { font-size: 0.72rem; font-weight: 700; color: #f1f8f2; }
@@ -456,25 +454,24 @@
           </div>
         </div>
 
-        <div class="dd-row2-even">
-          <div class="dd-card">
+        <div class="dd-row3x2">
+          <div class="dd-card" style="grid-column:1;grid-row:1;">
             <div class="dd-card-header"><span class="dd-card-header-title">Resumo Financeiro</span></div>
             <div id="dd-donut-financeiro" style="flex:1;min-height:0;"></div>
           </div>
-          <div class="dd-card">
+          <div class="dd-card" style="grid-column:2;grid-row:1;">
             <div class="dd-card-header"><span class="dd-card-header-title">Progresso dos Serviços</span></div>
             <div id="dd-donut-servicos" style="flex:1;min-height:0;"></div>
           </div>
-        </div>
-
-        <div class="dd-row2-ponto">
-          <div class="dd-card">
-            <div class="dd-card-header"><span class="dd-card-header-title">Ponto (Hoje)</span></div>
-            <div id="dd-ponto-hoje" class="dd-card-scroll"></div>
-          </div>
-          <div class="dd-card">
+          <div class="dd-card" style="grid-column:2;grid-row:2;">
             <div class="dd-card-header"><span class="dd-card-header-title">Próxima Medição</span></div>
             <div id="dd-proxima-medicao" class="dd-card-scroll"></div>
+          </div>
+          <!-- Ocupa a coluna 3 inteira (linhas 1 e 2) — o espaço exato das
+               duas janelas removidas (Últimas Medições + Alertas). -->
+          <div class="dd-card" style="grid-column:3;grid-row:1 / span 2;">
+            <div class="dd-card-header"><span class="dd-card-header-title">Ponto (Hoje)</span></div>
+            <div id="dd-ponto-hoje" class="dd-card-scroll"></div>
           </div>
         </div>
       </div>
@@ -674,7 +671,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.81';
+    const VERSAO = '4.82';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
