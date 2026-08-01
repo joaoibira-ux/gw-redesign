@@ -138,6 +138,19 @@ const TOOLS_GW = [
     }
   },
   {
+    name: "extrato_ponto_individual_imagem",
+    description: "Gera o extrato de ponto (entrada, saída e horas trabalhadas por dia) de UM funcionário específico num período, como imagem PNG estilizada com a logo da GW (mesmo estilo visual do extrato_refeicoes_imagem) e envia pelo Telegram. Use listar_funcionarios antes para obter o funcionarioId correto — NUNCA invente um id. Use quando o usuário pedir o relatório/espelho de ponto de uma pessoa específica num período, em imagem ou pelo Telegram.",
+    input_schema: {
+      type: "object",
+      properties: {
+        funcionarioId: { type: "string", description: "ID do funcionário (obtido via listar_funcionarios)" },
+        data_inicio:   { type: "string", description: "Data inicial do período, formato YYYY-MM-DD" },
+        data_fim:      { type: "string", description: "Data final do período, formato YYYY-MM-DD" }
+      },
+      required: ["funcionarioId", "data_inicio", "data_fim"]
+    }
+  },
+  {
     name: "registrar_pagamento_refeicoes",
     description: "Cria um lançamento no Contas a Pagar com o valor total do extrato de refeições de um período, e marca esse período como pago (fica registrado pra qualquer consulta futura que envolva esse período, ou parte dele, avisar que já foi pago — evita pagar em dobro). Recalcula o extrato do zero a partir do período informado, não confia em números ditos antes na conversa. ALTERA O BANCO DE DADOS: exige senha de autorização, peça ao usuário antes de chamar. Só chame depois que o usuário confirmar explicitamente que quer registrar (normalmente depois de extrato_refeicoes_imagem).",
     input_schema: {
@@ -579,6 +592,203 @@ async function gerarImagemExtrato(dados) {
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
+// ── Extrato de ponto individual ──────────────────────────────────────────
+
+function escXml(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function fmtHorasMin(decimalHoras) {
+  const totalMin = Math.round(decimalHoras * 60);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return `${h}h${m > 0 ? " " + m + "min" : ""}`;
+}
+
+// Pareia entrada->saída em ordem (cobre o caso de intervalo de almoço com
+// duas entradas/saídas no mesmo dia) e soma só os intervalos já fechados.
+// Uma entrada sem saída correspondente marca o dia como "incompleto" —
+// nunca chuta quantas horas o funcionário ainda ia trabalhar.
+async function calcularExtratoPonto(funcionarioId, data_inicio, data_fim) {
+  const funcionarioDoc = await db.collection("funcionarios").doc(funcionarioId).get();
+  const funcionarioNome = funcionarioDoc.exists ? funcionarioDoc.data().nome : null;
+
+  const inicio = new Date(data_inicio + "T00:00:00-03:00");
+  const fim    = new Date(data_fim + "T23:59:59-03:00");
+
+  const snap = await db.collection("pontos")
+    .where("funcionarioId", "==", funcionarioId)
+    .where("timestamp", ">=", inicio)
+    .where("timestamp", "<=", fim)
+    .orderBy("timestamp")
+    .get();
+
+  const porDia = {};
+  snap.docs.forEach(d => {
+    const p = d.data();
+    const ts = p.timestamp.toDate();
+    const diaKey = ts.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    if (!porDia[diaKey]) porDia[diaKey] = [];
+    porDia[diaKey].push({ tipo: p.tipo, ts });
+  });
+
+  const fmtHora = ts => ts.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+
+  let totalHoras = 0;
+  let diasIncompletos = 0;
+  const dias = Object.keys(porDia).sort().map(diaKey => {
+    const eventos = porDia[diaKey];
+    const primeiraEntrada = eventos.find(e => e.tipo === "entrada");
+    const ultimaSaida = [...eventos].reverse().find(e => e.tipo === "saida");
+
+    let abertura = null;
+    let horasDia = 0;
+    eventos.forEach(e => {
+      if (e.tipo === "entrada") {
+        abertura = e.ts;
+      } else if (e.tipo === "saida" && abertura) {
+        horasDia += (e.ts.getTime() - abertura.getTime()) / 3600000;
+        abertura = null;
+      }
+    });
+    const incompleto = abertura !== null; // sobrou entrada sem saída
+
+    totalHoras += horasDia;
+    if (incompleto) diasIncompletos++;
+
+    const [ano, mes, dia] = diaKey.split("-");
+    return {
+      data: `${dia}/${mes}/${ano}`,
+      entrada: primeiraEntrada ? fmtHora(primeiraEntrada.ts) : "—",
+      saida: (ultimaSaida && !incompleto) ? fmtHora(ultimaSaida.ts) : "—",
+      horas: horasDia,
+      incompleto
+    };
+  });
+
+  return {
+    periodo: { inicio: data_inicio, fim: data_fim },
+    funcionarioId,
+    funcionarioNome,
+    dias,
+    totais: {
+      diasTrabalhados: dias.length,
+      totalHoras,
+      diasIncompletos
+    }
+  };
+}
+
+function construirSVGExtratoPonto(dados, logoBase64) {
+  const fmtDataBR = iso => iso.split("-").reverse().join("/");
+
+  const LARGURA = 800;
+  const PAD = 44;
+  const ALT_HEADER = 200;
+  const ALT_LINHA = 48;
+  const ALT_TABELA_HEADER = 40;
+  const ALT_TOTAIS = 150;
+  const ALT_FOOTER = 50;
+
+  const ALTURA = ALT_HEADER + ALT_TABELA_HEADER + dados.dias.length * ALT_LINHA + ALT_TOTAIS + ALT_FOOTER + PAD;
+
+  const larguraTabela = LARGURA - PAD * 2;
+  const colData = PAD + 24;
+  const colEntrada = PAD + larguraTabela * 0.42;
+  const colSaida = PAD + larguraTabela * 0.62;
+  const colHoras = PAD + larguraTabela - 24;
+
+  let y = ALT_HEADER;
+
+  const headerTabela = `
+    <text x="${colData}" y="${y + 26}" font-size="13" font-weight="700" letter-spacing="1.5" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif">DATA</text>
+    <text x="${colEntrada}" y="${y + 26}" font-size="13" font-weight="700" letter-spacing="1.5" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">ENTRADA</text>
+    <text x="${colSaida}" y="${y + 26}" font-size="13" font-weight="700" letter-spacing="1.5" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">SAÍDA</text>
+    <text x="${colHoras}" y="${y + 26}" font-size="13" font-weight="700" letter-spacing="1.5" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif" text-anchor="end">HORAS</text>
+    <line x1="${PAD}" y1="${y + 36}" x2="${PAD + larguraTabela}" y2="${y + 36}" stroke="rgba(165,214,167,0.25)" stroke-width="1"/>
+  `;
+  y += ALT_TABELA_HEADER;
+
+  const linhas = dados.dias.map((d, i) => {
+    const bg = i % 2 === 0 ? "rgba(255,255,255,0.035)" : "transparent";
+    const rowY = y;
+    const corHoras = d.incompleto ? "#ffb74d" : "#69f0ae";
+    const textoHoras = d.incompleto ? "em aberto" : fmtHorasMin(d.horas);
+    const linha = `
+      <rect x="${PAD}" y="${rowY}" width="${larguraTabela}" height="${ALT_LINHA}" fill="${bg}" rx="10"/>
+      <text x="${colData}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="16" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif">${d.data}</text>
+      <text x="${colEntrada}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="16" fill="#c8e6c9" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">${d.entrada}</text>
+      <text x="${colSaida}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="16" fill="#c8e6c9" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">${d.saida}</text>
+      <text x="${colHoras}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="16" font-weight="600" fill="${corHoras}" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${textoHoras}</text>
+    `;
+    y += ALT_LINHA;
+    return linha;
+  }).join("");
+
+  const totaisY = y + 20;
+  const totaisAltura = ALT_TOTAIS - 20;
+  const blocoTotais = `
+    <rect x="${PAD}" y="${totaisY}" width="${larguraTabela}" height="${totaisAltura}" rx="16" fill="rgba(105,240,174,0.08)" stroke="rgba(105,240,174,0.35)" stroke-width="1.5"/>
+    <text x="${PAD + 28}" y="${totaisY + 34}" font-size="14" font-weight="700" letter-spacing="1" fill="#a5d6a7" font-family="Arial, Helvetica, sans-serif">TOTAL DO PERÍODO</text>
+
+    <text x="${PAD + 28}" y="${totaisY + 66}" font-size="14" fill="#c8e6c9" font-family="Arial, Helvetica, sans-serif">Dias trabalhados</text>
+    <text x="${PAD + 28}" y="${totaisY + 88}" font-size="20" font-weight="700" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif">${dados.totais.diasTrabalhados}${dados.totais.diasIncompletos ? ` <tspan font-size="13" fill="#ffb74d" font-weight="400">(${dados.totais.diasIncompletos} em aberto)</tspan>` : ""}</text>
+
+    <line x1="${PAD + larguraTabela * 0.5}" y1="${totaisY + 20}" x2="${PAD + larguraTabela * 0.5}" y2="${totaisY + totaisAltura - 20}" stroke="rgba(165,214,167,0.3)" stroke-width="1"/>
+
+    <text x="${PAD + larguraTabela - 28}" y="${totaisY + 40}" font-size="14" fill="#c8e6c9" font-family="Arial, Helvetica, sans-serif" text-anchor="end">TOTAL DE HORAS</text>
+    <text x="${PAD + larguraTabela - 28}" y="${totaisY + 74}" font-size="30" font-weight="800" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${fmtHorasMin(dados.totais.totalHoras)}</text>
+  `;
+
+  const footerY = totaisY + totaisAltura + 34;
+  const footer = `
+    <text x="${LARGURA / 2}" y="${footerY}" font-size="11" letter-spacing="1" fill="#5a8a63" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">Extrato de Ponto • Sistema GW • Gerado em ${new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</text>
+  `;
+
+  const logoW = 64, logoH = 64 * (1106 / 1422);
+
+  return `
+<svg width="${LARGURA}" height="${ALTURA}" viewBox="0 0 ${LARGURA} ${ALTURA}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#12331f"/>
+      <stop offset="45%" stop-color="#0c2417"/>
+      <stop offset="100%" stop-color="#06120b"/>
+    </linearGradient>
+    <clipPath id="logoClip"><rect x="0" y="0" width="${logoW}" height="${logoH}" rx="10"/></clipPath>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#69f0ae" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#69f0ae" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="${LARGURA}" height="${ALTURA}" fill="url(#bg)"/>
+
+  <circle cx="${LARGURA / 2}" cy="${40 + logoH / 2}" r="90" fill="url(#glow)"/>
+
+  <g transform="translate(${LARGURA / 2 - logoW / 2}, 40)">
+    <image href="data:image/png;base64,${logoBase64}" width="${logoW}" height="${logoH}" clip-path="url(#logoClip)"/>
+  </g>
+
+  <text x="${LARGURA / 2}" y="${40 + logoH + 34}" font-size="26" font-weight="800" letter-spacing="3" fill="#f1f8f2" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">GREEN WALL</text>
+  <text x="${LARGURA / 2}" y="${40 + logoH + 58}" font-size="13" font-weight="700" letter-spacing="4" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">EXTRATO DE PONTO — ${escXml((dados.funcionarioNome || "").toUpperCase())}</text>
+  <text x="${LARGURA / 2}" y="${40 + logoH + 82}" font-size="14" fill="#a5d6a7" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">${fmtDataBR(dados.periodo.inicio)} a ${fmtDataBR(dados.periodo.fim)}</text>
+
+  ${headerTabela}
+  ${linhas}
+  ${blocoTotais}
+  ${footer}
+</svg>`;
+}
+
+async function gerarImagemExtratoPonto(dados) {
+  const logoBase64 = fs.readFileSync(path.join(__dirname, "Logo-gw.png")).toString("base64");
+  const svg = construirSVGExtratoPonto(dados, logoBase64);
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
 async function executarFerramenta(nome, input) {
   if (nome === "listar_funcionarios") {
     const snap = await db.collection("funcionarios").orderBy("nome").get();
@@ -756,6 +966,36 @@ async function executarFerramenta(nome, input) {
       mensagem: "Imagem do extrato de refeições gerada e enviada pelo Telegram com sucesso.",
       totais: dados.totais,
       periodosJaPagos: dados.periodosJaPagos
+    };
+  }
+
+  if (nome === "extrato_ponto_individual_imagem") {
+    const { funcionarioId, data_inicio, data_fim } = input;
+    const dados = await calcularExtratoPonto(funcionarioId, data_inicio, data_fim);
+    if (!dados.funcionarioNome) {
+      return { sucesso: false, erro: "funcionario_invalido", mensagem: "funcionarioId não corresponde a nenhum funcionário real. Chame listar_funcionarios de novo para pegar o ID correto antes de tentar novamente." };
+    }
+    if (!dados.dias.length) {
+      return { sucesso: false, erro: "sem_dados", mensagem: "Nenhum registro de ponto encontrado para esse funcionário nesse período." };
+    }
+
+    try {
+      const buffer = await gerarImagemExtratoPonto(dados);
+      await enviarFotoTelegram(
+        buffer,
+        `extrato-ponto-${dados.funcionarioNome.replace(/\s+/g, "-")}-${data_inicio}-a-${data_fim}.png`,
+        `Extrato de Ponto — ${dados.funcionarioNome} — ${data_inicio.split("-").reverse().join("/")} a ${data_fim.split("-").reverse().join("/")}`
+      );
+    } catch (err) {
+      console.error(err);
+      return { sucesso: false, erro: "falha_geracao_ou_envio", mensagem: err.message };
+    }
+
+    return {
+      sucesso: true,
+      mensagem: "Imagem do extrato de ponto gerada e enviada pelo Telegram com sucesso.",
+      funcionarioNome: dados.funcionarioNome,
+      totais: dados.totais
     };
   }
 
