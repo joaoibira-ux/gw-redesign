@@ -672,7 +672,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.83';
+    const VERSAO = '4.84';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -1078,14 +1078,15 @@
       });
       document.getElementById('dd-chart-faturamento').innerHTML = ddSvgLinha(meses6);
 
-      // ── Resumo financeiro (donut Receber vs Pagar) ──
+      // ── Resumo financeiro (donut Saldo INTER vs Saldo CEF) ──
       const { cef: saldoCef, inter: saldoInter } = ddSaldoCefInter(lanc);
-      const saldoCaixa = saldoCef + saldoInter;
-      document.getElementById('dd-donut-financeiro').innerHTML = ddSvgDonutFinanceiro(totalReceberAberto, totalPagarAberto, saldoCaixa);
+      document.getElementById('dd-donut-financeiro').innerHTML = ddSvgDonutSaldoCaixa(saldoInter, saldoCef);
 
       const { horacio: creditoHoracio, joao: creditoJoao } = ddSaldoHoracioJoao(lanc);
       const retencaoMedicoes = medicoesComData.reduce((s, m) => s + (m.valorNotaFiscal || 0) * 0.05, 0);
       document.getElementById('dd-resumo-creditos').innerHTML = `
+        <div class="dd-lista-item"><span class="dd-lista-sub">A Receber</span><span class="dd-lista-valor" style="color:#4acf54;">${ddFmtMoeda(totalReceberAberto)}</span></div>
+        <div class="dd-lista-item"><span class="dd-lista-sub">A Pagar</span><span class="dd-lista-valor" style="color:#ef4943;">${ddFmtMoeda(totalPagarAberto)}</span></div>
         <div class="dd-lista-item"><span class="dd-lista-sub">Crédito de Horácio</span><span class="dd-lista-valor" style="color:${creditoHoracio >= 0 ? '#4acf54' : '#ef4943'};">${ddFmtMoeda(creditoHoracio)}</span></div>
         <div class="dd-lista-item"><span class="dd-lista-sub">Crédito de João</span><span class="dd-lista-valor" style="color:${creditoJoao >= 0 ? '#4acf54' : '#ef4943'};">${ddFmtMoeda(creditoJoao)}</span></div>
         <div class="dd-lista-item"><span class="dd-lista-sub">Retenção das Medições</span><span class="dd-lista-valor" style="color:#ef4943;">${ddFmtMoeda(retencaoMedicoes)}</span></div>`;
@@ -1205,26 +1206,25 @@
       return `<path d="M ${x0.toFixed(1)} ${y0.toFixed(1)} A ${r} ${r} 0 ${largeArc} 1 ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="${cor}" stroke-width="${sw}" stroke-linecap="round"/>`;
     }
 
-    function ddSvgDonutFinanceiro(receber, pagar, saldo) {
-      const total = receber + pagar;
-      const pctReceber = total > 0 ? receber / total : 0;
+    function ddSvgDonutSaldoCaixa(saldoInter, saldoCef) {
+      const absInter = Math.abs(saldoInter), absCef = Math.abs(saldoCef);
+      const total = absInter + absCef;
+      const pctInter = total > 0 ? absInter / total : 0;
       const cx = 55, cy = 55, r = 42, sw = 13;
       let html = '';
       if (total <= 0) {
         html += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="${sw}"/>`;
       } else {
-        html += ddDonutArc(cx, cy, r, sw, 0, pctReceber, '#4acf54');
-        if (pctReceber < 1) html += ddDonutArc(cx, cy, r, sw, pctReceber, 1, '#ef4943');
+        html += ddDonutArc(cx, cy, r, sw, 0, pctInter, '#3679f9');
+        if (pctInter < 1) html += ddDonutArc(cx, cy, r, sw, pctInter, 1, '#f9a13f');
       }
-      const pctLabel = total > 0 ? Math.round(pctReceber * 100) : 0;
-      html += `<text x="${cx}" y="${cy - 3}" font-size="17" font-weight="800" fill="#f1f8f2" text-anchor="middle">${pctLabel}%</text>`;
-      html += `<text x="${cx}" y="${cy + 11}" font-size="7.5" fill="#8fb391" text-anchor="middle">Receber</text>`;
+      html += `<text x="${cx}" y="${cy - 3}" font-size="13" font-weight="800" fill="#f1f8f2" text-anchor="middle">${ddFmtMoedaCompacta(saldoInter + saldoCef)}</text>`;
+      html += `<text x="${cx}" y="${cy + 11}" font-size="7.5" fill="#8fb391" text-anchor="middle">Saldo Total</text>`;
       return `<div style="display:flex;align-items:center;gap:8px;height:100%;">
         <svg viewBox="0 0 110 110" style="width:100px;height:100px;flex-shrink:0;">${html}</svg>
         <div class="dd-donut-legend">
-          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#4acf54"></span>A Receber<br>${ddFmtMoeda(receber)}</div>
-          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#ef4943"></span>A Pagar<br>${ddFmtMoeda(pagar)}</div>
-          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#3679f9"></span>Saldo em Caixa<br>${ddFmtMoeda(saldo)}</div>
+          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#3679f9"></span>Saldo INTER<br>${ddFmtMoeda(saldoInter)}</div>
+          <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#f9a13f"></span>Saldo CEF<br>${ddFmtMoeda(saldoCef)}</div>
         </div>
       </div>`;
     }
