@@ -647,7 +647,12 @@ async function calcularExtratoPonto(funcionarioId, data_inicio, data_fim) {
       if (!porDiaAlvo[diaKey]) porDiaAlvo[diaKey] = [];
       porDiaAlvo[diaKey].push({ tipo: p.tipo, ts, auto: !!p.fechamentoAutomatico });
     } else if (p.tipo === "entrada") {
-      diasComOutros.add(diaKey);
+      // Sábado/domingo nunca vira falta, mesmo que outros tenham trabalhado
+      // nesse fim de semana — só entram como referência de falta os dias
+      // úteis. Se o próprio alvo tiver um registro no fim de semana, ele
+      // ainda aparece normal no relatório (via porDiaAlvo, não depende disso).
+      const diaSemana = ts.toLocaleDateString("en-US", { timeZone: "America/Sao_Paulo", weekday: "short" });
+      if (diaSemana !== "Sat" && diaSemana !== "Sun") diasComOutros.add(diaKey);
     }
   });
 
