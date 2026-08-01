@@ -292,7 +292,9 @@
     .dd-content-rows { flex: 1; min-height: 0; display: grid; grid-template-rows: 1fr 1fr 1fr; gap: 10px; }
     .dd-row2 { min-height: 0; display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
     .dd-row3 { min-height: 0; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
-    .dd-row2 .dd-card, .dd-row3 .dd-card { display: flex; flex-direction: column; min-height: 0; }
+    .dd-row2-even { min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .dd-row2-ponto { min-height: 0; display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
+    .dd-row2 .dd-card, .dd-row3 .dd-card, .dd-row2-even .dd-card, .dd-row2-ponto .dd-card { display: flex; flex-direction: column; min-height: 0; }
 
     .dd-card-header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
     .dd-card-header-title { font-size: 0.72rem; font-weight: 700; color: #f1f8f2; }
@@ -454,7 +456,7 @@
           </div>
         </div>
 
-        <div class="dd-row3">
+        <div class="dd-row2-even">
           <div class="dd-card">
             <div class="dd-card-header"><span class="dd-card-header-title">Resumo Financeiro</span></div>
             <div id="dd-donut-financeiro" style="flex:1;min-height:0;"></div>
@@ -463,13 +465,9 @@
             <div class="dd-card-header"><span class="dd-card-header-title">Progresso dos Serviços</span></div>
             <div id="dd-donut-servicos" style="flex:1;min-height:0;"></div>
           </div>
-          <div class="dd-card">
-            <div class="dd-card-header"><span class="dd-card-header-title">Últimas Medições</span></div>
-            <div id="dd-lista-medicoes" class="dd-card-scroll"></div>
-          </div>
         </div>
 
-        <div class="dd-row3">
+        <div class="dd-row2-ponto">
           <div class="dd-card">
             <div class="dd-card-header"><span class="dd-card-header-title">Ponto (Hoje)</span></div>
             <div id="dd-ponto-hoje" class="dd-card-scroll"></div>
@@ -477,10 +475,6 @@
           <div class="dd-card">
             <div class="dd-card-header"><span class="dd-card-header-title">Próxima Medição</span></div>
             <div id="dd-proxima-medicao" class="dd-card-scroll"></div>
-          </div>
-          <div class="dd-card">
-            <div class="dd-card-header"><span class="dd-card-header-title">Alertas e Pendências</span></div>
-            <div id="dd-alertas" class="dd-card-scroll"></div>
           </div>
         </div>
       </div>
@@ -680,7 +674,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.80';
+    const VERSAO = '4.81';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -921,38 +915,6 @@
       return count;
     }
 
-    // ── Mostra só quantos itens de uma lista dinâmica (dentro de listaId)
-    // cabem no espaço que sobra no card (containerId) sem precisar rolar —
-    // mede a altura real já renderizada de cada item (getBoundingClientRect,
-    // não depende de zoom/transform, que nem sempre encolhe o overflow do
-    // jeito esperado) contra o espaço livre até a borda do card, e troca o
-    // resto por um resumo "+N outros". Usado em listas cuja quantidade varia
-    // bastante (ex: quem não bateu ponto). ──
-    function ddFitLista(containerId, listaId) {
-      const container = document.getElementById(containerId);
-      const lista = document.getElementById(listaId);
-      if (!container || !lista) return;
-      const itens = Array.from(lista.children);
-      if (!itens.length) return;
-      const disponivel = container.getBoundingClientRect().bottom - lista.getBoundingClientRect().top;
-      let usado = 0, ultimoVisivel = -1;
-      for (let i = 0; i < itens.length; i++) {
-        usado += itens[i].getBoundingClientRect().height;
-        if (usado > disponivel) break;
-        ultimoVisivel = i;
-      }
-      if (ultimoVisivel >= itens.length - 1) return;
-      const restantes = itens.length - Math.max(0, ultimoVisivel + 1);
-      for (let i = ultimoVisivel + 1; i < itens.length; i++) itens[i].remove();
-      if (restantes > 0) {
-        const extra = document.createElement('div');
-        extra.className = 'dd-lista-sub';
-        extra.style.paddingTop = '4px';
-        extra.textContent = `+ ${restantes} outro(s)`;
-        lista.appendChild(extra);
-      }
-    }
-
     // ── Saldo em Caixa = CEF (conta ANE) + INTER (conta JOAO) — mesma lógica
     // de atribuição por 'origem' do lançamento usada em caixa/app.js (render),
     // só os dois totais de saldo bancário, sem os outros acumuladores
@@ -995,7 +957,6 @@
       const db = firebase.firestore();
       const hoje = new Date();
       const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-      const em7dias = new Date(hoje); em7dias.setDate(em7dias.getDate() + 7);
       const inicioHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
       const fimHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 1);
 
@@ -1104,31 +1065,8 @@
       const saldoCaixa = saldoCef + saldoInter;
       document.getElementById('dd-donut-financeiro').innerHTML = ddSvgDonutFinanceiro(totalReceberAberto, totalPagarAberto, saldoCaixa);
 
-      // ── Últimas medições ──
-      const ultimasMedicoes = [...medicoesComData]
-        .sort((a, b) => (b.criadoEm && b.criadoEm.toMillis ? b.criadoEm.toMillis() : 0) - (a.criadoEm && a.criadoEm.toMillis ? a.criadoEm.toMillis() : 0))
-        .slice(0, 5);
-      document.getElementById('dd-lista-medicoes').innerHTML = ultimasMedicoes.length
-        ? ultimasMedicoes.map(m => `
-          <div class="dd-lista-item">
-            <div><div class="dd-lista-nome">${ddEscHtml(m.nome || '(sem nome)')}</div><div class="dd-lista-sub">${ddEscHtml(m.data)}</div></div>
-            <div class="dd-lista-valor">${ddFmtMoedaCompacta(m.valorNotaFiscal)}</div>
-          </div>`).join('')
-        : '<div class="dd-empty">Nenhuma medição cadastrada ainda.</div>';
-
       // ── Progresso dos serviços (donut) ──
       document.getElementById('dd-donut-servicos').innerHTML = ddSvgDonutServicos(servConcluidos, servTotal - servConcluidos);
-
-      // ── Alertas e pendências ──
-      const pagarVencendo = pagarAberto.filter(p => { const d = ddParseData(p.data); return d && d >= hoje && d <= em7dias; });
-      const receberVencendo = receberAberto.filter(r => { const d = ddParseData(r.data); return d && d >= hoje && d <= em7dias; });
-      const alertas = [];
-      if (pagarVencendo.length) alertas.push({ icon: '⚠️', texto: `${pagarVencendo.length} conta${pagarVencendo.length !== 1 ? 's' : ''} a pagar vencendo nos próximos 7 dias` });
-      if (receberVencendo.length) alertas.push({ icon: '💵', texto: `${receberVencendo.length} conta${receberVencendo.length !== 1 ? 's' : ''} a receber vencendo nos próximos 7 dias` });
-      if (servTotal - servConcluidos > 0) alertas.push({ icon: '🔧', texto: `${servTotal - servConcluidos} serviço${servTotal - servConcluidos !== 1 ? 's' : ''} pendente${servTotal - servConcluidos !== 1 ? 's' : ''} no total` });
-      document.getElementById('dd-alertas').innerHTML = alertas.length
-        ? alertas.map(a => `<div class="dd-alerta"><span class="dd-alerta-icon">${a.icon}</span><span>${a.texto}</span></div>`).join('')
-        : '<div class="dd-empty">Nenhum alerta no momento.</div>';
 
       // ── Ponto (hoje) — cruza funcionários ativos com os registros de
       // 'pontos' de hoje (mesmo agrupamento entrada/saída por funcionário
@@ -1160,7 +1098,6 @@
         <div class="dd-lista-item"><span class="dd-lista-sub">Já saíram</span><span class="dd-lista-valor">${jaSairam}</span></div>
         <div class="dd-lista-item"><span class="dd-lista-sub">Não bateram ponto</span><span class="dd-lista-valor" style="color:${naoBateram.length ? '#ef4943' : '#4acf54'};">${naoBateram.length}</span></div>
         <div id="dd-ponto-nomes">${naoBateram.map(n => `<div class="dd-lista-item"><span class="dd-lista-nome" style="color:#ef4943;">⚠️ ${ddEscHtml(n)}</span></div>`).join('')}</div>`;
-      ddFitLista('dd-ponto-hoje', 'dd-ponto-nomes');
 
       // ── Funcionários ──
       const ativos = func.filter(f => f.ativo !== false).length;
