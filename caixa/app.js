@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.46";
+const VERSAO_CAIXA = "3.47";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -699,6 +699,14 @@ function toggleForm() {
     document.getElementById("f-desc").focus();
   } else {
     descPrefix = null;
+    // Sem isso, o seletor de Origem ficava travado na última opção escolhida
+    // (ex: "Adiantamento de Salário") — na próxima vez que o formulário
+    // abrisse, o evento "change" não disparava de novo (o valor não mudou),
+    // então a tela de escolher funcionário/conta nunca reaparecia. Resetar
+    // pra "Selecione..." e disparar o change força a re-seleção do zero.
+    const grupo = document.getElementById("f-origem-grupo");
+    grupo.value = "";
+    grupo.dispatchEvent(new Event("change"));
   }
 }
 
