@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "1.1";
+const VERSAO = "1.2";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -40,6 +40,27 @@ function hoje() {
 
 let docsCache = {};
 
+function cardHtml(id, c, baixado) {
+  return `
+    <div class="card ${baixado ? "baixado" : ""}">
+      <div class="card-acoes">
+        <button class="btn-del" onclick="excluir('${id}')" title="Excluir">✕</button>
+      </div>
+      <div class="card-top">
+        <div class="card-desc">${c.numero ? `<span class="card-item-badge">Nº ${escHtml(c.numero)}</span>` : ""}${escHtml(c.descricao)}</div>
+        <div class="card-valor">${fmtMoeda(c.valor)}</div>
+      </div>
+      <div class="card-meta">
+        <span>${escHtml(c.data)}</span>
+        <span class="badge ${baixado ? "baixado" : "aberto"}">${baixado ? "Baixado" : "Em aberto"}</span>
+        ${baixado && c.dataBaixa ? `<span>Baixa: ${escHtml(c.dataBaixa)}</span>` : ""}
+      </div>
+    </div>`;
+}
+
+// A lista principal só mostra contas em aberto — as baixadas ficam na tela
+// separada (botão "Recebidos" no cabeçalho), mesmo processo já usado em
+// Contas a Pagar (tela "Pagos"), pra não poluir o que ainda precisa de atenção.
 function render(docs) {
   const lista = document.getElementById("lista");
   docsCache = {};
@@ -52,30 +73,29 @@ function render(docs) {
   });
   document.getElementById("tot-aberto").textContent = fmtMoeda(totalAberto);
 
-  if (docs.length === 0) {
-    lista.innerHTML = '<p class="empty">Nenhuma conta a receber cadastrada.</p>';
-    return;
-  }
+  const abertos = docs.filter(doc => doc.data().status !== "baixado");
+  lista.innerHTML = abertos.length === 0
+    ? '<p class="empty">Nenhuma conta em aberto.</p>'
+    : abertos.map(doc => cardHtml(doc.id, doc.data(), false)).join("");
 
-  lista.innerHTML = docs.map(doc => {
-    const c = doc.data();
-    const baixado = c.status === "baixado";
-    return `
-      <div class="card ${baixado ? "baixado" : ""}">
-        <div class="card-acoes">
-          <button class="btn-del" onclick="excluir('${doc.id}')" title="Excluir">✕</button>
-        </div>
-        <div class="card-top">
-          <div class="card-desc">${c.numero ? `<span class="card-item-badge">Nº ${escHtml(c.numero)}</span>` : ""}${escHtml(c.descricao)}</div>
-          <div class="card-valor">${fmtMoeda(c.valor)}</div>
-        </div>
-        <div class="card-meta">
-          <span>${escHtml(c.data)}</span>
-          <span class="badge ${baixado ? "baixado" : "aberto"}">${baixado ? "Baixado" : "Em aberto"}</span>
-          ${baixado && c.dataBaixa ? `<span>Baixa: ${escHtml(c.dataBaixa)}</span>` : ""}
-        </div>
-      </div>`;
-  }).join("");
+  renderRecebidos(docs);
+}
+
+function renderRecebidos(docs) {
+  const lista = document.getElementById("lista-recebidos");
+  if (!lista) return;
+  const recebidos = docs.filter(doc => doc.data().status === "baixado");
+  lista.innerHTML = recebidos.length === 0
+    ? '<p class="empty">Nenhuma conta recebida ainda.</p>'
+    : recebidos.map(doc => cardHtml(doc.id, doc.data(), true)).join("");
+}
+
+function abrirRecebidos() {
+  document.getElementById("recebidos-overlay").style.display = "flex";
+}
+
+function fecharRecebidos() {
+  document.getElementById("recebidos-overlay").style.display = "none";
 }
 
 col.orderBy("criadoEm", "asc").onSnapshot(snap => {

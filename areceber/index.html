@@ -19,6 +19,7 @@
     <img src="./Logo-gw.png" alt="GW" style="height:34px;width:34px;object-fit:contain;border-radius:6px;" />
   </a>
   <span>A Receber</span>
+  <button class="btn-recebidos" id="btn-recebidos" onclick="abrirRecebidos()">Recebidos</button>
   <span id="versao-app" class="header-versao"></span>
 </header>
 
@@ -28,6 +29,14 @@
 </div>
 
 <div id="lista" class="lista"></div>
+
+<div class="recebidos-overlay" id="recebidos-overlay" style="display:none">
+  <div class="recebidos-header">
+    <span>Recebidos</span>
+    <button class="recebidos-fechar" onclick="fecharRecebidos()">✕</button>
+  </div>
+  <div id="lista-recebidos" class="lista"></div>
+</div>
 
 <button class="fab" id="fab" onclick="toggleForm()">+</button>
 
