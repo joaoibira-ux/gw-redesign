@@ -322,7 +322,7 @@ const FIREBASE_CONFIG = {
 };
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 const MATCH_THRESHOLD = 0.55;
-const VERSAO          = '2.12';
+const VERSAO          = '2.13';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let db;
@@ -460,11 +460,21 @@ async function carregarFuncionarios() {
       .map(d => ({ id: d.id, ...d.data() }))
       .filter(f => f.ativo !== false); // sem o campo = ativo (mesma regra do app Funcionários)
 
+    // Compara contra até as 3 fotos mais recentes de cada funcionário (não só
+    // a última) — melhora o reconhecimento com variação de luz/ângulo.
+    // Mantém compatibilidade com registros antigos (só faceDescriptor singular).
     labeledDescriptors = funcionariosCache
-      .filter(f => Array.isArray(f.faceDescriptor) && f.faceDescriptor.length === 128)
-      .map(f => new faceapi.LabeledFaceDescriptors(
-        f.id,
-        [new Float32Array(f.faceDescriptor)]
+      .map(f => {
+        const descritores = Array.isArray(f.faceDescriptors) && f.faceDescriptors.length
+          ? f.faceDescriptors
+          : (Array.isArray(f.faceDescriptor) ? [f.faceDescriptor] : []);
+        const validos = descritores.filter(d => Array.isArray(d) && d.length === 128);
+        return { id: f.id, validos };
+      })
+      .filter(x => x.validos.length > 0)
+      .map(x => new faceapi.LabeledFaceDescriptors(
+        x.id,
+        x.validos.map(d => new Float32Array(d))
       ));
   } catch (e) { console.error('Employees:', e); }
 }

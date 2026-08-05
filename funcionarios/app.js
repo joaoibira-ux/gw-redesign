@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.22";
+const VERSAO = "3.23";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -532,13 +532,35 @@ function editarFuncionario(id) {
 }
 
 // ── Cadastro de Face ────────────────────────────────────────
+// Guarda até as 3 fotos/descritores mais recentes (mais nova primeiro), em
+// vez de sobrescrever um único — no reconhecimento (ponto/), comparar contra
+// várias fotos recentes do mesmo funcionário aumenta a chance de identificar
+// corretamente mesmo com variação de luz/ângulo. Mantém compatibilidade com
+// registros antigos que só têm os campos singulares faceDescriptor/fotoThumb.
+function _mergeFacePendente(existente) {
+  if (!pendingFaceDescriptor) return null;
+  const descritoresAtuais = (existente && Array.isArray(existente.faceDescriptors))
+    ? existente.faceDescriptors
+    : (existente && existente.faceDescriptor) ? [existente.faceDescriptor] : [];
+  const thumbsAtuais = (existente && Array.isArray(existente.fotoThumbs))
+    ? existente.fotoThumbs
+    : (existente && existente.fotoThumb) ? [existente.fotoThumb] : [];
+
+  return {
+    faceDescriptors: [pendingFaceDescriptor, ...descritoresAtuais].slice(0, 3),
+    fotoThumbs: [pendingFotoThumb, ...thumbsAtuais].slice(0, 3),
+  };
+}
+
 function atualizarStatusFace() {
   const preview = document.getElementById("face-preview");
   const label   = document.getElementById("face-label");
   const btn     = document.getElementById("btn-face");
   const atual   = editandoId ? funcionariosCache[editandoId] : null;
-  const thumb   = pendingFotoThumb || (atual && atual.fotoThumb) || null;
-  const cadastrado = !!pendingFaceDescriptor || !!(atual && atual.faceDescriptor);
+  const thumbAtual = atual && ((atual.fotoThumbs && atual.fotoThumbs[0]) || atual.fotoThumb);
+  const thumb   = pendingFotoThumb || thumbAtual || null;
+  const cadastrado = !!pendingFaceDescriptor
+    || !!(atual && ((atual.faceDescriptors && atual.faceDescriptors.length) || atual.faceDescriptor));
 
   preview.innerHTML = thumb ? `<img src="${thumb}" alt="face">` : "👤";
   label.textContent = cadastrado ? "✓ Face cadastrada" : "Face não cadastrada";
@@ -708,7 +730,8 @@ function irParaAssinaturaParaSalvar() {
   // Se editando e já tem assinatura salva, salva direto sem pedir nova assinatura
   if (editandoId && funcionariosCache[editandoId] && funcionariosCache[editandoId].assinatura) {
     const dados = lerCampos();
-    if (pendingFaceDescriptor) { dados.faceDescriptor = pendingFaceDescriptor; dados.fotoThumb = pendingFotoThumb; }
+    const faceMerge = _mergeFacePendente(funcionariosCache[editandoId]);
+    if (faceMerge) Object.assign(dados, faceMerge);
     col.doc(editandoId).update(dados);
     editandoId = null;
     pendingFaceDescriptor = null;
@@ -752,7 +775,8 @@ function assinarESalvar() {
   if (canvasVazio()) { alert('Por favor, assine antes de salvar.'); return; }
   const dados = lerCampos();
   if (!dados.nome || !dados.cargo) { alert('Nome e Cargo são obrigatórios.'); return; }
-  if (pendingFaceDescriptor) { dados.faceDescriptor = pendingFaceDescriptor; dados.fotoThumb = pendingFotoThumb; }
+  const faceMerge = _mergeFacePendente(editandoId ? funcionariosCache[editandoId] : null);
+  if (faceMerge) Object.assign(dados, faceMerge);
   const canvas = document.getElementById('assin-canvas');
   const assinatura = canvas.toDataURL('image/png');
   if (editandoId) {
