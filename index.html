@@ -325,6 +325,64 @@
       animation: aviso-logo-fade 1.1s ease-in-out;
     }
 
+    /* ── AVISO CONTAS A PAGAR VENCENDO/ATRASADAS ── */
+    #aviso-vencidas-screen {
+      position: fixed; inset: 0; z-index: 950;
+      display: none; flex-direction: column; align-items: center; justify-content: center;
+      background: linear-gradient(160deg, #5a1010 0%, #7a1a1a 45%, #2b0808 100%);
+      padding: env(safe-area-inset-top, 24px) 20px env(safe-area-inset-bottom, 24px);
+      cursor: pointer;
+      overflow-y: auto;
+    }
+    .av-icone {
+      font-size: 3.2rem;
+      animation: av-pulse 1.1s ease-in-out infinite;
+      filter: drop-shadow(0 4px 14px rgba(0,0,0,0.5));
+      margin-bottom: 6px;
+    }
+    @keyframes av-pulse {
+      0%,100% { transform: scale(1); }
+      50%     { transform: scale(1.15); }
+    }
+    .av-titulo {
+      font-size: 1.3rem; font-weight: 800; letter-spacing: 1px;
+      color: #fff; text-align: center; text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+      margin-bottom: 4px;
+    }
+    .av-sub { font-size: 0.82rem; color: #ffccbc; text-align: center; margin-bottom: 18px; }
+    .av-lista {
+      width: 100%; max-width: 480px;
+      display: flex; flex-direction: column; gap: 10px;
+      margin-bottom: 22px;
+    }
+    .av-item {
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 14px;
+      padding: 12px 16px;
+      display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    }
+    .av-item-desc { font-size: 0.85rem; color: #fff; font-weight: 600; }
+    .av-item-data { font-size: 0.72rem; color: #ffccbc; margin-top: 2px; }
+    .av-item-valor { font-size: 0.95rem; font-weight: 800; color: #fff; white-space: nowrap; }
+    .av-badge {
+      font-size: 0.62rem; font-weight: 800; letter-spacing: 0.5px;
+      padding: 2px 8px; border-radius: 10px; margin-top: 4px; display: inline-block;
+    }
+    .av-badge.hoje { background: #ffca28; color: #4a0e0e; }
+    .av-badge.atrasada { background: #fff; color: #b71c1c; }
+    .av-total { font-size: 1rem; color: #fff; font-weight: 700; margin-bottom: 26px; }
+    .av-total strong { font-size: 1.3rem; margin-left: 6px; }
+    .av-continuar {
+      font-size: 0.78rem; color: #ffccbc; letter-spacing: 1px;
+      animation: av-blink 1.6s ease-in-out infinite;
+    }
+    @keyframes av-blink {
+      0%,100% { opacity: 0.5; }
+      50%     { opacity: 1; }
+    }
+
     /* ── AVISO DE INSTALAÇÃO ── */
     #aviso-instalacao {
       background:
@@ -482,6 +540,16 @@
   <!-- Splash da logo (após PIN correto) -->
   <div id="logo-splash">
     <img src="./Logo-gw.png" alt="GW" />
+  </div>
+
+  <!-- Aviso de contas a pagar vencendo hoje ou atrasadas (só modo parcial, antes do menu) -->
+  <div id="aviso-vencidas-screen">
+    <div class="av-icone">⚠️</div>
+    <div class="av-titulo">Contas a Pagar</div>
+    <div class="av-sub" id="av-sub"></div>
+    <div class="av-lista" id="av-lista"></div>
+    <div class="av-total" id="av-total"></div>
+    <div class="av-continuar">Toque em qualquer lugar ou tecle Enter para continuar</div>
   </div>
 
   <!-- Aviso de instalação -->
@@ -672,7 +740,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '4.87';
+    const VERSAO = '4.88';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -724,7 +792,7 @@
       modo = localStorage.getItem('gw_pc_modo') || 'completo';
       sessionStorage.setItem('gw_auth', modo);
       document.getElementById('pin-screen').style.opacity = '0';
-      setTimeout(() => mostrarSplashLogo(() => mostrarHome(true)), 320);
+      setTimeout(() => continuarAposLogin(), 320);
     }
 
     function esquecerPcConfiavel() {
@@ -763,7 +831,7 @@
           localStorage.setItem('gw_pc_modo', modo);
         }
         document.getElementById('pin-screen').style.opacity = '0';
-        setTimeout(() => mostrarSplashLogo(() => mostrarHome(true)), 320);
+        setTimeout(() => continuarAposLogin(), 320);
       } else {
         const dots = document.getElementById('pin-dots');
         dots.classList.add('shake');
@@ -785,6 +853,70 @@
 
     function ehMobile() {
       return /iPad|iPhone|iPod|Android/.test(navigator.userAgent) && !window.MSStream;
+    }
+
+    // ── Aviso de contas a pagar vencendo hoje/atrasadas (só PIN parcial) ──
+    async function buscarContasVencendoOuAtrasadas() {
+      const db = firebase.firestore();
+      const inicioHoje = new Date();
+      inicioHoje.setHours(0, 0, 0, 0);
+      const snap = await db.collection('contasPagar').get().catch(() => ({ docs: [] }));
+      return snap.docs
+        .map(d => ({ id: d.id, ...d.data(), _data: ddParseData(d.data().data) }))
+        .filter(c => c.status !== 'baixado' && c._data && c._data <= inicioHoje)
+        .sort((a, b) => a._data - b._data);
+    }
+
+    function mostrarAvisoContasVencendo(lista, callback) {
+      const inicioHoje = new Date();
+      inicioHoje.setHours(0, 0, 0, 0);
+      const tela = document.getElementById('aviso-vencidas-screen');
+
+      const total = lista.reduce((s, c) => s + (c.valor || 0), 0);
+      document.getElementById('av-sub').textContent = lista.length === 1
+        ? '1 conta precisa da sua atenção'
+        : `${lista.length} contas precisam da sua atenção`;
+      document.getElementById('av-lista').innerHTML = lista.map(c => {
+        const diasAtraso = Math.round((inicioHoje - c._data) / 86400000);
+        const badge = diasAtraso <= 0
+          ? '<span class="av-badge hoje">VENCE HOJE</span>'
+          : `<span class="av-badge atrasada">ATRASADA HÁ ${diasAtraso} DIA${diasAtraso > 1 ? 'S' : ''}</span>`;
+        return `
+          <div class="av-item">
+            <div>
+              <div class="av-item-desc">${ddEscHtml(c.descricao)}</div>
+              <div class="av-item-data">${ddEscHtml(c.data)}</div>
+              ${badge}
+            </div>
+            <div class="av-item-valor">${ddFmtMoeda(c.valor)}</div>
+          </div>`;
+      }).join('');
+      document.getElementById('av-total').innerHTML = `Total: <strong>${ddFmtMoeda(total)}</strong>`;
+
+      tela.style.display = 'flex';
+
+      const continuar = () => {
+        tela.style.display = 'none';
+        tela.removeEventListener('click', continuar);
+        document.removeEventListener('keydown', onKey);
+        callback();
+      };
+      const onKey = e => { if (e.key === 'Enter') continuar(); };
+      tela.addEventListener('click', continuar);
+      document.addEventListener('keydown', onKey);
+    }
+
+    async function continuarAposLogin() {
+      if (modo === 'parcial') {
+        try {
+          const vencendo = await buscarContasVencendoOuAtrasadas();
+          if (vencendo.length) {
+            mostrarAvisoContasVencendo(vencendo, () => mostrarSplashLogo(() => mostrarHome(true)));
+            return;
+          }
+        } catch (e) { console.error('Falha ao checar contas a pagar vencendo:', e); }
+      }
+      mostrarSplashLogo(() => mostrarHome(true));
     }
 
     function mostrarSplashLogo(callback) {
