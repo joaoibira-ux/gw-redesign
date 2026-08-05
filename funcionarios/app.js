@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.21";
+const VERSAO = "3.22";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -152,9 +152,29 @@ function inicioDaSemana() {
   return new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - diffSegunda, 0, 0, 0, 0);
 }
 
+// Extrai o nome de "Adiantamento: {nome} — ..." (mesma convenção de
+// folha/app.js) e soma o valor se for do funcionário-alvo e dentro da
+// semana atual. Usado tanto pra lançamentos de caixa (adiantamento pago na
+// hora) quanto pra contas a pagar (solicitação, paga ou ainda pendente) —
+// um pedido pendente já reserva o valor contra o limite semanal, pra não
+// deixar várias solicitações simultâneas passarem batido do teto antes de
+// alguém pagar.
+function _somaSeAdiantamentoDoFuncionario(descricao, criadoEm, valor, nomeAlvo, inicioSemana) {
+  const desc = descricao || "";
+  if (!desc.startsWith("Adiantamento: ")) return 0;
+  const nome = desc.slice("Adiantamento: ".length).split(/\s*[—–-]/)[0].trim().normalize("NFC");
+  if (nome !== nomeAlvo) return 0;
+  const dt = criadoEm && criadoEm.toDate ? criadoEm.toDate() : null;
+  if (!dt || dt < inicioSemana) return 0;
+  return Number(valor || 0);
+}
+
+let _adiantIdAtual = null;
+
 async function abrirAdiantamento(id) {
   const f = funcionariosCache[id];
   if (!f) return;
+  _adiantIdAtual = id;
 
   document.getElementById("adiant-nome").textContent = f.nome;
   document.getElementById("adiant-corpo").innerHTML = '<p class="empty">Calculando...</p>';
@@ -165,28 +185,27 @@ async function abrirAdiantamento(id) {
   let usado = 0;
 
   try {
-    const snap = await db.collection("lancamentos")
-      .where("origem", "in", ["ANE->ADIANTAMENTO", "JOAO->ADIANTAMENTO"])
-      .get();
-    snap.docs.forEach(d => {
+    const [lancSnap, apagarSnap] = await Promise.all([
+      db.collection("lancamentos").where("origem", "in", ["ANE->ADIANTAMENTO", "JOAO->ADIANTAMENTO"]).get(),
+      db.collection("contasPagar").get(),
+    ]);
+    lancSnap.docs.forEach(d => {
       const r = d.data();
-      const desc = r.descricao || "";
-      if (!desc.startsWith("Adiantamento: ")) return;
-      // Mesma extração de folha/app.js: nome fica entre "Adiantamento: " e o
-      // travessão/hífen separador — comparar por igualdade (não por prefixo)
-      // evita falso positivo entre nomes onde um é prefixo do outro (ex:
-      // "Ana" vs "Ana Paula").
-      const nome = desc.slice("Adiantamento: ".length).split(/\s*[—–-]/)[0].trim().normalize("NFC");
-      if (nome !== nomeAlvo) return;
-      const criadoEm = r.criadoEm && r.criadoEm.toDate ? r.criadoEm.toDate() : null;
-      if (!criadoEm || criadoEm < segunda) return;
-      usado += Number(r.saida || 0);
+      usado += _somaSeAdiantamentoDoFuncionario(r.descricao, r.criadoEm, r.saida, nomeAlvo, segunda);
+    });
+    apagarSnap.docs.forEach(d => {
+      const r = d.data();
+      usado += _somaSeAdiantamentoDoFuncionario(r.descricao, r.criadoEm, r.valor, nomeAlvo, segunda);
     });
   } catch (e) {
     document.getElementById("adiant-corpo").innerHTML = '<p class="empty">Erro ao consultar. Tente novamente.</p>';
     return;
   }
 
+  renderAdiantCorpo(usado);
+}
+
+function renderAdiantCorpo(usado) {
   const limite = Number(cfgGeral.limiteAdiantamentoSemanal || 0);
 
   if (limite <= 0) {
@@ -198,11 +217,60 @@ async function abrirAdiantamento(id) {
 
   const resta = Math.max(0, limite - usado);
   document.getElementById("adiant-corpo").innerHTML = `
-    <div class="adiant-linha"><span>Já usado essa semana</span><strong>${fmtMoeda(usado)}</strong></div>
-    <div class="adiant-linha"><span>Limite semanal</span><strong>${fmtMoeda(limite)}</strong></div>
-    <div class="adiant-linha ${resta <= 0 ? 'estourado' : ''}">
-      <span>${resta <= 0 ? 'Limite atingido' : 'Resta disponível'}</span><strong>${fmtMoeda(resta)}</strong>
-    </div>`;
+    <div class="adiant-resumo">
+      <div class="adiant-linha"><span>Já usado essa semana</span><strong>${fmtMoeda(usado)}</strong></div>
+      <div class="adiant-linha"><span>Limite semanal</span><strong>${fmtMoeda(limite)}</strong></div>
+      <div class="adiant-linha ${resta <= 0 ? 'estourado' : ''}">
+        <span>${resta <= 0 ? 'Limite atingido' : 'Resta disponível'}</span><strong>${fmtMoeda(resta)}</strong>
+      </div>
+    </div>
+    ${resta > 0 ? `
+      <button type="button" id="adiant-btn-solicitar" class="btn-solicitar" onclick="mostrarFormSolicitar(${resta})">+ Solicitar novo adiantamento</button>
+      <div id="adiant-form-solicitar" style="display:none">
+        <input id="adiant-valor-input" class="modal-input" type="text" inputmode="decimal" placeholder="Valor (R$, até ${fmtMoeda(resta)})" />
+        <div id="adiant-solicitar-erro" class="modal-erro"></div>
+        <button type="button" class="btn-save" style="width:100%" onclick="confirmarSolicitar()">Confirmar solicitação</button>
+      </div>` : ''}`;
+}
+
+function mostrarFormSolicitar(resta) {
+  document.getElementById("adiant-btn-solicitar").style.display = "none";
+  const form = document.getElementById("adiant-form-solicitar");
+  form.dataset.resta = resta;
+  form.style.display = "block";
+  document.getElementById("adiant-valor-input").focus();
+}
+
+async function confirmarSolicitar() {
+  const id = _adiantIdAtual;
+  const f = funcionariosCache[id];
+  if (!f) return;
+
+  const form   = document.getElementById("adiant-form-solicitar");
+  const resta  = Number(form.dataset.resta || 0);
+  const inp    = document.getElementById("adiant-valor-input");
+  const erroEl = document.getElementById("adiant-solicitar-erro");
+
+  const valor = parseMoeda(inp.value);
+  if (!valor || valor <= 0) { erroEl.textContent = "Informe um valor maior que zero."; return; }
+  if (valor > resta + 0.005) { erroEl.textContent = `Valor acima do disponível (${fmtMoeda(resta)}).`; return; }
+
+  erroEl.textContent = "";
+  try {
+    await db.collection("contasPagar").add({
+      data: hoje(),
+      descricao: "Adiantamento: " + f.nome + " — Solicitado em Funcionários",
+      valor,
+      status: "aberto",
+      criadoEm: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (e) {
+    erroEl.textContent = "Erro ao salvar. Tente novamente.";
+    return;
+  }
+
+  mostrarToast("Adiantamento solicitado — lançado no Contas a Pagar.");
+  abrirAdiantamento(id);
 }
 
 function fecharAdiantamento() {

@@ -167,7 +167,7 @@ header {
   font-size: 0.88rem;
   color: #444;
 }
-.adiant-linha:last-child { border-bottom: none; }
+.adiant-resumo .adiant-linha:last-child { border-bottom: none; }
 .adiant-linha strong { color: #1a3322; font-size: 0.95rem; }
 .adiant-linha.estourado strong { color: #e53935; }
 
@@ -177,6 +177,23 @@ header {
   color: #888;
   font-style: italic;
 }
+
+.btn-solicitar {
+  width: 100%;
+  margin-top: 14px;
+  padding: 12px;
+  background: #e8f5e9;
+  color: #1a3322;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-solicitar:active { background: #c8e6c9; }
+
+#adiant-form-solicitar { margin-top: 14px; }
+#adiant-form-solicitar .modal-input { margin-bottom: 8px; }
 
 .modal-btns { margin-top: 16px; }
 
