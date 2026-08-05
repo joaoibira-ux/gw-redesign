@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.20";
+const VERSAO = "3.21";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -16,6 +16,11 @@ document.getElementById("versao-app").textContent = "v" + VERSAO;
 firebase.initializeApp(firebaseConfig);
 const db  = firebase.firestore();
 const col = db.collection("funcionarios");
+
+let cfgGeral = { limiteAdiantamentoSemanal: 0 };
+db.collection("configuracoes").doc("geral").onSnapshot(snap => {
+  if (snap.exists) cfgGeral = { limiteAdiantamentoSemanal: 0, ...snap.data() };
+});
 
 function escHtml(s) {
   return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
@@ -108,6 +113,7 @@ function render(docs) {
       <div class="card ${ativo ? '' : 'inativo'}">
         <div class="card-acoes">
           <button class="btn-consultar" onclick="consultarFuncionario('${doc.id}')">Consultar</button>
+          <button class="btn-adiantamento" onclick="abrirAdiantamento('${doc.id}')">💰 Adiantamento</button>
           <button class="btn-del" onclick="excluir('${doc.id}')" title="Excluir">✕</button>
         </div>
         <div class="card-nome">${escHtml(f.nome)}</div>
@@ -137,6 +143,70 @@ function render(docs) {
         ${f.obs ? `<div class="card-obs">${escHtml(f.obs)}</div>` : ""}
       </div>`;
   }).join("");
+}
+
+function inicioDaSemana() {
+  const hoje = new Date();
+  const diaSemana = hoje.getDay(); // 0 = domingo
+  const diffSegunda = diaSemana === 0 ? 6 : diaSemana - 1;
+  return new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - diffSegunda, 0, 0, 0, 0);
+}
+
+async function abrirAdiantamento(id) {
+  const f = funcionariosCache[id];
+  if (!f) return;
+
+  document.getElementById("adiant-nome").textContent = f.nome;
+  document.getElementById("adiant-corpo").innerHTML = '<p class="empty">Calculando...</p>';
+  document.getElementById("adiant-overlay").style.display = "flex";
+
+  const segunda = inicioDaSemana();
+  const nomeAlvo = (f.nome || "").trim().normalize("NFC");
+  let usado = 0;
+
+  try {
+    const snap = await db.collection("lancamentos")
+      .where("origem", "in", ["ANE->ADIANTAMENTO", "JOAO->ADIANTAMENTO"])
+      .get();
+    snap.docs.forEach(d => {
+      const r = d.data();
+      const desc = r.descricao || "";
+      if (!desc.startsWith("Adiantamento: ")) return;
+      // Mesma extração de folha/app.js: nome fica entre "Adiantamento: " e o
+      // travessão/hífen separador — comparar por igualdade (não por prefixo)
+      // evita falso positivo entre nomes onde um é prefixo do outro (ex:
+      // "Ana" vs "Ana Paula").
+      const nome = desc.slice("Adiantamento: ".length).split(/\s*[—–-]/)[0].trim().normalize("NFC");
+      if (nome !== nomeAlvo) return;
+      const criadoEm = r.criadoEm && r.criadoEm.toDate ? r.criadoEm.toDate() : null;
+      if (!criadoEm || criadoEm < segunda) return;
+      usado += Number(r.saida || 0);
+    });
+  } catch (e) {
+    document.getElementById("adiant-corpo").innerHTML = '<p class="empty">Erro ao consultar. Tente novamente.</p>';
+    return;
+  }
+
+  const limite = Number(cfgGeral.limiteAdiantamentoSemanal || 0);
+
+  if (limite <= 0) {
+    document.getElementById("adiant-corpo").innerHTML = `
+      <div class="adiant-linha"><span>Já usado essa semana</span><strong>${fmtMoeda(usado)}</strong></div>
+      <p class="adiant-aviso">Limite semanal ainda não configurado (Configurações → Adiantamentos).</p>`;
+    return;
+  }
+
+  const resta = Math.max(0, limite - usado);
+  document.getElementById("adiant-corpo").innerHTML = `
+    <div class="adiant-linha"><span>Já usado essa semana</span><strong>${fmtMoeda(usado)}</strong></div>
+    <div class="adiant-linha"><span>Limite semanal</span><strong>${fmtMoeda(limite)}</strong></div>
+    <div class="adiant-linha ${resta <= 0 ? 'estourado' : ''}">
+      <span>${resta <= 0 ? 'Limite atingido' : 'Resta disponível'}</span><strong>${fmtMoeda(resta)}</strong>
+    </div>`;
+}
+
+function fecharAdiantamento() {
+  document.getElementById("adiant-overlay").style.display = "none";
 }
 
 col.orderBy("criadoEm","asc").onSnapshot(snap => render(snap.docs), err => {

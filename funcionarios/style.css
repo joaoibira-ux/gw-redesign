@@ -118,6 +118,68 @@ header {
 }
 .btn-consultar:active { background: #c8e6c9; }
 
+.btn-adiantamento {
+  background: #fff8e1;
+  color: #8d6200;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-adiantamento:active { background: #ffecb3; }
+
+/* Modal Adiantamento */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 24px;
+}
+
+.modal-box {
+  background: white;
+  border-radius: 18px;
+  padding: 24px 20px 20px;
+  width: 100%;
+  max-width: 360px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+
+.modal-titulo {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1a3322;
+  margin-bottom: 14px;
+}
+
+.adiant-linha {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #eee;
+  font-size: 0.88rem;
+  color: #444;
+}
+.adiant-linha:last-child { border-bottom: none; }
+.adiant-linha strong { color: #1a3322; font-size: 0.95rem; }
+.adiant-linha.estourado strong { color: #e53935; }
+
+.adiant-aviso {
+  margin-top: 10px;
+  font-size: 0.78rem;
+  color: #888;
+  font-style: italic;
+}
+
+.modal-btns { margin-top: 16px; }
+
 .btn-edit, .btn-del {
   background: none;
   border: none;

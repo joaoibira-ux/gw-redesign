@@ -1,4 +1,4 @@
-const VERSAO = "1.2";
+const VERSAO = "1.5";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp({
@@ -31,6 +31,7 @@ const DEFAULTS = {
   salarioAjudante:    1850,
   valorCafe:          0,
   valorAlmoco:        0,
+  limiteAdiantamentoSemanal: 0,
 };
 
 let cfg = { ...DEFAULTS };
@@ -62,6 +63,9 @@ function renderizar() {
     <div class="secao-titulo">☕ Benefícios</div>
     ${item("Valor do Café", fmtMoeda(cfg.valorCafe), "valorCafe", false)}
     ${item("Valor do Almoço", fmtMoeda(cfg.valorAlmoco), "valorAlmoco", false)}
+
+    <div class="secao-titulo">💵 Adiantamentos</div>
+    ${item("Limite semanal por funcionário", fmtMoeda(cfg.limiteAdiantamentoSemanal), "limiteAdiantamentoSemanal", false)}
 
     <div class="secao-titulo">📅 Despesas Recorrentes (lançadas no Contas a Pagar todo dia 01)</div>
     ${recorrentes.length
@@ -104,13 +108,14 @@ function item(label, valor, campo, oculto) {
 }
 
 // ── Modal ─────────────────────────────────────────────────────
-const CAMPOS_MOEDA   = ["salarioEncarregado", "salarioAjudante", "valorCafe", "valorAlmoco"];
+const CAMPOS_MOEDA   = ["salarioEncarregado", "salarioAjudante", "valorCafe", "valorAlmoco", "limiteAdiantamentoSemanal"];
 const CAMPOS_SENHAS  = ["senhaExcluir", "senhaAlterarBanco", "pinCompleto", "pinParcial", "pinRestrito", "pinLimitado"];
 const LABELS = {
   salarioEncarregado: "Salário Encarregado (R$)",
   salarioAjudante:    "Salário Ajudante (R$)",
   valorCafe:          "Valor do Café (R$)",
   valorAlmoco:        "Valor do Almoço (R$)",
+  limiteAdiantamentoSemanal: "Limite semanal de adiantamento, por funcionário (R$)",
   senhaExcluir:       "Nova senha — Excluir / Ativar",
   senhaAlterarBanco:  "Nova senha — Alterar Banco",
   pinCompleto:        "Novo PIN Completo (4 dígitos)",
