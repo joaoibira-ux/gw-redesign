@@ -13,8 +13,11 @@ const db = admin.firestore();
 
 const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
 const whatsappToken = defineSecret("WHATSAPP_TOKEN");
+const evolutionApiKey = defineSecret("EVOLUTION_API_KEY");
 const WHATSAPP_PHONE_ID = "1090526494154821";
 const WHATSAPP_DESTINO = "5581992114764";
+const EVOLUTION_API_URL = "http://136.114.108.31:8080";
+const EVOLUTION_INSTANCE = "gw";
 const SENHA_ALTERACAO_BANCO = "6535";
 
 const PROMPT = `Esta imagem é um boletim/planilha de medição de obra (construção civil).
@@ -1886,5 +1889,72 @@ exports.lancarDespesasRecorrentes = onSchedule(
 
     if (algumLancado) await batch.commit();
     logger.info(`[despesasRecorrentes] lançamento do mês ${chaveMes} concluído`, { totalCadastradas: snap.size });
+  }
+);
+
+// Converte "DD/MM/AAAA" pro timestamp de meia-noite (America/Sao_Paulo) do dia de vencimento
+function parseDataVencimento(s) {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec((s || "").trim());
+  if (!m) return null;
+  const [, d, mo, a] = m;
+  const ano = a.length === 2 ? "20" + a : a;
+  const iso = `${ano}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  return new Date(iso + "T00:00:00-03:00").getTime();
+}
+
+function fmtMoeda(v) {
+  return "R$ " + (v || 0).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+// Roda toda manhã e avisa no WhatsApp (via Evolution API, mensagem livre — sem
+// restrição de template como a API da Meta usada no relatório de ponto) quais
+// contas em "contasPagar" já passaram da data de vencimento e ainda não foram baixadas.
+exports.alertaContasVencidas = onSchedule(
+  { schedule: "0 8 * * *", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
+  async () => {
+    const hojeStr = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const hoje = new Date(hojeStr + "T00:00:00-03:00").getTime();
+
+    const snap = await db.collection("contasPagar").where("status", "==", "aberto").get();
+    if (snap.empty) return;
+
+    const vencidas = snap.docs
+      .map(doc => doc.data())
+      .filter(c => {
+        const venc = parseDataVencimento(c.data);
+        return venc !== null && venc < hoje;
+      })
+      .sort((a, b) => parseDataVencimento(a.data) - parseDataVencimento(b.data));
+
+    if (vencidas.length === 0) return;
+
+    const totalVencido = vencidas.reduce((acc, c) => acc + (c.valor || 0), 0);
+    const linhas = vencidas.map(c =>
+      `${c.numero ? `Nº ${c.numero} - ` : ""}${c.descricao} - ${fmtMoeda(c.valor)} - venceu em ${c.data}`
+    );
+    const texto = [
+      `Contas vencidas no Sistema GW (${vencidas.length}):`,
+      "",
+      ...linhas,
+      "",
+      `Total vencido: ${fmtMoeda(totalVencido)}`
+    ].join("\n");
+
+    const resp = await fetch(`${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
+      method: "POST",
+      headers: {
+        "apikey": evolutionApiKey.value(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ number: WHATSAPP_DESTINO, text: texto })
+    });
+
+    if (!resp.ok) {
+      const respText = await resp.text();
+      logger.error("Erro ao enviar alerta de contas vencidas:", resp.status, respText.slice(0, 500));
+      throw new Error(`Falha ao enviar WhatsApp via Evolution API: status ${resp.status}`);
+    }
+
+    logger.info(`[alertaContasVencidas] enviado alerta com ${vencidas.length} conta(s) vencida(s)`, { totalVencido });
   }
 );
