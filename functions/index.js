@@ -18,6 +18,7 @@ const WHATSAPP_PHONE_ID = "1090526494154821";
 const WHATSAPP_DESTINO = "5581992114764";
 const EVOLUTION_API_URL = "http://136.114.108.31:8080";
 const EVOLUTION_INSTANCE = "gw";
+const EVOLUTION_DESTINATARIOS = ["5581992114764", "5581988310203"];
 const SENHA_ALTERACAO_BANCO = "6535";
 
 const PROMPT = `Esta imagem é um boletim/planilha de medição de obra (construção civil).
@@ -1912,18 +1913,27 @@ function linhaContaPagar(c) {
 
 // Mensagem livre (sem restrição de template como a API da Meta usada no
 // relatório de ponto) via Evolution API, self-hosted na VM da GCP.
+// Manda pra todos os EVOLUTION_DESTINATARIOS; se algum falhar, tenta os
+// outros mesmo assim e só lança erro no final (evita 1 número quebrado
+// silenciar o aviso pros demais).
 async function enviarWhatsAppEvolution(texto, apiKeyValue) {
-  const resp = await fetch(`${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
-    method: "POST",
-    headers: {
-      "apikey": apiKeyValue,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ number: WHATSAPP_DESTINO, text: texto })
-  });
-  if (!resp.ok) {
-    const respText = await resp.text();
-    throw new Error(`Falha ao enviar WhatsApp via Evolution API: status ${resp.status} - ${respText.slice(0, 300)}`);
+  const erros = [];
+  for (const numero of EVOLUTION_DESTINATARIOS) {
+    const resp = await fetch(`${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
+      method: "POST",
+      headers: {
+        "apikey": apiKeyValue,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ number: numero, text: texto })
+    });
+    if (!resp.ok) {
+      const respText = await resp.text();
+      erros.push(`${numero}: status ${resp.status} - ${respText.slice(0, 200)}`);
+    }
+  }
+  if (erros.length > 0) {
+    throw new Error(`Falha ao enviar WhatsApp via Evolution API para: ${erros.join(" | ")}`);
   }
 }
 
