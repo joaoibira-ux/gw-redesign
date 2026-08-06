@@ -1,5 +1,5 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
-const { onDocumentWritten, onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onDocumentWritten, onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
@@ -19,6 +19,7 @@ const WHATSAPP_DESTINO = "5581992114764";
 const EVOLUTION_API_URL = "http://136.114.108.31:8080";
 const EVOLUTION_INSTANCE = "gw";
 const EVOLUTION_DESTINATARIOS = ["5581992114764", "5581988310203"];
+const EVOLUTION_DESTINATARIOS_ADIANTAMENTO = ["5581992114764", "5581993697990"];
 const SENHA_ALTERACAO_BANCO = "6535";
 
 const PROMPT = `Esta imagem é um boletim/planilha de medição de obra (construção civil).
@@ -1913,12 +1914,12 @@ function linhaContaPagar(c) {
 
 // Mensagem livre (sem restrição de template como a API da Meta usada no
 // relatório de ponto) via Evolution API, self-hosted na VM da GCP.
-// Manda pra todos os EVOLUTION_DESTINATARIOS; se algum falhar, tenta os
-// outros mesmo assim e só lança erro no final (evita 1 número quebrado
-// silenciar o aviso pros demais).
-async function enviarWhatsAppEvolution(texto, apiKeyValue) {
+// Manda pra todos os "destinatarios"; se algum falhar, tenta os outros
+// mesmo assim e só lança erro no final (evita 1 número quebrado silenciar
+// o aviso pros demais).
+async function enviarWhatsAppEvolution(texto, apiKeyValue, destinatarios = EVOLUTION_DESTINATARIOS) {
   const erros = [];
-  for (const numero of EVOLUTION_DESTINATARIOS) {
+  for (const numero of destinatarios) {
     const resp = await fetch(`${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
       method: "POST",
       headers: {
@@ -1970,6 +1971,42 @@ exports.avisoContaVencendoHoje = onDocumentCreated(
 
     await event.data.ref.update({ avisoImediatoEnviadoEm: admin.firestore.FieldValue.serverTimestamp() });
     logger.info("[avisoContaVencendoHoje] aviso imediato enviado", { descricao: c.descricao, valor: c.valor });
+  }
+);
+
+// Dispara quando uma conta a pagar de adiantamento salarial (descrição
+// começando com "Adiantamento:" — padrão usado tanto na solicitação em
+// Funcionários quanto no lançamento direto pelo Caixa) é baixada
+// integralmente no Caixa (baixarContaAPagar em caixa/app.js muda o status
+// pra "baixado"). Avisa pra um grupo de destinatários diferente do alerta
+// de vencimento.
+exports.avisoPagamentoAdiantamento = onDocumentUpdated(
+  { document: "contasPagar/{contaId}", secrets: [evolutionApiKey] },
+  async (event) => {
+    const antes = event.data.before.data();
+    const depois = event.data.after.data();
+    if (!antes || !depois) return;
+    if (antes.status === "baixado" || depois.status !== "baixado") return;
+    if (!depois.descricao || !depois.descricao.startsWith("Adiantamento:")) return;
+
+    const m = /^Adiantamento:\s*(.+?)\s*—/.exec(depois.descricao);
+    const nome = m ? m[1].trim() : depois.descricao;
+    const valorPago = depois.valorOriginal !== undefined ? depois.valorOriginal : depois.valor;
+
+    const texto = [
+      "Adiantamento pago no Caixa:",
+      "",
+      `${nome} - ${fmtMoeda(valorPago)} - pago em ${depois.dataBaixa || ""}`
+    ].join("\n");
+
+    try {
+      await enviarWhatsAppEvolution(texto, evolutionApiKey.value(), EVOLUTION_DESTINATARIOS_ADIANTAMENTO);
+    } catch (e) {
+      logger.error("Erro ao enviar aviso de pagamento de adiantamento:", e.message);
+      throw e;
+    }
+
+    logger.info("[avisoPagamentoAdiantamento] aviso enviado", { nome, valorPago });
   }
 );
 
