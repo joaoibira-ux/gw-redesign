@@ -1908,7 +1908,7 @@ function fmtMoeda(v) {
 
 // Roda toda manhã e avisa no WhatsApp (via Evolution API, mensagem livre — sem
 // restrição de template como a API da Meta usada no relatório de ponto) quais
-// contas em "contasPagar" já passaram da data de vencimento e ainda não foram baixadas.
+// contas em "contasPagar" vencem hoje ou já passaram da data e ainda não foram baixadas.
 exports.alertaContasVencidas = onSchedule(
   { schedule: "0 8 * * *", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
   async () => {
@@ -1918,27 +1918,29 @@ exports.alertaContasVencidas = onSchedule(
     const snap = await db.collection("contasPagar").where("status", "==", "aberto").get();
     if (snap.empty) return;
 
-    const vencidas = snap.docs
+    const abertasComVenc = snap.docs
       .map(doc => doc.data())
-      .filter(c => {
-        const venc = parseDataVencimento(c.data);
-        return venc !== null && venc < hoje;
-      })
-      .sort((a, b) => parseDataVencimento(a.data) - parseDataVencimento(b.data));
+      .map(c => ({ c, venc: parseDataVencimento(c.data) }))
+      .filter(({ venc }) => venc !== null && venc <= hoje)
+      .sort((a, b) => a.venc - b.venc);
 
-    if (vencidas.length === 0) return;
+    if (abertasComVenc.length === 0) return;
 
-    const totalVencido = vencidas.reduce((acc, c) => acc + (c.valor || 0), 0);
-    const linhas = vencidas.map(c =>
-      `${c.numero ? `Nº ${c.numero} - ` : ""}${c.descricao} - ${fmtMoeda(c.valor)} - venceu em ${c.data}`
-    );
-    const texto = [
-      `Contas vencidas no Sistema GW (${vencidas.length}):`,
-      "",
-      ...linhas,
-      "",
-      `Total vencido: ${fmtMoeda(totalVencido)}`
-    ].join("\n");
+    const vencendoHoje = abertasComVenc.filter(({ venc }) => venc === hoje).map(({ c }) => c);
+    const vencidas = abertasComVenc.filter(({ venc }) => venc < hoje).map(({ c }) => c);
+
+    const linha = c => `${c.numero ? `Nº ${c.numero} - ` : ""}${c.descricao} - ${fmtMoeda(c.valor)} - vencimento ${c.data}`;
+    const blocos = [];
+    if (vencendoHoje.length > 0) {
+      blocos.push(`Vencendo hoje (${vencendoHoje.length}):`, "", ...vencendoHoje.map(linha), "");
+    }
+    if (vencidas.length > 0) {
+      blocos.push(`Vencidas (${vencidas.length}):`, "", ...vencidas.map(linha), "");
+    }
+    const totalGeral = [...vencendoHoje, ...vencidas].reduce((acc, c) => acc + (c.valor || 0), 0);
+    blocos.push(`Total: ${fmtMoeda(totalGeral)}`);
+
+    const texto = blocos.join("\n");
 
     const resp = await fetch(`${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
       method: "POST",
