@@ -335,6 +335,20 @@ const TOOLS_GW = [
         status: { type: "string", enum: ["concluido", "em_pagamento", "todos"], description: "Filtro de status (padrão: concluido)" }
       }
     }
+  },
+  {
+    name: "criar_local",
+    description: "Cadastra um novo local (apartamento) no Mapa de Obra, seguindo sempre o mesmo padrão dos locais já existentes: atribui automaticamente TODOS os serviços atualmente cadastrados no sistema (ver listar_servicos), cada um com status inicial 'pendente'. NUNCA atribua só um subconjunto de serviços — o padrão de todo local existente é começar com a lista completa. Recusa criar se já existir um local com a mesma identificação. ALTERA O BANCO DE DADOS: exige o campo senha, que deve ser pedido ao usuário antes de chamar esta ferramenta.",
+    input_schema: {
+      type: "object",
+      properties: {
+        identificacao: { type: "string", description: "Identificação/código do novo local, ex: 'A01', 'BM 06' (é salva em maiúsculas)" },
+        area:          { type: "number", description: "Área em m² (opcional, padrão 0 se omitido)" },
+        tipo:          { type: "string", description: "Tipo do local (opcional — padrão e único tipo em uso hoje é 'Apartamento')" },
+        senha:         { type: "string", description: "Senha de autorização para alterar o banco de dados. Deve ser pedida ao usuário antes de chamar esta ferramenta." }
+      },
+      required: ["identificacao", "senha"]
+    }
   }
 ];
 
@@ -1577,6 +1591,47 @@ async function executarFerramenta(nome, input) {
     return resultados;
   }
 
+  if (nome === "criar_local") {
+    const { identificacao, area, tipo, senha } = input;
+    if (senha !== SENHA_ALTERACAO_BANCO) {
+      return { sucesso: false, erro: "senha_invalida", mensagem: "Senha incorreta. Peça a senha de autorização ao usuário para alterar o banco de dados." };
+    }
+    if (!identificacao) {
+      return { sucesso: false, erro: "identificacao_obrigatoria", mensagem: "Identificação do local é obrigatória." };
+    }
+
+    const identificacaoNorm = String(identificacao).trim().toUpperCase();
+    const duplicado = await db.collection("locais").where("identificacao", "==", identificacaoNorm).limit(1).get();
+    if (!duplicado.empty) {
+      return { sucesso: false, erro: "ja_existe", mensagem: `Já existe um local cadastrado com identificação "${identificacaoNorm}".` };
+    }
+
+    // Mesmo padrão de todo local já existente: começa com TODOS os serviços
+    // atuais do sistema, cada um "pendente" (é o que sincronizarNovosServicos,
+    // em locais/app.js, converge com o tempo pros locais criados manualmente).
+    const servicosSnap = await db.collection("servicos").get();
+    const servicos = servicosSnap.docs.map(d => {
+      const s = d.data();
+      return { id: d.id, nome: s.nome || "", status: "pendente", ...(s.item ? { item: s.item } : {}) };
+    });
+
+    const ref = await db.collection("locais").add({
+      tipo: tipo || "Apartamento",
+      identificacao: identificacaoNorm,
+      area: Number(area) || 0,
+      servicos,
+      criadoEm: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    return {
+      sucesso: true,
+      id: ref.id,
+      identificacao: identificacaoNorm,
+      quantidadeServicos: servicos.length,
+      mensagem: `Local "${identificacaoNorm}" criado com ${servicos.length} serviço(s) atribuído(s) como pendente, seguindo o padrão dos demais locais.`
+    };
+  }
+
   return { erro: "ferramenta desconhecida" };
 }
 
@@ -1595,6 +1650,7 @@ Responda sempre em português brasileiro, de forma direta e confirmando o que fo
 Quando o usuário mencionar um nome incompleto de funcionário, use listar_funcionarios primeiro para encontrar o ID correto.
 CRÍTICO: funcionarioId é sempre o ID real gerado pelo Firestore (retornado por listar_funcionarios), nunca um valor inventado a partir do nome (ex: "lucas.cristiano" ou "3" NÃO são funcionarioId válidos). Antes de chamar registrar_ponto ou editar_ponto, sempre confirme o funcionarioId real chamando listar_funcionarios — a menos que esse ID já tenha sido retornado por listar_funcionarios nesta mesma conversa. Nunca presuma ou monte um ID.
 Códigos de locais/apartamentos (ex: BM 06, BM06, BM006, BM 006, Bm 06) são equivalentes — passe o código exatamente como o usuário digitou, o sistema normaliza automaticamente.
+Para criar um novo local, use criar_local — ela já atribui automaticamente TODOS os serviços atualmente cadastrados no sistema (o mesmo padrão de qualquer local já existente); nunca tente montar a lista de serviços manualmente nem pergunte ao usuário quais serviços incluir.
 IMPORTANTE: qualquer ferramenta que altere o banco de dados (ex: registrar_ponto, editar_ponto, cancelar_ponto, criar_lancamento_caixa, editar_lancamento_caixa, excluir_lancamento_caixa, registrar_pagamento_refeicoes, editar_conta_pagar, dar_baixa_conta_pagar) exige uma senha de autorização. Antes de chamar essa ferramenta, sempre pergunte ao usuário "Qual a senha de autorização para alterar o banco de dados?" e só prossiga depois que ele informar a senha. Nunca invente, sugira ou revele a senha.
 CRÍTICO: NUNCA diga ao usuário que uma ação foi concluída/registrada/salva com sucesso a menos que o resultado da ferramenta (o tool_result mais recente) traga explicitamente "sucesso": true. Se vier "sucesso": false, ou se você não tiver certeza de ter chamado a ferramenta de verdade, informe claramente que a ação FALHOU (use a "mensagem" do erro, se houver) e peça pra tentar de novo — nunca componha uma confirmação de sucesso a partir de memória da conversa ou suposição. Isso já causou TRÊS casos reais: (1) o assistente disse "Pagamento registrado com sucesso" sem a ferramenta ter sido executada de verdade, nada gravado no banco; (2) o usuário pediu baixa em 2 lançamentos do Contas a Pagar, o assistente confirmou os dois, mas NENHUMA ferramenta foi chamada pra nenhum dos dois; (3) o usuário pediu pra editar_conta_pagar mudar uma data, o assistente confirmou a troca, mas não chamou NENHUMA ferramenta — o registro no banco nunca mudou. SE O USUÁRIO PEDIR UMA AÇÃO EM MAIS DE UM ITEM (ex: "dá baixa nesses dois", "edita esses três"), chame a ferramenta correspondente UMA VEZ PARA CADA item, com o id real de cada um — nunca responda como se todos tivessem sido feitos sem ter chamado a ferramenta pra cada um individualmente.
 VERIFICAÇÃO OBRIGATÓRIA antes de qualquer resposta que confirme uma ação (registrar, editar, excluir, dar baixa, pagar, cancelar): pare e confira, nesta mesma resposta que você está montando, se existe um tool_result correspondente com "sucesso": true. Se a resposta que você está prestes a mandar afirma que algo foi feito e você não consegue apontar esse tool_result específico, isso é um sinal de que você pulou a chamada da ferramenta — pare, chame a ferramenta de verdade primeiro, e só confirme depois de ver o resultado real.
