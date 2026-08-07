@@ -21,6 +21,21 @@ const EVOLUTION_INSTANCE = "gw";
 const EVOLUTION_DESTINATARIOS = ["5581992114764", "5581988310203"];
 const EVOLUTION_DESTINATARIOS_ADIANTAMENTO = ["5581992114764", "5581993697990"];
 const EVOLUTION_DESTINATARIOS_REFEICOES = ["5581992114764", "5581991725267"];
+// Número da própria instância "gw" (é o WhatsApp pessoal do João, pareado
+// como aparelho vinculado — não um número de bot dedicado). O agente via
+// WhatsApp só responde na conversa "Mensagens para você mesmo" desse número.
+const NUMERO_AGENTE_WHATSAPP = "5581992114764";
+
+// O JID do WhatsApp às vezes vem sem o "9" extra dos celulares brasileiros
+// (ex: 558192114764 em vez de 5581992114764) — normaliza os dois lados antes
+// de comparar números, senão a checagem de remetente nunca bate.
+function normalizarNumeroBR(n) {
+  const digitos = String(n || "").replace(/\D/g, "");
+  if (digitos.length === 13 && digitos.startsWith("55") && digitos[4] === "9") {
+    return digitos.slice(0, 4) + digitos.slice(5);
+  }
+  return digitos;
+}
 const SENHA_ALTERACAO_BANCO = "6535";
 const PRECO_CAFE = 10;
 const PRECO_ALMOCO = 15;
@@ -1808,12 +1823,11 @@ async function executarFerramenta(nome, input) {
   return { erro: "ferramenta desconhecida" };
 }
 
-exports.agenteGW = onCall(
-  { secrets: [anthropicApiKey], timeoutSeconds: 120, memory: "512MiB", cors: true, invoker: "public" },
-  async (request) => {
-    const { mensagem, historico = [] } = request.data || {};
-    if (!mensagem) throw new HttpsError("invalid-argument", "mensagem é obrigatória.");
-
+// Núcleo do assistente do Sistema GW (system prompt + loop de tool use do
+// Claude) — usado tanto pelo chat do app (agenteGW, onCall) quanto pelo
+// webhook do WhatsApp (webhookEvolutionGW). Extraído pra um só lugar pra não
+// duplicar o prompt e a lógica de execução de ferramentas entre os dois.
+async function processarMensagemAgenteGW(mensagem, historico) {
     const hoje = new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
     const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
 
@@ -1903,6 +1917,115 @@ CRÍTICO: consultar_ponto só serve para UM dia. Quando o usuário pedir ponto d
 
     const novoHistorico = [...messages, { role: "assistant", content: resposta }];
     return { resposta, historico: novoHistorico };
+}
+
+exports.agenteGW = onCall(
+  { secrets: [anthropicApiKey], timeoutSeconds: 120, memory: "512MiB", cors: true, invoker: "public" },
+  async (request) => {
+    const { mensagem, historico = [] } = request.data || {};
+    if (!mensagem) throw new HttpsError("invalid-argument", "mensagem é obrigatória.");
+    return processarMensagemAgenteGW(mensagem, historico);
+  }
+);
+
+// Agente do WhatsApp via polling — o webhook do Evolution API se mostrou
+// não confiável nessa instância (disparou uma única vez em ~10 tentativas,
+// mesmo depois de reconfigurar, reiniciar o container e habilitar Redis;
+// causa raiz não identificada). Em vez de esperar o webhook avisar, essa
+// function roda a cada 1 minuto e busca mensagens novas direto via
+// GET/POST findMessages — o mesmo caminho que a Evolution usa pra persistir
+// mensagens (só passou a funcionar depois de DATABASE_SAVE_DATA_NEW_MESSAGE
+// habilitado, que também resolveu o problema de descoberta).
+//
+// PEGADINHA do WhatsApp "LID": pra alguns contatos, o WhatsApp identifica o
+// remetente por um "Linked ID" opaco (ex: 237336336015615@lid) em vez do
+// número de telefone real — e isso pode variar mensagem a mensagem pro
+// MESMO contato. A Evolution expõe o número de telefone real em
+// key.remoteJidAlt quando isso acontece, então sempre preferimos esse campo
+// pra identificar o remetente.
+exports.pollingAgenteWhatsApp = onSchedule(
+  { schedule: "* * * * *", timeZone: "America/Sao_Paulo", secrets: [anthropicApiKey, evolutionApiKey], timeoutSeconds: 120 },
+  async () => {
+    const estadoRef = db.collection("agenteWhatsappPolling").doc("estado");
+    const estadoSnap = await estadoRef.get();
+
+    // Primeira execução: só marca a partir de agora, não reprocessa
+    // histórico antigo (evita responder mensagens de antes de existir isso).
+    if (!estadoSnap.exists) {
+      await estadoRef.set({ ultimoTimestampProcessado: Math.floor(Date.now() / 1000), idsProcessados: [] });
+      return;
+    }
+
+    const estado = estadoSnap.data();
+    const ultimoTimestamp = estado.ultimoTimestampProcessado || 0;
+    const idsProcessados = estado.idsProcessados || [];
+
+    const respBusca = await fetch(`${EVOLUTION_API_URL}/chat/findMessages/${EVOLUTION_INSTANCE}`, {
+      method: "POST",
+      headers: { "apikey": evolutionApiKey.value(), "Content-Type": "application/json" },
+      body: JSON.stringify({})
+    });
+    if (!respBusca.ok) {
+      logger.error("[pollingAgenteWhatsApp] falha ao buscar mensagens", { status: respBusca.status });
+      return;
+    }
+    const resultBusca = await respBusca.json().catch(() => null);
+    const mensagens = (resultBusca && resultBusca.messages && resultBusca.messages.records) || [];
+
+    const alvoNorm = normalizarNumeroBR(NUMERO_AGENTE_WHATSAPP);
+    const novas = mensagens
+      .filter(m => !m.key.fromMe)
+      .filter(m => m.messageTimestamp > ultimoTimestamp)
+      .filter(m => !idsProcessados.includes(m.key.id))
+      .filter(m => {
+        const numero = normalizarNumeroBR((m.key.remoteJidAlt || m.key.remoteJid || "").split("@")[0]);
+        return numero === alvoNorm;
+      })
+      .sort((a, b) => a.messageTimestamp - b.messageTimestamp);
+
+    if (novas.length === 0) return;
+
+    const histRef = db.collection("agenteWhatsappHistorico").doc(NUMERO_AGENTE_WHATSAPP);
+    let maiorTimestamp = ultimoTimestamp;
+    const novosIds = [];
+
+    for (const msg of novas) {
+      maiorTimestamp = Math.max(maiorTimestamp, msg.messageTimestamp);
+      novosIds.push(msg.key.id);
+
+      const texto = (msg.message && (
+        msg.message.conversation ||
+        (msg.message.extendedTextMessage && msg.message.extendedTextMessage.text)
+      )) || "";
+      if (!texto.trim()) continue;
+
+      try {
+        const histSnap = await histRef.get();
+        const historico = histSnap.exists ? (histSnap.data().historico || []) : [];
+
+        const { resposta, historico: novoHistorico } = await processarMensagemAgenteGW(texto, historico);
+
+        await histRef.set({
+          historico: novoHistorico.slice(-12),
+          atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        await fetch(`${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
+          method: "POST",
+          headers: { "apikey": evolutionApiKey.value(), "Content-Type": "application/json" },
+          body: JSON.stringify({ number: NUMERO_AGENTE_WHATSAPP, text: resposta })
+        });
+      } catch (e) {
+        logger.error("[pollingAgenteWhatsApp] erro ao processar mensagem", { erro: e.message, msgId: msg.key.id });
+      }
+    }
+
+    await estadoRef.set({
+      ultimoTimestampProcessado: maiorTimestamp,
+      idsProcessados: [...idsProcessados, ...novosIds].slice(-50)
+    });
+
+    logger.info(`[pollingAgenteWhatsApp] processadas ${novas.length} mensagem(ns)`);
   }
 );
 
