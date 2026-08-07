@@ -1,4 +1,4 @@
-const VERSAO = "1.6";
+const VERSAO = "1.7";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp({
@@ -25,7 +25,7 @@ const DEFAULTS = {
   pinParcial:        "4512",
   pinRestrito:       "3733",
   pinLimitado:       "0000",
-  senhaExcluir:      "4512",
+  senhaExcluir:      "6535",
   senhaAlterarBanco: "6535",
   salarioEncarregado: 3000,
   salarioAjudante:    1850,

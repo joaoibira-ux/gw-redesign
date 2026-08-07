@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "1.6";
+const VERSAO = "1.7";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -261,7 +261,7 @@ function excluir(id) {
   if (!c) return;
   const senha = prompt("EXCLUIR CONTA A PAGAR?\n\n" + c.descricao + "\n" + fmtMoeda(c.valor) + "\n\nDigite a senha:");
   if (senha === null) return;
-  if (senha !== "4512") { alert("Senha incorreta."); return; }
+  if (senha !== "6535") { alert("Senha incorreta."); return; }
   col.doc(id).delete();
 }
 

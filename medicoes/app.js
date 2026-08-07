@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.0";
+const VERSAO = "3.1";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -106,7 +106,7 @@ function excluirMedicao(id) {
   if (!m) return;
   const senha = prompt("EXCLUIR MEDIÇÃO?\n\n" + (m.nome || "(sem nome)") + "\n\nDigite a senha:");
   if (senha === null) return;
-  if (senha !== "4512") { alert("Senha incorreta."); return; }
+  if (senha !== "6535") { alert("Senha incorreta."); return; }
   col.doc(id).delete();
 }
 
@@ -423,7 +423,7 @@ function excluirMedicaoAtual() {
   const m = docsCache[detalheAtualId];
   const senha = prompt("EXCLUIR MEDIÇÃO?\n\n" + (m.nome || "(sem nome)") + "\n\nDigite a senha:");
   if (senha === null) return;
-  if (senha !== "4512") { alert("Senha incorreta."); return; }
+  if (senha !== "6535") { alert("Senha incorreta."); return; }
   col.doc(detalheAtualId).delete();
   fecharDetalhe();
 }

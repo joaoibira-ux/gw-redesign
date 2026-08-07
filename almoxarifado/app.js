@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "1.0";
+const VERSAO = "1.1";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 if ("serviceWorker" in navigator) {
@@ -173,7 +173,7 @@ async function excluirItem() {
   if (!editandoId) return;
   const senha = prompt("EXCLUIR este item permanentemente?\n\nDigite a senha:");
   if (senha === null) return;
-  if (senha !== "4512") { alert("Senha incorreta."); return; }
+  if (senha !== "6535") { alert("Senha incorreta."); return; }
   await col.doc(editandoId).delete();
   fecharCadastro();
 }

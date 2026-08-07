@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.23";
+const VERSAO = "3.24";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -660,7 +660,7 @@ function excluir(id) {
   if (!f) return;
   const senha = prompt(`EXCLUIR FUNCIONÁRIO?\n\n${f.nome} — ${f.cargo}\n\nDigite a senha:`);
   if (senha === null) return;
-  if (senha !== "4512") { alert("Senha incorreta."); return; }
+  if (senha !== "6535") { alert("Senha incorreta."); return; }
   col.doc(id).delete();
 }
 

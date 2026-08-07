@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "2.7";
+const VERSAO = "2.8";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -260,7 +260,7 @@ function toggleServico(localId, servicoId) {
     const info = serv.executor ? `Executor: ${serv.executor.nome}` : "";
     const senha = prompt(`DESMARCAR EXECUÇÃO?\n\n${serv.nome}\n${info}\n\nDigite a senha:`);
     if (senha === null) return;
-    if (senha !== "4512") { alert("Senha incorreta."); return; }
+    if (senha !== "6535") { alert("Senha incorreta."); return; }
     const servicos = (l.servicos || []).map(s =>
       s.id === servicoId ? { id: s.id, nome: s.nome, status: "pendente" } : s
     );
@@ -269,7 +269,7 @@ function toggleServico(localId, servicoId) {
   } else if (serv.status === "em_pagamento") {
     const senha = prompt(`CANCELAR DA FOLHA?\n\n${serv.nome}\nEste item voltará para pendente no mapa.\n\nDigite a senha:`);
     if (senha === null) return;
-    if (senha !== "4512") { alert("Senha incorreta."); return; }
+    if (senha !== "6535") { alert("Senha incorreta."); return; }
     const servicos = (l.servicos || []).map(s =>
       s.id === servicoId ? { id: s.id, nome: s.nome, status: "pendente" } : s
     );
@@ -346,7 +346,7 @@ function excluir(id) {
   if (!l) return;
   const senha = prompt(`EXCLUIR LOCAL?\n\n${l.tipo} — ${l.identificacao}\n\nDigite a senha:`);
   if (senha === null) return;
-  if (senha !== "4512") { alert("Senha incorreta."); return; }
+  if (senha !== "6535") { alert("Senha incorreta."); return; }
   colLocal.doc(id).delete();
 }
 
