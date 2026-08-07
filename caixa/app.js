@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.50";
+const VERSAO_CAIXA = "3.51";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -200,7 +200,7 @@ function render(docs) {
   lista.lastElementChild.scrollIntoView({ behavior: "smooth", block: "end" });
 }
 
-function deletar(id) {
+async function deletar(id) {
   if (id !== ultimoDocId) {
     alert("Só é possível excluir o lançamento mais recente.");
     return;
@@ -222,6 +222,20 @@ function deletar(id) {
   }
 
   const ehBaixaContaPagar = (r.origem === "JOAO->BAIXA CTAS A PAGAR" || r.origem === "ANE->BAIXA CTAS A PAGAR") && r.contaPagarId;
+
+  // Se esse lançamento criou uma conta a pagar nova (empréstimo, "Contas a
+  // Pagar" direto, crédito a repassar BBS), desfaz os dois juntos — só se
+  // a conta ainda estiver em aberto. Se já foi paga, algo mudou por fora
+  // do fluxo normal e é mais seguro não apagar um registro já quitado.
+  let contaPagarCriadaParaExcluir = null;
+  if (r.contaPagarCriadoId) {
+    const snap = await db.collection("contasPagar").doc(r.contaPagarCriadoId).get();
+    if (snap.exists && snap.data().status !== "baixado") {
+      contaPagarCriadaParaExcluir = r.contaPagarCriadoId;
+    } else if (snap.exists) {
+      alert("Atenção: a conta a pagar gerada por este lançamento já foi paga e não será removida automaticamente.");
+    }
+  }
 
   const batch = db.batch();
   batch.set(db.collection("deletados").doc(), {
@@ -251,6 +265,10 @@ function deletar(id) {
       restaurar.pagamentos = firebase.firestore.FieldValue.arrayRemove(r.pagamentoRegistrado);
     }
     batch.update(db.collection("contasPagar").doc(r.contaPagarId), restaurar);
+  }
+
+  if (contaPagarCriadaParaExcluir) {
+    batch.delete(db.collection("contasPagar").doc(contaPagarCriadaParaExcluir));
   }
 
   batch.commit().catch(() => alert("Erro ao excluir. Tente novamente."));
@@ -590,14 +608,16 @@ function baixarContaAReceber(data, desc, entrada, origem) {
 function criarContaAPagar(data, desc, entrada) {
   const numero = String(Object.keys(docsCache).length + 1).padStart(4, "0");
   const batch = db.batch();
+  const contaPagarRef = db.collection("contasPagar").doc();
 
   batch.set(col.doc(), {
     data, origem: "JOAO->CTAS A PAGAR", descricao: desc,
     entrada, saida: 0,
+    contaPagarCriadoId: contaPagarRef.id,
     criadoEm: firebase.firestore.FieldValue.serverTimestamp()
   });
 
-  batch.set(db.collection("contasPagar").doc(), {
+  batch.set(contaPagarRef, {
     numero, data, descricao: desc, valor: entrada, status: "aberto",
     criadoEm: firebase.firestore.FieldValue.serverTimestamp()
   });
@@ -620,14 +640,16 @@ function criarEntradaEmprestimo(data, desc, entrada) {
 
   const numero = String(Object.keys(docsCache).length + 1).padStart(4, "0");
   const batch = db.batch();
+  const contaPagarRef = db.collection("contasPagar").doc();
 
   batch.set(col.doc(), {
     data, origem: "ANE->EMPRESTIMO", descricao: desc,
     entrada, saida: 0,
+    contaPagarCriadoId: contaPagarRef.id,
     criadoEm: firebase.firestore.FieldValue.serverTimestamp()
   });
 
-  batch.set(db.collection("contasPagar").doc(), {
+  batch.set(contaPagarRef, {
     numero, data: vencimento.trim(), descricao: desc, valor: entrada, status: "aberto",
     criadoEm: firebase.firestore.FieldValue.serverTimestamp()
   });
@@ -638,14 +660,16 @@ function criarEntradaEmprestimo(data, desc, entrada) {
 function criarCreditoRepassarBBS(data, desc, entrada) {
   const numero = String(Object.keys(docsCache).length + 1).padStart(4, "0");
   const batch = db.batch();
+  const contaPagarRef = db.collection("contasPagar").doc();
 
   batch.set(col.doc(), {
     data, origem: "ANE->CREDITO A REPASSAR P BBS FOMENTO", descricao: desc,
     entrada, saida: 0,
+    contaPagarCriadoId: contaPagarRef.id,
     criadoEm: firebase.firestore.FieldValue.serverTimestamp()
   });
 
-  batch.set(db.collection("contasPagar").doc(), {
+  batch.set(contaPagarRef, {
     numero, data: hoje(), descricao: desc, valor: entrada, status: "aberto",
     criadoEm: firebase.firestore.FieldValue.serverTimestamp()
   });
