@@ -22,6 +22,10 @@ const EVOLUTION_DESTINATARIOS = ["5581992114764", "5581988310203"];
 const EVOLUTION_DESTINATARIOS_ADIANTAMENTO = ["5581992114764", "5581993697990"];
 const EVOLUTION_DESTINATARIOS_REFEICOES = ["5581992114764", "5581991725267"];
 const SENHA_ALTERACAO_BANCO = "6535";
+const PRECO_CAFE = 10;
+const PRECO_ALMOCO = 15;
+const CORTE_CAFE_HORAS = 7;
+const CORTE_ALMOCO_HORAS = 10.5;
 
 const PROMPT = `Esta imagem é um boletim/planilha de medição de obra (construção civil).
 
@@ -435,9 +439,6 @@ async function verificarSobreposicaoPagamento(data_inicio, data_fim) {
 }
 
 async function calcularExtratoRefeicoes(data_inicio, data_fim) {
-  const PRECO_CAFE = 10;
-  const PRECO_ALMOCO = 15;
-
   const inicio = new Date(data_inicio + "T00:00:00-03:00");
   const fim    = new Date(data_fim + "T23:59:59-03:00");
 
@@ -468,8 +469,8 @@ async function calcularExtratoRefeicoes(data_inicio, data_fim) {
       const horaLocal = new Date(ms).toLocaleTimeString("en-GB", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", hour12: false });
       const [h, m] = horaLocal.split(":").map(Number);
       const horaDecimal = h + m / 60;
-      if (horaDecimal < 7)    cafe++;
-      if (horaDecimal < 10.5) almoco++;
+      if (horaDecimal < CORTE_CAFE_HORAS)   cafe++;
+      if (horaDecimal < CORTE_ALMOCO_HORAS) almoco++;
     });
     totalCafe   += cafe;
     totalAlmoco += almoco;
@@ -613,6 +614,166 @@ function construirSVGExtrato(dados, logoBase64) {
 async function gerarImagemExtrato(dados) {
   const logoBase64 = fs.readFileSync(path.join(__dirname, "Logo-gw.png")).toString("base64");
   const svg = construirSVGExtrato(dados, logoBase64);
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+// ── Refeições de hoje, com nomes (relatório diário 10:35) ────────────────
+// Diferente de calcularExtratoRefeicoes (que só soma quantidades, pra caber
+// períodos longos sem poluir a imagem), esta função é sempre de 1 dia só e
+// traz os nomes de quem tomou café/almoço — pensada especificamente pra
+// imagem do relatório diário via WhatsApp.
+async function calcularRefeicoesHojeComNomes(hojeISO) {
+  const inicio = new Date(hojeISO + "T00:00:00-03:00");
+  const fim    = new Date(hojeISO + "T23:59:59-03:00");
+
+  const snap = await db.collection("pontos")
+    .where("tipo", "==", "entrada")
+    .where("timestamp", ">=", inicio)
+    .where("timestamp", "<=", fim)
+    .orderBy("timestamp")
+    .get();
+
+  // Só a entrada mais cedo de cada funcionário no dia.
+  const porFuncionario = {};
+  snap.docs.forEach(d => {
+    const p = d.data();
+    const ts = p.timestamp.toDate().getTime();
+    const atual = porFuncionario[p.funcionarioId];
+    if (!atual || ts < atual.ts) porFuncionario[p.funcionarioId] = { ts, nome: p.funcionarioNome || "?" };
+  });
+
+  const cafeNomes = [], almocoNomes = [];
+  Object.values(porFuncionario).forEach(({ ts, nome }) => {
+    const horaLocal = new Date(ts).toLocaleTimeString("en-GB", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", hour12: false });
+    const [h, m] = horaLocal.split(":").map(Number);
+    const horaDecimal = h + m / 60;
+    if (horaDecimal < CORTE_CAFE_HORAS)   cafeNomes.push(nome);
+    if (horaDecimal < CORTE_ALMOCO_HORAS) almocoNomes.push(nome);
+  });
+
+  cafeNomes.sort((a, b) => a.localeCompare(b, "pt-BR"));
+  almocoNomes.sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+  return {
+    data: hojeISO,
+    cafeNomes,
+    almocoNomes,
+    custoCafe: cafeNomes.length * PRECO_CAFE,
+    custoAlmoco: almocoNomes.length * PRECO_ALMOCO,
+    custoGeral: cafeNomes.length * PRECO_CAFE + almocoNomes.length * PRECO_ALMOCO
+  };
+}
+
+function construirSVGRefeicoesHoje(dados, logoBase64) {
+  const fmt = v => "R$ " + v.toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  const fmtDataBR = iso => iso.split("-").reverse().join("/");
+
+  const LARGURA = 800;
+  const PAD = 44;
+  const ALT_HEADER = 200;
+  const ALT_COL_HEADER = 40;
+  const ALT_LINHA_NOME = 30;
+  const ALT_TOTAIS = 150;
+  const ALT_FOOTER = 50;
+
+  const linhas = Math.max(dados.cafeNomes.length, dados.almocoNomes.length, 1);
+  const ALTURA = ALT_HEADER + ALT_COL_HEADER + linhas * ALT_LINHA_NOME + ALT_TOTAIS + ALT_FOOTER + PAD;
+
+  const larguraTabela = LARGURA - PAD * 2;
+  const colEsquerda = PAD + larguraTabela * 0.02;
+  const colDireita  = PAD + larguraTabela * 0.54;
+  const larguraCol  = larguraTabela * 0.44;
+
+  let y = ALT_HEADER;
+
+  const cabecalhoColunas = `
+    <text x="${colEsquerda}" y="${y + 26}" font-size="13" font-weight="700" letter-spacing="1.5" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif">CAFÉ DA MANHÃ (${dados.cafeNomes.length})</text>
+    <text x="${colDireita}" y="${y + 26}" font-size="13" font-weight="700" letter-spacing="1.5" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif">ALMOÇO (${dados.almocoNomes.length})</text>
+    <line x1="${PAD}" y1="${y + 36}" x2="${PAD + larguraTabela}" y2="${y + 36}" stroke="rgba(165,214,167,0.25)" stroke-width="1"/>
+  `;
+  y += ALT_COL_HEADER;
+
+  const listaOuVazio = (nomes) => nomes.length > 0
+    ? nomes
+    : ["—"];
+
+  const cafeLista = listaOuVazio(dados.cafeNomes);
+  const almocoLista = listaOuVazio(dados.almocoNomes);
+
+  const colunaTexto = (nomes, x) => nomes.map((nome, i) => `
+    <text x="${x}" y="${y + i * ALT_LINHA_NOME + 21}" font-size="15" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif">${nome}</text>
+  `).join("");
+
+  const colunas = `
+    <rect x="${PAD}" y="${y - 6}" width="${larguraCol}" height="${linhas * ALT_LINHA_NOME + 6}" fill="rgba(255,255,255,0.03)" rx="10"/>
+    <rect x="${colDireita - (colEsquerda - PAD)}" y="${y - 6}" width="${larguraCol}" height="${linhas * ALT_LINHA_NOME + 6}" fill="rgba(255,255,255,0.03)" rx="10"/>
+    ${colunaTexto(cafeLista, colEsquerda)}
+    ${colunaTexto(almocoLista, colDireita)}
+  `;
+  y += linhas * ALT_LINHA_NOME;
+
+  const totaisY = y + 20;
+  const totaisAltura = ALT_TOTAIS - 20;
+  const blocoTotais = `
+    <rect x="${PAD}" y="${totaisY}" width="${larguraTabela}" height="${totaisAltura}" rx="16" fill="rgba(105,240,174,0.08)" stroke="rgba(105,240,174,0.35)" stroke-width="1.5"/>
+    <text x="${PAD + 28}" y="${totaisY + 34}" font-size="14" font-weight="700" letter-spacing="1" fill="#a5d6a7" font-family="Arial, Helvetica, sans-serif">TOTAL DE HOJE</text>
+
+    <text x="${PAD + 28}" y="${totaisY + 66}" font-size="14" fill="#c8e6c9" font-family="Arial, Helvetica, sans-serif">Café da manhã</text>
+    <text x="${PAD + 28}" y="${totaisY + 88}" font-size="20" font-weight="700" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif">${dados.cafeNomes.length} <tspan font-size="13" fill="#8fbf99" font-weight="400">(${fmt(dados.custoCafe)})</tspan></text>
+
+    <text x="${PAD + larguraTabela * 0.36}" y="${totaisY + 66}" font-size="14" fill="#c8e6c9" font-family="Arial, Helvetica, sans-serif">Almoço</text>
+    <text x="${PAD + larguraTabela * 0.36}" y="${totaisY + 88}" font-size="20" font-weight="700" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif">${dados.almocoNomes.length} <tspan font-size="13" fill="#8fbf99" font-weight="400">(${fmt(dados.custoAlmoco)})</tspan></text>
+
+    <line x1="${PAD + larguraTabela * 0.66}" y1="${totaisY + 20}" x2="${PAD + larguraTabela * 0.66}" y2="${totaisY + totaisAltura - 20}" stroke="rgba(165,214,167,0.3)" stroke-width="1"/>
+
+    <text x="${PAD + larguraTabela - 28}" y="${totaisY + 40}" font-size="14" fill="#c8e6c9" font-family="Arial, Helvetica, sans-serif" text-anchor="end">TOTAL GERAL</text>
+    <text x="${PAD + larguraTabela - 28}" y="${totaisY + 74}" font-size="30" font-weight="800" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${fmt(dados.custoGeral)}</text>
+  `;
+
+  const footerY = totaisY + totaisAltura + 34;
+  const footer = `
+    <text x="${LARGURA / 2}" y="${footerY}" font-size="11" letter-spacing="1" fill="#5a8a63" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">Refeições de Hoje • Sistema GW • Gerado em ${new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</text>
+  `;
+
+  const logoW = 64, logoH = 64 * (1106 / 1422);
+
+  return `
+<svg width="${LARGURA}" height="${ALTURA}" viewBox="0 0 ${LARGURA} ${ALTURA}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#12331f"/>
+      <stop offset="45%" stop-color="#0c2417"/>
+      <stop offset="100%" stop-color="#06120b"/>
+    </linearGradient>
+    <clipPath id="logoClip"><rect x="0" y="0" width="${logoW}" height="${logoH}" rx="10"/></clipPath>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#69f0ae" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#69f0ae" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="${LARGURA}" height="${ALTURA}" fill="url(#bg)"/>
+
+  <circle cx="${LARGURA / 2}" cy="${40 + logoH / 2}" r="90" fill="url(#glow)"/>
+
+  <g transform="translate(${LARGURA / 2 - logoW / 2}, 40)">
+    <image href="data:image/png;base64,${logoBase64}" width="${logoW}" height="${logoH}" clip-path="url(#logoClip)"/>
+  </g>
+
+  <text x="${LARGURA / 2}" y="${40 + logoH + 34}" font-size="26" font-weight="800" letter-spacing="3" fill="#f1f8f2" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">GREEN WALL</text>
+  <text x="${LARGURA / 2}" y="${40 + logoH + 58}" font-size="13" font-weight="700" letter-spacing="4" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">REFEIÇÕES DE HOJE</text>
+  <text x="${LARGURA / 2}" y="${40 + logoH + 82}" font-size="14" fill="#a5d6a7" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">${fmtDataBR(dados.data)}</text>
+
+  ${cabecalhoColunas}
+  ${colunas}
+  ${blocoTotais}
+  ${footer}
+</svg>`;
+}
+
+async function gerarImagemRefeicoesHoje(dados) {
+  const logoBase64 = fs.readFileSync(path.join(__dirname, "Logo-gw.png")).toString("base64");
+  const svg = construirSVGRefeicoesHoje(dados, logoBase64);
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
@@ -2169,8 +2330,8 @@ exports.relatorioRefeicoesHoje = onSchedule(
   { schedule: "35 10 * * *", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
   async () => {
     const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
-    const dados = await calcularExtratoRefeicoes(hojeISO, hojeISO);
-    const buffer = await gerarImagemExtrato(dados);
+    const dados = await calcularRefeicoesHojeComNomes(hojeISO);
+    const buffer = await gerarImagemRefeicoesHoje(dados);
 
     try {
       await enviarImagemEvolution(
@@ -2186,8 +2347,8 @@ exports.relatorioRefeicoesHoje = onSchedule(
     }
 
     logger.info("[relatorioRefeicoesHoje] enviado", {
-      cafe: dados.totais.cafeManha,
-      almoco: dados.totais.almoco
+      cafe: dados.cafeNomes.length,
+      almoco: dados.almocoNomes.length
     });
   }
 );
