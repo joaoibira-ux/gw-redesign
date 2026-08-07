@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "2.9";
+const VERSAO = "3.0";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -402,6 +402,10 @@ function salvarDetalhe() {
     alert("Informe nome e data.");
     return;
   }
+
+  const senha = prompt("ALTERAR MEDIÇÃO?\n\n" + nome + "\n\nDigite a senha:");
+  if (senha === null) return;
+  if (senha !== "6535") { alert("Senha incorreta."); return; }
 
   col.doc(detalheAtualId).update({
     nome,
