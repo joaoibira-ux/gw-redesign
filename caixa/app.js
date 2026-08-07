@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.49";
+const VERSAO_CAIXA = "3.50";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -608,7 +608,16 @@ function criarContaAPagar(data, desc, entrada) {
 // Entrada de empréstimo: dinheiro entra no caixa CEF (ANE) e, ao mesmo
 // tempo, vira uma dívida a pagar depois — mesmo padrão de criarContaAPagar,
 // só muda o lado (CEF em vez de INTER/JOAO) e a origem do lançamento.
+// O vencimento da conta a pagar é pedido à parte (não pode ser a data do
+// lançamento, que é de quando o dinheiro entrou, não de quando vence).
 function criarEntradaEmprestimo(data, desc, entrada) {
+  const vencimento = prompt("Data de vencimento do empréstimo (quando deve ser pago):", data);
+  if (vencimento === null) return;
+  if (!/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(vencimento.trim())) {
+    alert("Data de vencimento inválida. Use o formato DD/MM/AAAA.");
+    return;
+  }
+
   const numero = String(Object.keys(docsCache).length + 1).padStart(4, "0");
   const batch = db.batch();
 
@@ -619,7 +628,7 @@ function criarEntradaEmprestimo(data, desc, entrada) {
   });
 
   batch.set(db.collection("contasPagar").doc(), {
-    numero, data, descricao: desc, valor: entrada, status: "aberto",
+    numero, data: vencimento.trim(), descricao: desc, valor: entrada, status: "aberto",
     criadoEm: firebase.firestore.FieldValue.serverTimestamp()
   });
 
