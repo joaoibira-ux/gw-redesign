@@ -21,6 +21,7 @@ const EVOLUTION_INSTANCE = "gw";
 const EVOLUTION_DESTINATARIOS = ["5581992114764", "5581988310203"];
 const EVOLUTION_DESTINATARIOS_ADIANTAMENTO = ["5581992114764", "5581993697990"];
 const EVOLUTION_DESTINATARIOS_REFEICOES = ["5581992114764", "5581991725267"];
+const EVOLUTION_DESTINATARIOS_PONTO = ["5581992114764", "5581993697990"];
 // Número da própria instância "gw" (é o WhatsApp pessoal do João, pareado
 // como aparelho vinculado — não um número de bot dedicado). O agente via
 // WhatsApp só responde na conversa "Mensagens para você mesmo" desse número.
@@ -2492,5 +2493,59 @@ exports.relatorioRefeicoesHoje = onSchedule(
       cafe: dados.cafeNomes.length,
       almoco: dados.almocoNomes.length
     });
+  }
+);
+
+// Roda todo dia às 10:36 e avisa via WhatsApp quais funcionários ativos
+// ainda não bateram entrada hoje — mesmo cálculo do card "Ponto (Hoje)" da
+// Visão Geral (cruza funcionarios.ativo com pontos do dia, tentando casar
+// por funcionarioId e caindo pro nome se precisar). Só manda mensagem se
+// houver alguém faltando; se todo mundo já bateu ponto, fica em silêncio.
+exports.alertaPontoEmAberto = onSchedule(
+  { schedule: "36 10 * * *", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
+  async () => {
+    const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const dataInicio = new Date(hojeISO + "T00:00:00-03:00");
+    const dataFim = new Date(hojeISO + "T23:59:59-03:00");
+
+    const [funcSnap, pontosSnap] = await Promise.all([
+      db.collection("funcionarios").get(),
+      db.collection("pontos")
+        .where("tipo", "==", "entrada")
+        .where("timestamp", ">=", dataInicio)
+        .where("timestamp", "<=", dataFim)
+        .get()
+    ]);
+
+    const funcAtivos = funcSnap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(f => f.ativo !== false);
+
+    const idsComEntrada = new Set();
+    const nomesComEntrada = new Set();
+    pontosSnap.docs.forEach(d => {
+      const p = d.data();
+      if (p.funcionarioId) idsComEntrada.add(p.funcionarioId);
+      if (p.funcionarioNome) nomesComEntrada.add(p.funcionarioNome);
+    });
+
+    const naoBateram = funcAtivos.filter(f => !idsComEntrada.has(f.id) && !nomesComEntrada.has(f.nome));
+
+    if (naoBateram.length === 0) return;
+
+    const texto = [
+      `Funcionários sem bater ponto hoje (${naoBateram.length}):`,
+      "",
+      ...naoBateram.map(f => `- ${f.nome || "(sem nome)"}`)
+    ].join("\n");
+
+    try {
+      await enviarWhatsAppEvolution(texto, evolutionApiKey.value(), EVOLUTION_DESTINATARIOS_PONTO);
+    } catch (e) {
+      logger.error("Erro ao enviar alerta de ponto em aberto:", e.message);
+      throw e;
+    }
+
+    logger.info(`[alertaPontoEmAberto] enviado: ${naoBateram.length} funcionário(s) sem ponto`);
   }
 );
