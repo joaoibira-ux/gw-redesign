@@ -20,6 +20,7 @@ const EVOLUTION_API_URL = "http://136.114.108.31:8080";
 const EVOLUTION_INSTANCE = "gw";
 const EVOLUTION_DESTINATARIOS = ["5581992114764", "5581988310203"];
 const EVOLUTION_DESTINATARIOS_ADIANTAMENTO = ["5581992114764", "5581993697990"];
+const EVOLUTION_DESTINATARIOS_REFEICOES = ["5581992114764"];
 const SENHA_ALTERACAO_BANCO = "6535";
 
 const PROMPT = `Esta imagem é um boletim/planilha de medição de obra (construção civil).
@@ -120,7 +121,7 @@ const TOOLS_GW = [
   },
   {
     name: "extrato_refeicoes",
-    description: "Gera o extrato de refeições (café da manhã e almoço) de um período, baseado nos registros de ponto. Para cada dia do período, conta quantos funcionários registraram a entrada antes das 7h (café da manhã) e quantos registraram antes das 11h (almoço — inclui quem já tomou café). Café custa R$10 e almoço R$15 por funcionário. Use quando o usuário pedir 'extrato das refeições', 'gasto com café e almoço' ou similar, em formato de texto/números.",
+    description: "Gera o extrato de refeições (café da manhã e almoço) de um período, baseado nos registros de ponto. Para cada dia do período, conta quantos funcionários registraram a entrada antes das 7h (café da manhã) e quantos registraram antes das 10:30 (almoço — inclui quem já tomou café). Café custa R$10 e almoço R$15 por funcionário. Use quando o usuário pedir 'extrato das refeições', 'gasto com café e almoço' ou similar, em formato de texto/números.",
     input_schema: {
       type: "object",
       properties: {
@@ -467,8 +468,8 @@ async function calcularExtratoRefeicoes(data_inicio, data_fim) {
       const horaLocal = new Date(ms).toLocaleTimeString("en-GB", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", hour12: false });
       const [h, m] = horaLocal.split(":").map(Number);
       const horaDecimal = h + m / 60;
-      if (horaDecimal < 7)  cafe++;
-      if (horaDecimal < 11) almoco++;
+      if (horaDecimal < 7)    cafe++;
+      if (horaDecimal < 10.5) almoco++;
     });
     totalCafe   += cafe;
     totalAlmoco += almoco;
@@ -2005,6 +2006,38 @@ async function enviarWhatsAppEvolution(texto, apiKeyValue, destinatarios = EVOLU
   }
 }
 
+// Mesma lógica de enviarWhatsAppEvolution, mas pra imagem (endpoint
+// sendMedia em vez de sendText). "buffer" é o PNG já pronto (ex: retorno de
+// gerarImagemExtrato).
+async function enviarImagemEvolution(buffer, filename, caption, apiKeyValue, destinatarios = EVOLUTION_DESTINATARIOS) {
+  const mediaBase64 = buffer.toString("base64");
+  const erros = [];
+  for (const numero of destinatarios) {
+    const resp = await fetch(`${EVOLUTION_API_URL}/message/sendMedia/${EVOLUTION_INSTANCE}`, {
+      method: "POST",
+      headers: {
+        "apikey": apiKeyValue,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        number: numero,
+        mediatype: "image",
+        mimetype: "image/png",
+        media: mediaBase64,
+        fileName: filename,
+        caption
+      })
+    });
+    if (!resp.ok) {
+      const respText = await resp.text();
+      erros.push(`${numero}: status ${resp.status} - ${respText.slice(0, 200)}`);
+    }
+  }
+  if (erros.length > 0) {
+    throw new Error(`Falha ao enviar imagem via Evolution API para: ${erros.join(" | ")}`);
+  }
+}
+
 // Dispara assim que uma conta a pagar é criada (não importa a origem — form
 // manual em "apagar", adiantamento em "funcionarios", lançamento em "caixa"
 // ou lançamento recorrente automático): se o vencimento já é hoje, avisa na
@@ -2125,5 +2158,36 @@ exports.alertaContasVencidas = onSchedule(
     }
 
     logger.info(`[alertaContasVencidas] enviado: ${vencendoHoje.length} vencendo hoje, ${vencidas.length} vencida(s)`, { totalGeral });
+  }
+);
+
+// Roda todo dia às 10:35 e manda a imagem do extrato de refeições (café da
+// manhã: entrada antes das 7h; almoço: entrada antes das 10:30) do dia atual
+// pelo WhatsApp — mesma imagem gerada pela ferramenta extrato_refeicoes_imagem
+// do agenteGW, mas automática e diária, via Evolution API em vez de Telegram.
+exports.relatorioRefeicoesHoje = onSchedule(
+  { schedule: "35 10 * * *", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
+  async () => {
+    const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const dados = await calcularExtratoRefeicoes(hojeISO, hojeISO);
+    const buffer = await gerarImagemExtrato(dados);
+
+    try {
+      await enviarImagemEvolution(
+        buffer,
+        `refeicoes_${hojeISO}.png`,
+        "Refeições de Hoje",
+        evolutionApiKey.value(),
+        EVOLUTION_DESTINATARIOS_REFEICOES
+      );
+    } catch (e) {
+      logger.error("Erro ao enviar relatório de refeições de hoje:", e.message);
+      throw e;
+    }
+
+    logger.info("[relatorioRefeicoesHoje] enviado", {
+      cafe: dados.totais.cafeManha,
+      almoco: dados.totais.almoco
+    });
   }
 );
