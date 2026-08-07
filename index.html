@@ -290,7 +290,7 @@
 
     .dd-kpis { flex: 0 0 auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 10px; }
     .dd-content-rows { flex: 1; min-height: 0; display: grid; grid-template-rows: 1fr 2fr; gap: 10px; }
-    .dd-row2 { min-height: 0; display: grid; grid-template-columns: 2fr 2fr 1.4fr; gap: 10px; }
+    .dd-row2 { min-height: 0; display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
     .dd-row3x2 { min-height: 0; display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 10px; }
     .dd-row2 .dd-card, .dd-row3x2 .dd-card { display: flex; flex-direction: column; min-height: 0; }
 
@@ -507,10 +507,6 @@
             <div id="dd-chart-faturamento" style="flex:1;min-height:0;"></div>
           </div>
           <div class="dd-card">
-            <div class="dd-card-header"><span class="dd-card-header-title">Produção (Medições) — Últimos 6 meses</span></div>
-            <div id="dd-chart-producao" style="flex:1;min-height:0;"></div>
-          </div>
-          <div class="dd-card">
             <div class="dd-card-header"><span class="dd-card-header-title">Funcionários</span></div>
             <div id="dd-funcionarios" class="dd-card-scroll"></div>
           </div>
@@ -527,8 +523,8 @@
             <div id="dd-donut-servicos" style="flex:1;min-height:0;"></div>
           </div>
           <div class="dd-card" style="grid-column:2;grid-row:2;">
-            <div class="dd-card-header"><span class="dd-card-header-title">Próxima Medição</span></div>
-            <div id="dd-proxima-medicao" class="dd-card-scroll"></div>
+            <div class="dd-card-header"><span class="dd-card-header-title">Produção (Medições) — Últimos 6 meses</span></div>
+            <div id="dd-chart-producao" style="flex:1;min-height:0;"></div>
           </div>
           <!-- Ocupa a coluna 3 inteira (linhas 1 e 2) — o espaço exato das
                duas janelas removidas (Últimas Medições + Alertas). -->
@@ -1017,40 +1013,6 @@
       return date.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '');
     }
 
-    // ── Próximo fechamento de medição: todo dia 15 e todo último dia do mês,
-    // adiado pro próximo dia útil se cair em fim de semana. ──
-    function ddAdiaFimDeSemana(d) {
-      const dia = d.getDay(); // 0 = domingo, 6 = sábado
-      if (dia === 6) d.setDate(d.getDate() + 2);
-      else if (dia === 0) d.setDate(d.getDate() + 1);
-      return d;
-    }
-    function ddFechamentosDoMes(ano, mes) {
-      return [
-        ddAdiaFimDeSemana(new Date(ano, mes, 15)),
-        ddAdiaFimDeSemana(new Date(ano, mes + 1, 0)),
-      ];
-    }
-    function ddProximoFechamento(hoje) {
-      const hojeSemHora = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
-      const opcoes = [
-        ...ddFechamentosDoMes(hoje.getFullYear(), hoje.getMonth()),
-        ...ddFechamentosDoMes(hoje.getFullYear(), hoje.getMonth() + 1),
-      ].filter(d => d >= hojeSemHora).sort((a, b) => a - b);
-      return opcoes[0];
-    }
-    // conta dias úteis entre hoje (exclusive) e alvo (inclusive)
-    function ddDiasUteisAte(hoje, alvo) {
-      const d = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
-      let count = 0;
-      while (d < alvo) {
-        d.setDate(d.getDate() + 1);
-        const dia = d.getDay();
-        if (dia !== 0 && dia !== 6) count++;
-      }
-      return count;
-    }
-
     // ── Saldo em Caixa = CEF (conta ANE) + INTER (conta JOAO) — mesma lógica
     // de atribuição por 'origem' do lançamento usada em caixa/app.js (render),
     // só os dois totais de saldo bancário, sem os outros acumuladores
@@ -1116,14 +1078,13 @@
       const inicioHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
       const fimHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 1);
 
-      const [receberSnap, pagarSnap, lancSnap, medicoesSnap, funcSnap, locaisSnap, servicosSnap, pontosHojeSnap] = await Promise.all([
+      const [receberSnap, pagarSnap, lancSnap, medicoesSnap, funcSnap, locaisSnap, pontosHojeSnap] = await Promise.all([
         db.collection('contasReceber').get().catch(() => ({ docs: [] })),
         db.collection('contasPagar').get().catch(() => ({ docs: [] })),
         db.collection('lancamentos').get().catch(() => ({ docs: [] })),
         db.collection('medicoes').get().catch(() => ({ docs: [] })),
         db.collection('funcionarios').get().catch(() => ({ docs: [] })),
         db.collection('locais').get().catch(() => ({ docs: [] })),
-        db.collection('servicos').get().catch(() => ({ docs: [] })),
         db.collection('pontos')
           .where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(inicioHoje))
           .where('timestamp', '<', firebase.firestore.Timestamp.fromDate(fimHoje))
@@ -1137,7 +1098,6 @@
       const pontosHoje = pontosHojeSnap.docs.map(d => d.data());
       const func        = funcSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const locais     = locaisSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const servicosCad = servicosSnap.docs.map(d => d.data());
 
       // ── KPIs ──
       const receberAberto = receber.filter(r => r.status !== 'baixado');
@@ -1290,39 +1250,6 @@
         <div class="dd-lista-item"><span class="dd-lista-sub">Ativos</span><span class="dd-lista-valor">${ativos}</span></div>
         <div class="dd-lista-item"><span class="dd-lista-sub">Inativos</span><span class="dd-lista-valor" style="color:#ef4943;">${func.length - ativos}</span></div>`;
 
-      // ── Próxima medição (previsão) — mesmo cálculo do relatório financeiro:
-      // serviços já em 'em_pagamento' (feitos, aguardando fechamento da
-      // medição), valor de medição por serviço vem do cadastro em
-      // 'servicos', retenção de 5% igual à da medição fechada de verdade.
-      const servMedicaoByNome = {};
-      servicosCad.forEach(s => { servMedicaoByNome[s.nome] = s.medicao || 0; });
-      let servPendentes = 0, totalMedicaoPrev = 0;
-      locais.forEach(l => (l.servicos || []).forEach(s => {
-        if (s.status !== 'em_pagamento') return;
-        servPendentes++;
-        totalMedicaoPrev += servMedicaoByNome[s.nome] || 0;
-      }));
-      const totalRetencaoPrev = totalMedicaoPrev * 0.05;
-      const totalAReceberPrev = totalMedicaoPrev - totalRetencaoPrev;
-
-      const proximoFechamento = ddProximoFechamento(hoje);
-      const diasUteisFechamento = ddDiasUteisAte(hoje, proximoFechamento);
-      const fechamentoStr = String(proximoFechamento.getDate()).padStart(2, '0') + '/' + String(proximoFechamento.getMonth() + 1).padStart(2, '0');
-      const diasUteisLabel = diasUteisFechamento === 0 ? 'fecha hoje'
-        : diasUteisFechamento === 1 ? 'falta 1 dia útil'
-        : `faltam ${diasUteisFechamento} dias úteis`;
-
-      document.getElementById('dd-proxima-medicao').innerHTML = `
-        <div class="dd-card-delta ${diasUteisFechamento <= 1 ? 'neg' : 'pos'}" style="margin-bottom:8px;">📅 Fecha em ${fechamentoStr} · ${diasUteisLabel}</div>
-        ${servPendentes ? `
-          <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px;">
-            <div class="dd-card-icon" style="background:rgba(105,178,240,0.14);margin:0;">📐</div>
-            <div><div class="dd-card-value">${servPendentes}</div><div class="dd-card-title" style="margin:0;">SERVIÇO${servPendentes !== 1 ? 'S' : ''} EM MEDIÇÃO</div></div>
-          </div>
-          <div class="dd-lista-item"><span class="dd-lista-sub">Medição</span><span class="dd-lista-valor">${ddFmtMoeda(totalMedicaoPrev)}</span></div>
-          <div class="dd-lista-item"><span class="dd-lista-sub">Retenção (5%)</span><span class="dd-lista-valor" style="color:#ef4943;">${totalRetencaoPrev > 0 ? '- ' + ddFmtMoeda(totalRetencaoPrev) : '—'}</span></div>
-          <div class="dd-lista-item"><span class="dd-lista-sub">A Receber</span><span class="dd-lista-valor" style="color:#4acf54;">${ddFmtMoeda(totalAReceberPrev)}</span></div>`
-        : '<div class="dd-empty">Nenhum serviço aguardando fechamento de medição.</div>'}`;
     }
 
     // ── SVG: gráfico de linha simples (faturamento últimos 6 meses) ──
