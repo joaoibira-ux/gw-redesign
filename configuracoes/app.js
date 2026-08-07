@@ -1,4 +1,4 @@
-const VERSAO = "1.5";
+const VERSAO = "1.6";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp({
@@ -85,12 +85,18 @@ function renderizar() {
   `;
 }
 
+function prazoLabel(r) {
+  if (!r.prazoMeses) return "Indeterminado";
+  const feitos = r.lancamentosFeitos || 0;
+  return feitos >= r.prazoMeses ? `Encerrado (${feitos}/${r.prazoMeses} meses)` : `${feitos}/${r.prazoMeses} meses`;
+}
+
 function recorrenteItemHtml(r) {
   return `
     <div class="cfg-item">
       <div>
         <div class="cfg-label">${escHtml(r.descricao)}</div>
-        <div class="cfg-valor">${fmtMoeda(r.valor)} · todo dia ${r.diaMes}</div>
+        <div class="cfg-valor">${fmtMoeda(r.valor)} · todo dia ${r.diaMes} · ${prazoLabel(r)}</div>
       </div>
       <button class="btn-editar" onclick="abrirModalRecorrente('${r.id}')">Editar</button>
     </div>`;
@@ -197,6 +203,7 @@ function abrirModalRecorrente(id) {
   document.getElementById("rec-descricao").value = r ? r.descricao : "";
   document.getElementById("rec-valor").value = r ? Number(r.valor || 0).toFixed(2).replace(".", ",") : "";
   document.getElementById("rec-dia").value = r ? r.diaMes : "";
+  document.getElementById("rec-prazo").value = r && r.prazoMeses ? r.prazoMeses : "";
   document.getElementById("rec-senha").value = "";
   document.getElementById("rec-erro").textContent = "";
   document.getElementById("rec-excluir-btn").style.display = id ? "block" : "none";
@@ -220,17 +227,22 @@ function salvarRecorrente() {
   const descricao = document.getElementById("rec-descricao").value.trim();
   const valor = parseFloat(document.getElementById("rec-valor").value.trim().replace(",", "."));
   const diaMes = parseInt(document.getElementById("rec-dia").value, 10);
+  const prazoStr = document.getElementById("rec-prazo").value.trim();
+  const prazoMeses = prazoStr ? parseInt(prazoStr, 10) : null;
 
   if (!descricao) { erroEl.textContent = "Informe a descrição."; return; }
   if (isNaN(valor) || valor <= 0) { erroEl.textContent = "Valor inválido."; return; }
   if (isNaN(diaMes) || diaMes < 1 || diaMes > 31) { erroEl.textContent = "Dia do mês deve ser entre 1 e 31."; return; }
+  if (prazoStr && (isNaN(prazoMeses) || prazoMeses < 1)) { erroEl.textContent = "Prazo de validade deve ser em branco (indeterminado) ou um número de meses maior que zero."; return; }
 
   erroEl.textContent = "";
-  const dados = { descricao, valor, diaMes };
+  const dados = { descricao, valor, diaMes, prazoMeses };
 
+  // lancamentosFeitos só é zerado na criação — editar descrição/valor/dia/prazo
+  // de uma recorrente existente não reinicia a contagem de meses já lançados.
   const salvar = _recorrenteEditandoId
     ? colRecorrentes.doc(_recorrenteEditandoId).update(dados)
-    : colRecorrentes.add({ ...dados, criadoEm: firebase.firestore.FieldValue.serverTimestamp() });
+    : colRecorrentes.add({ ...dados, lancamentosFeitos: 0, criadoEm: firebase.firestore.FieldValue.serverTimestamp() });
 
   salvar.then(() => fecharModalRecorrente())
     .catch(() => { erroEl.textContent = "Erro ao salvar. Tente novamente."; });

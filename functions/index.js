@@ -2103,6 +2103,11 @@ exports.lancarDespesasRecorrentes = onSchedule(
       const d = doc.data();
       if (d.ultimoLancamento === chaveMes) continue;
 
+      // Prazo de validade: se definido (não indeterminado) e já atingido, não
+      // lança mais — a despesa recorrente fica "encerrada" mas não é apagada.
+      const lancamentosFeitos = d.lancamentosFeitos || 0;
+      if (d.prazoMeses && lancamentosFeitos >= d.prazoMeses) continue;
+
       const dia = Math.min(Math.max(1, Number(d.diaMes) || 1), ultimoDiaMes);
       const dataVencimento = `${String(dia).padStart(2, "0")}/${String(mes + 1).padStart(2, "0")}/${ano}`;
 
@@ -2114,7 +2119,10 @@ exports.lancarDespesasRecorrentes = onSchedule(
         despesaRecorrenteId: doc.id,
         criadoEm: admin.firestore.FieldValue.serverTimestamp()
       });
-      batch.update(doc.ref, { ultimoLancamento: chaveMes });
+      batch.update(doc.ref, {
+        ultimoLancamento: chaveMes,
+        lancamentosFeitos: admin.firestore.FieldValue.increment(1)
+      });
       algumLancado = true;
     }
 
