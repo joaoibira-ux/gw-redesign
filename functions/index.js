@@ -1929,13 +1929,11 @@ exports.agenteGW = onCall(
 );
 
 // Agente do WhatsApp via polling — o webhook do Evolution API se mostrou
-// não confiável nessa instância (disparou uma única vez em ~10 tentativas,
-// mesmo depois de reconfigurar, reiniciar o container e habilitar Redis;
-// causa raiz não identificada). Em vez de esperar o webhook avisar, essa
-// function roda a cada 1 minuto e busca mensagens novas direto via
-// GET/POST findMessages — o mesmo caminho que a Evolution usa pra persistir
-// mensagens (só passou a funcionar depois de DATABASE_SAVE_DATA_NEW_MESSAGE
-// habilitado, que também resolveu o problema de descoberta).
+// não confiável nessa instância em duas tentativas separadas (a 1ª antes de
+// descobrir que DATABASE_SAVE_DATA_NEW_MESSAGE estava desabilitado, a 2ª
+// depois de corrigir isso — disparou 1 vez em ~10 tentativas na primeira,
+// zero vezes na segunda). Causa raiz não identificada, desistido em favor
+// de polling.
 //
 // PEGADINHA do WhatsApp "LID": pra alguns contatos, o WhatsApp identifica o
 // remetente por um "Linked ID" opaco (ex: 237336336015615@lid) em vez do
@@ -1943,89 +1941,102 @@ exports.agenteGW = onCall(
 // MESMO contato. A Evolution expõe o número de telefone real em
 // key.remoteJidAlt quando isso acontece, então sempre preferimos esse campo
 // pra identificar o remetente.
+// Uma passada de checagem+resposta. Retorna quantas mensagens processou.
+async function passadaPollingWhatsApp(apiKeyValue) {
+  const estadoRef = db.collection("agenteWhatsappPolling").doc("estado");
+  const estadoSnap = await estadoRef.get();
+
+  // Primeira execução: só marca a partir de agora, não reprocessa
+  // histórico antigo (evita responder mensagens de antes de existir isso).
+  if (!estadoSnap.exists) {
+    await estadoRef.set({ ultimoTimestampProcessado: Math.floor(Date.now() / 1000), idsProcessados: [] });
+    return 0;
+  }
+
+  const estado = estadoSnap.data();
+  const ultimoTimestamp = estado.ultimoTimestampProcessado || 0;
+  const idsProcessados = estado.idsProcessados || [];
+
+  const respBusca = await fetch(`${EVOLUTION_API_URL}/chat/findMessages/${EVOLUTION_INSTANCE}`, {
+    method: "POST",
+    headers: { "apikey": apiKeyValue, "Content-Type": "application/json" },
+    body: JSON.stringify({})
+  });
+  if (!respBusca.ok) {
+    logger.error("[pollingAgenteWhatsApp] falha ao buscar mensagens", { status: respBusca.status });
+    return 0;
+  }
+  const resultBusca = await respBusca.json().catch(() => null);
+  const mensagens = (resultBusca && resultBusca.messages && resultBusca.messages.records) || [];
+
+  const alvoNorm = normalizarNumeroBR(NUMERO_AGENTE_WHATSAPP);
+  const novas = mensagens
+    .filter(m => !m.key.fromMe)
+    .filter(m => m.messageTimestamp > ultimoTimestamp)
+    .filter(m => !idsProcessados.includes(m.key.id))
+    .filter(m => {
+      const numero = normalizarNumeroBR((m.key.remoteJidAlt || m.key.remoteJid || "").split("@")[0]);
+      return numero === alvoNorm;
+    })
+    .sort((a, b) => a.messageTimestamp - b.messageTimestamp);
+
+  if (novas.length === 0) return 0;
+
+  const histRef = db.collection("agenteWhatsappHistorico").doc(NUMERO_AGENTE_WHATSAPP);
+  let maiorTimestamp = ultimoTimestamp;
+  const novosIds = [];
+
+  for (const msg of novas) {
+    maiorTimestamp = Math.max(maiorTimestamp, msg.messageTimestamp);
+    novosIds.push(msg.key.id);
+
+    const texto = (msg.message && (
+      msg.message.conversation ||
+      (msg.message.extendedTextMessage && msg.message.extendedTextMessage.text)
+    )) || "";
+    if (!texto.trim()) continue;
+
+    try {
+      const histSnap = await histRef.get();
+      const historico = histSnap.exists ? (histSnap.data().historico || []) : [];
+
+      const { resposta, historico: novoHistorico } = await processarMensagemAgenteGW(texto, historico);
+
+      await histRef.set({
+        historico: novoHistorico.slice(-12),
+        atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      await fetch(`${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
+        method: "POST",
+        headers: { "apikey": apiKeyValue, "Content-Type": "application/json" },
+        body: JSON.stringify({ number: NUMERO_AGENTE_WHATSAPP, text: resposta })
+      });
+    } catch (e) {
+      logger.error("[pollingAgenteWhatsApp] erro ao processar mensagem", { erro: e.message, msgId: msg.key.id });
+    }
+  }
+
+  await estadoRef.set({
+    ultimoTimestampProcessado: maiorTimestamp,
+    idsProcessados: [...idsProcessados, ...novosIds].slice(-50)
+  });
+
+  logger.info(`[pollingAgenteWhatsApp] processadas ${novas.length} mensagem(ns)`);
+  return novas.length;
+}
+
+// Roda 2x por execução (na hora, e de novo ~25s depois) — corta a demora
+// média de resposta pela metade (~15-30s) sem depender de um agendamento
+// mais frequente que 1 minuto (mínimo que o Cloud Scheduler permite).
+// Uma passada só por execução — a versão com 2 passadas (checagem +
+// espera de 25s + checagem de novo) testada em 2026-08-07 saiu PIOR
+// (~150s) que essa versão simples, provavelmente porque a execução mais
+// longa atrapalhou o agendamento do próximo minuto. Revertido.
 exports.pollingAgenteWhatsApp = onSchedule(
-  { schedule: "* * * * *", timeZone: "America/Sao_Paulo", secrets: [anthropicApiKey, evolutionApiKey], timeoutSeconds: 120 },
+  { schedule: "* * * * *", timeZone: "America/Sao_Paulo", secrets: [anthropicApiKey, evolutionApiKey], timeoutSeconds: 60 },
   async () => {
-    const estadoRef = db.collection("agenteWhatsappPolling").doc("estado");
-    const estadoSnap = await estadoRef.get();
-
-    // Primeira execução: só marca a partir de agora, não reprocessa
-    // histórico antigo (evita responder mensagens de antes de existir isso).
-    if (!estadoSnap.exists) {
-      await estadoRef.set({ ultimoTimestampProcessado: Math.floor(Date.now() / 1000), idsProcessados: [] });
-      return;
-    }
-
-    const estado = estadoSnap.data();
-    const ultimoTimestamp = estado.ultimoTimestampProcessado || 0;
-    const idsProcessados = estado.idsProcessados || [];
-
-    const respBusca = await fetch(`${EVOLUTION_API_URL}/chat/findMessages/${EVOLUTION_INSTANCE}`, {
-      method: "POST",
-      headers: { "apikey": evolutionApiKey.value(), "Content-Type": "application/json" },
-      body: JSON.stringify({})
-    });
-    if (!respBusca.ok) {
-      logger.error("[pollingAgenteWhatsApp] falha ao buscar mensagens", { status: respBusca.status });
-      return;
-    }
-    const resultBusca = await respBusca.json().catch(() => null);
-    const mensagens = (resultBusca && resultBusca.messages && resultBusca.messages.records) || [];
-
-    const alvoNorm = normalizarNumeroBR(NUMERO_AGENTE_WHATSAPP);
-    const novas = mensagens
-      .filter(m => !m.key.fromMe)
-      .filter(m => m.messageTimestamp > ultimoTimestamp)
-      .filter(m => !idsProcessados.includes(m.key.id))
-      .filter(m => {
-        const numero = normalizarNumeroBR((m.key.remoteJidAlt || m.key.remoteJid || "").split("@")[0]);
-        return numero === alvoNorm;
-      })
-      .sort((a, b) => a.messageTimestamp - b.messageTimestamp);
-
-    if (novas.length === 0) return;
-
-    const histRef = db.collection("agenteWhatsappHistorico").doc(NUMERO_AGENTE_WHATSAPP);
-    let maiorTimestamp = ultimoTimestamp;
-    const novosIds = [];
-
-    for (const msg of novas) {
-      maiorTimestamp = Math.max(maiorTimestamp, msg.messageTimestamp);
-      novosIds.push(msg.key.id);
-
-      const texto = (msg.message && (
-        msg.message.conversation ||
-        (msg.message.extendedTextMessage && msg.message.extendedTextMessage.text)
-      )) || "";
-      if (!texto.trim()) continue;
-
-      try {
-        const histSnap = await histRef.get();
-        const historico = histSnap.exists ? (histSnap.data().historico || []) : [];
-
-        const { resposta, historico: novoHistorico } = await processarMensagemAgenteGW(texto, historico);
-
-        await histRef.set({
-          historico: novoHistorico.slice(-12),
-          atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
-        });
-
-        await fetch(`${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
-          method: "POST",
-          headers: { "apikey": evolutionApiKey.value(), "Content-Type": "application/json" },
-          body: JSON.stringify({ number: NUMERO_AGENTE_WHATSAPP, text: resposta })
-        });
-      } catch (e) {
-        logger.error("[pollingAgenteWhatsApp] erro ao processar mensagem", { erro: e.message, msgId: msg.key.id });
-      }
-    }
-
-    await estadoRef.set({
-      ultimoTimestampProcessado: maiorTimestamp,
-      idsProcessados: [...idsProcessados, ...novosIds].slice(-50)
-    });
-
-    logger.info(`[pollingAgenteWhatsApp] processadas ${novas.length} mensagem(ns)`);
+    await passadaPollingWhatsApp(evolutionApiKey.value());
   }
 );
 
