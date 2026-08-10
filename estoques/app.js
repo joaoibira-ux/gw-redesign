@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "1.1";
+const VERSAO = "1.2";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 if ("serviceWorker" in navigator) {
@@ -327,9 +327,10 @@ async function confirmarMovimentacao() {
   // Entrada com valor preenchido = compra -> gera automaticamente o
   // lançamento em Contas a Pagar pro fornecedor informado.
   if (tipoMovAtual === "entrada" && valor > 0) {
+    const itemDescr = `${fmtQtd(qtd)} ${itemAtual.unidade || ""} ${itemAtual.nome}`.replace(/\s+/g, " ").trim();
     const descricaoCP = fornecedor
-      ? `Estoque: ${itemAtual.nome} (${fornecedor})`
-      : `Estoque: ${itemAtual.nome}`;
+      ? `${fornecedor} - Estoque - ${itemDescr}`
+      : `Estoque - ${itemDescr}`;
     batch.set(db.collection("contasPagar").doc(), {
       data,
       descricao: descricaoCP,
