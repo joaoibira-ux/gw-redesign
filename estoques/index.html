@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Estoques" />
+  <title>Estoques GW</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="apple-touch-icon" href="./Logo-gw.png" />
+  <link rel="stylesheet" href="./style.css?v=1" />
+</head>
+<body>
+
+  <header>
+    <div class="header-top">
+      <a href="https://sistema.gwrevestimentos.com.br/index.html" style="line-height:0;">
+        <img src="./Logo-gw.png" alt="GW" class="header-logo" />
+      </a>
+      <h1>ESTOQUES</h1>
+      <span id="versao-app"></span>
+    </div>
+    <div class="tabs" id="tabs-categoria">
+      <button class="tab active" data-cat="Matéria-Prima">Matéria-Prima</button>
+      <button class="tab" data-cat="Produto">Produto</button>
+      <button class="tab" data-cat="Aditivo">Aditivo</button>
+    </div>
+    <div class="tabs tabs-local" id="tabs-local">
+      <button class="tab-local active" data-local="">Todos</button>
+      <button class="tab-local" data-local="Obra">Obra</button>
+      <button class="tab-local" data-local="Fábrica">Fábrica</button>
+    </div>
+  </header>
+
+  <!-- Lista principal -->
+  <div id="lista-itens"></div>
+  <button class="fab" id="btn-novo">+</button>
+
+  <!-- ── Overlay: Cadastro / Edição ── -->
+  <div id="overlay-cadastro" class="overlay" style="display:none">
+    <div class="overlay-box">
+      <h2 id="cadastro-titulo">Novo Item</h2>
+      <div class="form-group">
+        <label>Nome</label>
+        <input type="text" id="f-nome" placeholder="Ex: Cimento CP-II, Aditivo Plastificante" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Categoria</label>
+          <select id="f-categoria">
+            <option value="Matéria-Prima">Matéria-Prima</option>
+            <option value="Produto">Produto</option>
+            <option value="Aditivo">Aditivo</option>
+          </select>
+        </div>
+        <div class="form-group" id="f-local-wrap">
+          <label>Local</label>
+          <select id="f-local">
+            <option value="Obra">Obra</option>
+            <option value="Fábrica">Fábrica</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Unidade de medida</label>
+        <input type="text" id="f-unidade" placeholder="Ex: kg, L, un, sc" />
+      </div>
+      <div class="form-actions">
+        <button class="btn-cancel" id="btn-cancelar-cadastro">Cancelar</button>
+        <button class="btn-delete" id="btn-excluir-item" style="display:none">🗑 Excluir</button>
+        <button class="btn-save" id="btn-salvar-item">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Overlay: Detalhe do item ── -->
+  <div id="overlay-detalhe" class="overlay" style="display:none">
+    <div class="overlay-box">
+      <div id="detalhe-header"></div>
+      <div class="mov-titulo">Movimentações:</div>
+      <div id="detalhe-movimentacoes"></div>
+      <div class="form-actions">
+        <button class="btn-cancel" id="btn-fechar-detalhe">Fechar</button>
+        <button class="btn-edit" id="btn-editar-item">✏ Editar</button>
+        <button class="btn-save" id="btn-abrir-movimentacao">📦 Movimentar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Overlay: Movimentação (entrada/saída) ── -->
+  <div id="overlay-movimentacao" class="overlay" style="display:none">
+    <div class="overlay-box">
+      <h2>Movimentar Estoque</h2>
+      <div id="mov-item-info" class="mov-item-info"></div>
+      <div class="tipo-mov-wrap">
+        <button type="button" class="tipo-mov-btn active" id="btn-tipo-entrada" data-tipo="entrada">+ Entrada</button>
+        <button type="button" class="tipo-mov-btn" id="btn-tipo-saida" data-tipo="saida">− Saída</button>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Quantidade</label>
+          <input type="text" inputmode="decimal" id="f-mov-qtd" placeholder="0" />
+        </div>
+        <div class="form-group">
+          <label>Data</label>
+          <input type="text" id="f-mov-data" placeholder="DD/MM/AAAA" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Motivo</label>
+        <input type="text" id="f-mov-motivo" placeholder="Ex: Compra, Uso na obra X" />
+      </div>
+      <div class="form-actions">
+        <button class="btn-cancel" id="btn-cancelar-movimentacao">Cancelar</button>
+        <button class="btn-save" id="btn-confirmar-movimentacao">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="./app.js?v=1"></script>
+<script src="../agente.js"></script>
+<script src="../bfcache-fix.js"></script>
+</body>
+</html>
