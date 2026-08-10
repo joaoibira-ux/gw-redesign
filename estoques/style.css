@@ -63,8 +63,12 @@ header {
 
 @media (min-width: 768px) {
   .tab, .tab-local {
-    padding: 14px 0;
-    font-size: 0.95rem;
+    padding: 22px 0;
+    font-size: 1.05rem;
+  }
+  /* Abas mais altas empurram o header pra baixo — compensa o espaço da lista. */
+  #lista-itens {
+    margin-top: 220px;
   }
 }
 
