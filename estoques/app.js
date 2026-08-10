@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "1.0";
+const VERSAO = "1.1";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 if ("serviceWorker" in navigator) {
@@ -39,6 +39,10 @@ function parseDecimal(s) {
 function fmtQtd(v) {
   const n = Number(v || 0);
   return n % 1 === 0 ? String(n) : n.toFixed(2).replace(".", ",");
+}
+
+function fmtMoeda(v) {
+  return "R$ " + (v || 0).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 
 function esc(s) {
@@ -204,8 +208,9 @@ async function excluirItem() {
 document.getElementById("btn-fechar-detalhe").addEventListener("click", fecharDetalhe);
 document.getElementById("btn-editar-item").addEventListener("click", () => {
   if (!itemAtual) return;
+  const id = itemAtual.id; // capturar antes: fecharDetalhe() zera itemAtual
   fecharDetalhe();
-  abrirCadastro(itemAtual.id);
+  abrirCadastro(id);
 });
 document.getElementById("btn-abrir-movimentacao").addEventListener("click", abrirMovimentacao);
 
@@ -240,14 +245,19 @@ function renderDetalhe() {
   if (!movs.length) {
     movsEl.innerHTML = '<p class="empty" style="padding:12px 0">Nenhuma movimentação registrada.</p>';
   } else {
-    movsEl.innerHTML = movs.map((m, idx) => `
+    movsEl.innerHTML = movs.map((m, idx) => {
+      const infoPartes = [m.data || "—"];
+      if (m.fornecedor) infoPartes.push(m.fornecedor);
+      if (m.valor) infoPartes.push(fmtMoeda(m.valor));
+      return `
       <div class="mov-row">
         <div>
           <div class="mov-motivo">${esc(m.motivo || "(sem motivo)")}</div>
-          <div class="mov-info">${esc(m.data || "—")}</div>
+          <div class="mov-info">${esc(infoPartes.join(" · "))}</div>
         </div>
         <span class="mov-qtd ${m.tipo === 'entrada' ? 'pos' : 'neg'}">${m.tipo === 'entrada' ? '+' : '−'}${fmtQtd(m.quantidade)}</span>
-      </div>`).join("");
+      </div>`;
+    }).join("");
   }
 }
 
@@ -261,6 +271,9 @@ function selecionarTipoMov(tipo) {
   tipoMovAtual = tipo;
   document.getElementById("btn-tipo-entrada").classList.toggle("active", tipo === "entrada");
   document.getElementById("btn-tipo-saida").classList.toggle("active", tipo === "saida");
+  // Fornecedor/valor (e a conta a pagar gerada a partir deles) só fazem
+  // sentido numa entrada — uma saída é uso/consumo, não uma compra.
+  document.getElementById("mov-entrada-extra").style.display = tipo === "entrada" ? "block" : "none";
 }
 
 function abrirMovimentacao() {
@@ -269,6 +282,8 @@ function abrirMovimentacao() {
   document.getElementById("f-mov-qtd").value = "";
   document.getElementById("f-mov-data").value = hoje();
   document.getElementById("f-mov-motivo").value = "";
+  document.getElementById("f-mov-fornecedor").value = "";
+  document.getElementById("f-mov-valor").value = "";
   document.getElementById("mov-item-info").textContent = itemAtual.nome;
   document.getElementById("overlay-movimentacao").style.display = "flex";
 }
@@ -291,6 +306,8 @@ async function confirmarMovimentacao() {
 
   const data = document.getElementById("f-mov-data").value.trim();
   const motivo = document.getElementById("f-mov-motivo").value.trim();
+  const fornecedor = tipoMovAtual === "entrada" ? document.getElementById("f-mov-fornecedor").value.trim() : "";
+  const valor = tipoMovAtual === "entrada" ? parseDecimal(document.getElementById("f-mov-valor").value) : 0;
 
   const novaMov = {
     tipo: tipoMovAtual,
@@ -299,9 +316,29 @@ async function confirmarMovimentacao() {
     data,
     criadoEm: new Date().toISOString()
   };
+  if (fornecedor) novaMov.fornecedor = fornecedor;
+  if (valor > 0) novaMov.valor = valor;
 
-  await col.doc(itemAtual.id).update({
+  const batch = db.batch();
+  batch.update(col.doc(itemAtual.id), {
     movimentacoes: firebase.firestore.FieldValue.arrayUnion(novaMov)
   });
+
+  // Entrada com valor preenchido = compra -> gera automaticamente o
+  // lançamento em Contas a Pagar pro fornecedor informado.
+  if (tipoMovAtual === "entrada" && valor > 0) {
+    const descricaoCP = fornecedor
+      ? `Estoque: ${itemAtual.nome} (${fornecedor})`
+      : `Estoque: ${itemAtual.nome}`;
+    batch.set(db.collection("contasPagar").doc(), {
+      data,
+      descricao: descricaoCP,
+      valor,
+      status: "aberto",
+      criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  }
+
+  await batch.commit();
   fecharMovimentacao();
 }

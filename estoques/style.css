@@ -378,3 +378,9 @@ header {
 
 .tipo-mov-btn.active[data-tipo="entrada"] { background: #e8f5e9; color: #2e7d32; }
 .tipo-mov-btn.active[data-tipo="saida"] { background: #ffebee; color: #c62828; }
+
+.mov-valor-hint {
+  font-size: 0.72rem;
+  color: #888;
+  margin: -4px 0 12px;
+}
