@@ -66,10 +66,6 @@ header {
     padding: 22px 0;
     font-size: 1.05rem;
   }
-  /* Abas mais altas empurram o header pra baixo — compensa o espaço da lista. */
-  #lista-itens {
-    margin-top: 220px;
-  }
 }
 
 /* ── Lista ── */

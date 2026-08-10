@@ -1,8 +1,8 @@
-const VERSION = "estoques-v6";
+const VERSION = "estoques-v7";
 const ASSETS = [
   "./index.html",
-  "./style.css?v=4",
-  "./app.js?v=4",
+  "./style.css?v=5",
+  "./app.js?v=5",
   "./manifest.json"
 ];
 

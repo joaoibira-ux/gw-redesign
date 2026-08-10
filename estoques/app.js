@@ -10,12 +10,26 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "1.4";
+const VERSAO = "1.5";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("./sw.js").catch(() => {});
 }
+
+// Header tem altura variável (abas maiores no desktop, botão do assistente
+// injetado depois pelo agente.js) — ajusta o espaço da lista dinamicamente
+// em vez de um valor fixo no CSS, que ficava errado nesses casos.
+(function ajustarEspacoHeader() {
+  const headerEl = document.querySelector("header");
+  const listaEl = document.getElementById("lista-itens");
+  function ajustar() {
+    listaEl.style.marginTop = headerEl.offsetHeight + "px";
+  }
+  new ResizeObserver(ajustar).observe(headerEl);
+  window.addEventListener("resize", ajustar);
+  ajustar();
+})();
 
 const col = db.collection("estoques");
 
