@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "1.2";
+const VERSAO = "1.3";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 if ("serviceWorker" in navigator) {
@@ -284,6 +284,7 @@ function abrirMovimentacao() {
   document.getElementById("f-mov-motivo").value = "";
   document.getElementById("f-mov-fornecedor").value = "";
   document.getElementById("f-mov-valor").value = "";
+  document.getElementById("f-mov-vencimento").value = hoje();
   document.getElementById("mov-item-info").textContent = itemAtual.nome;
   document.getElementById("overlay-movimentacao").style.display = "flex";
 }
@@ -308,6 +309,7 @@ async function confirmarMovimentacao() {
   const motivo = document.getElementById("f-mov-motivo").value.trim();
   const fornecedor = tipoMovAtual === "entrada" ? document.getElementById("f-mov-fornecedor").value.trim() : "";
   const valor = tipoMovAtual === "entrada" ? parseDecimal(document.getElementById("f-mov-valor").value) : 0;
+  const vencimento = tipoMovAtual === "entrada" ? document.getElementById("f-mov-vencimento").value.trim() : "";
 
   const novaMov = {
     tipo: tipoMovAtual,
@@ -332,7 +334,7 @@ async function confirmarMovimentacao() {
       ? `${fornecedor} - Estoque - ${itemDescr}`
       : `Estoque - ${itemDescr}`;
     batch.set(db.collection("contasPagar").doc(), {
-      data,
+      data: vencimento || data,
       descricao: descricaoCP,
       valor,
       status: "aberto",
