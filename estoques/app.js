@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "1.3";
+const VERSAO = "1.4";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 if ("serviceWorker" in navigator) {
