@@ -35,26 +35,41 @@ header {
 .resumo {
   background: white;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 14px;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-around;
+  padding: 14px 8px;
   border-bottom: 1px solid #e0e0e0;
   flex-shrink: 0;
+  gap: 4px;
+}
+
+.resumo-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
 }
 
 .resumo-label {
-  font-size: 0.72rem;
+  font-size: 0.62rem;
   font-weight: 600;
   color: #888;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
   margin-bottom: 2px;
+  white-space: nowrap;
 }
 
 .resumo-valor {
-  font-size: 1.4rem;
+  font-size: 1.05rem;
   font-weight: 700;
   color: #1a3322;
+  white-space: nowrap;
+}
+
+.resumo-valor-bmt {
+  color: #2e7d32;
 }
 
 .lista {

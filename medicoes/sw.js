@@ -1,4 +1,4 @@
-const VERSION = "medicoes-v10";
+const VERSION = "medicoes-v11";
 const ASSETS = [
   "./index.html",
   "./style.css?v=3",

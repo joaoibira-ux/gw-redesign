@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.1";
+const VERSAO = "3.2";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -67,13 +67,16 @@ function render(docs) {
   const lista = document.getElementById("lista");
   docsCache = {};
 
-  let totalMedido = 0;
+  let totalMedido = 0, totalBmt = 0;
   docs.forEach(doc => {
     const m = doc.data();
     docsCache[doc.id] = m;
-    if (!ehTratamento(m)) totalMedido += m.valor || 0;
+    if (ehTratamento(m)) totalBmt += m.valor || 0;
+    else totalMedido += m.valor || 0;
   });
   document.getElementById("tot-medido").textContent = fmtMoeda(totalMedido);
+  document.getElementById("tot-bmt").textContent = fmtMoeda(totalBmt);
+  document.getElementById("tot-geral").textContent = fmtMoeda(totalMedido + totalBmt);
 
   if (docs.length === 0) {
     lista.innerHTML = '<p class="empty">Nenhuma medição cadastrada.</p>';
