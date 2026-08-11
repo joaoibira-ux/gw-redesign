@@ -469,7 +469,7 @@
     }
     .prev-cols { grid-template-columns: 1fr 100px 100px 100px 100px 100px; }
     .prev-cols-med { grid-template-columns: 1fr 90px 90px 90px 90px 90px 90px; }
-    .prev-cols-pass { grid-template-columns: 1fr 120px; }
+    .prev-cols-pass { grid-template-columns: 1fr 100px 100px 100px; }
     .prev-header { display: grid; padding: 5px 16px; border-bottom: 1px solid rgba(165,214,167,0.15); }
     .prev-header span { font-size: 0.6rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #4a8a5a; text-align: right; white-space: nowrap; }
     .prev-header span:first-child { text-align: left; }
@@ -1260,37 +1260,130 @@
   db.collection('locais').onSnapshot(snap => { _locaisSnap = snap; renderPrevisaoMedicao(); });
   db.collection('servicos').onSnapshot(snap => { _servicosSnap = snap; renderPrevisaoMedicao(); });
 
+  // ── Faltas da quinzena anterior (descontam das Passagens) ──────────────
+  // Regra: cada funcionário deve bater ponto pelo menos 5 dias (segunda a
+  // sábado) por semana. 4 registros = 1 falta, 3 = 2 faltas (padrão
+  // 5-registros), e assim por diante. 6 registros = 1 crédito de falta, que
+  // fica acumulado (funcionarios/{id}.creditoFaltas) até ser usado para
+  // compensar uma falta futura. Uma semana segunda-sábado conta pra quinzena
+  // em que cai o sábado dela (fecha o ciclo de trabalho). Usa normNome
+  // (definida mais abaixo, hoisted) pra casar nomes igual ao resto do arquivo.
+  function limitesQuinzenaAnterior(hoje) {
+    const ano = hoje.getFullYear(), mes = hoje.getMonth();
+    if (hoje.getDate() <= 15) {
+      // quinzena atual = 1-15 deste mês -> anterior = 16-fim do mês passado
+      return { inicio: new Date(ano, mes - 1, 16), fim: new Date(ano, mes, 0) };
+    }
+    // quinzena atual = 16-fim deste mês -> anterior = 1-15 deste mês
+    return { inicio: new Date(ano, mes, 1), fim: new Date(ano, mes, 15) };
+  }
+
+  function segundaDaSemanaDe(date) {
+    const d = new Date(date);
+    const diff = (d.getDay() + 6) % 7; // segunda=0 ... domingo=6
+    d.setDate(d.getDate() - diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  // Retorna Map: nome normalizado -> { faltas, creditos } ganhos na quinzena anterior.
+  async function calcularFaltasQuinzenaAnterior(hoje) {
+    const { inicio: qIni, fim: qFim } = limitesQuinzenaAnterior(hoje);
+    // Janela de busca com folga de 1 semana pra cada lado, pra pegar a
+    // semana cujo sábado cai bem no início/fim da quinzena.
+    const buscaIni = new Date(qIni); buscaIni.setDate(buscaIni.getDate() - 7);
+    const buscaFimExclusiva = new Date(qFim); buscaFimExclusiva.setDate(buscaFimExclusiva.getDate() + 8);
+
+    const snap = await db.collection('pontos')
+      .where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(buscaIni))
+      .where('timestamp', '<',  firebase.firestore.Timestamp.fromDate(buscaFimExclusiva))
+      .get();
+
+    // Dias únicos com registro, agrupados por (funcionário, semana).
+    const diasPorSemana = new Map(); // key: nome|segundaISO -> { nome, dias: Set }
+    snap.docs.forEach(doc => {
+      const r = doc.data();
+      if (!r.timestamp) return;
+      const ts = r.timestamp.toDate();
+      if (ts.getDay() === 0) return; // domingo fora do ciclo segunda-sábado
+      const segunda = segundaDaSemanaDe(ts);
+      const sabado = new Date(segunda); sabado.setDate(sabado.getDate() + 5);
+      if (sabado < qIni || sabado > qFim) return; // semana não pertence a essa quinzena
+      const nome = normNome(r.funcionarioNome);
+      const key = `${nome}|${segunda.toISOString().slice(0, 10)}`;
+      if (!diasPorSemana.has(key)) diasPorSemana.set(key, { nome, dias: new Set() });
+      diasPorSemana.get(key).dias.add(ts.toDateString());
+    });
+
+    const resultado = new Map();
+    diasPorSemana.forEach(({ nome, dias }) => {
+      const n = dias.size;
+      const atual = resultado.get(nome) || { faltas: 0, creditos: 0 };
+      if (n >= 6) atual.creditos += (n - 5);
+      else if (n < 5) atual.faltas += (5 - n);
+      resultado.set(nome, atual);
+    });
+    return resultado;
+  }
+
+  // Combina as faltas/créditos ganhos na quinzena anterior com o saldo de
+  // crédito já acumulado do funcionário — não grava nada, só calcula.
+  function combinarFaltasComCredito(faltasMap, nomeFuncionario, creditoSalvo) {
+    const fc = faltasMap.get(normNome(nomeFuncionario)) || { faltas: 0, creditos: 0 };
+    const creditoDisponivel = (creditoSalvo || 0) + fc.creditos;
+    const faltasLiquidas = Math.max(0, fc.faltas - creditoDisponivel);
+    const creditoRestante = Math.max(0, creditoDisponivel - fc.faltas);
+    return { faltasLiquidas, creditoRestante };
+  }
+
+  // Carregado uma vez (dados de ponto já fechados no passado, não precisa de
+  // listener ao vivo) — re-renderiza a prévia de passagens quando terminar.
+  let _faltasMap = new Map();
+  calcularFaltasQuinzenaAnterior(new Date()).then(map => {
+    _faltasMap = map;
+    if (_funcionariosSnap) renderPrevisaoPassagens(_funcionariosSnap);
+  }).catch(e => console.error('Falha ao calcular faltas da quinzena anterior:', e));
+
   // ── Passagens da Quinzena ──
   function renderPrevisaoPassagens(snap) {
     const el = document.getElementById('previsao-passagens');
     if (!el) return;
     const linhas = [];
-    let total = 0;
+    let total = 0, totalDescontoFaltas = 0;
     snap.docs.forEach(d => {
       const f = d.data();
       if (f.ativo === false) return;
       const valor = Number(f.passagens || 0);
       if (valor <= 0) return;
+      const { faltasLiquidas } = combinarFaltasComCredito(_faltasMap, f.nome, f.creditoFaltas || 0);
+      const descontoFaltas = faltasLiquidas * (valor / 10);
+      const liquido = valor - descontoFaltas;
       total += valor;
+      totalDescontoFaltas += descontoFaltas;
       linhas.push(`
         <div class="prev-linha prev-cols-pass">
           <div class="prev-nome">${escHtml(f.nome)} <span class="prev-cargo">${escHtml(f.cargo||'')}</span></div>
           <div class="prev-valor">${fmt(valor)}</div>
+          <div class="prev-adiant">${descontoFaltas > 0 ? '- '+fmt(descontoFaltas) : '—'}</div>
+          <div class="prev-liq">${fmt(liquido)}</div>
         </div>`);
     });
     if (!linhas.length) { el.innerHTML = ''; return; }
+    const totalLiq = total - totalDescontoFaltas;
     el.innerHTML = `
       <div class="previsao-card">
         <div class="prev-titulo">
           <span>Passagens da Quinzena</span>
         </div>
         <div class="prev-header prev-cols-pass">
-          <span>Funcionário</span><span>Passagens</span>
+          <span>Funcionário</span><span>Passagens</span><span>Faltas</span><span>Líquido</span>
         </div>
         ${linhas.join('')}
         <div class="prev-total prev-cols-pass">
           <span>Total</span>
           <span>${fmt(total)}</span>
+          <span style="color:#ef9a9a">${totalDescontoFaltas > 0 ? '- '+fmt(totalDescontoFaltas) : '—'}</span>
+          <span>${fmt(totalLiq)}</span>
         </div>
       </div>`;
   }
@@ -1595,14 +1688,21 @@
       });
       const totalFolha = totalBruto - totalAdiant;
 
-      // Total das passagens da quinzena
+      // Total das passagens da quinzena, descontando faltas líquidas da
+      // quinzena anterior (após compensar com o crédito acumulado) — ver
+      // calcularFaltasQuinzenaAnterior/combinarFaltasComCredito, mais acima.
+      const faltasMap = await calcularFaltasQuinzenaAnterior(new Date());
       let totalPassagens = 0;
-      const valoresPassagens = {};
+      const passagensPorFunc = {}; // id -> { bruto, liquido, creditoRestante }
       funcSnap.docs.forEach(d => {
         const f = d.data();
         if (f.ativo === false) return;
-        const valor = Number(f.passagens || 0);
-        if (valor > 0) { totalPassagens += valor; valoresPassagens[d.id] = valor; }
+        const bruto = Number(f.passagens || 0);
+        if (bruto <= 0) return;
+        const { faltasLiquidas, creditoRestante } = combinarFaltasComCredito(faltasMap, f.nome, f.creditoFaltas || 0);
+        const liquido = bruto - faltasLiquidas * (bruto / 10);
+        totalPassagens += liquido;
+        passagensPorFunc[d.id] = { bruto, liquido, creditoRestante };
       });
 
       if (totalFolha <= 0 && totalPassagens <= 0) {
@@ -1674,8 +1774,10 @@
         batch.update(doc.ref, { origem: novaOrigem });
       });
 
-      Object.entries(valoresPassagens).forEach(([id, valor]) => {
-        batch.update(db.collection('funcionarios').doc(id), { passagens: 0, passagensUltimoPago: valor });
+      Object.entries(passagensPorFunc).forEach(([id, { liquido, creditoRestante }]) => {
+        batch.update(db.collection('funcionarios').doc(id), {
+          passagens: 0, passagensUltimoPago: liquido, creditoFaltas: creditoRestante
+        });
       });
 
       await batch.commit();
