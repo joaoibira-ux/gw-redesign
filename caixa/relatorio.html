@@ -1357,6 +1357,11 @@
     // Desconto de INSS e Passagens em R$, fixos — os mesmos já calculados em
     // Funcionários sobre o salário base (Salário Bruto ou Salário de
     // Referência, conforme o cargo), não sobre o Bruto do período.
+    // Só entram na folha da quinzena 16-fim do mês (a quinzena 1-15 é o
+    // adiantamento, sem esses descontos) — mesmo corte de dia usado em
+    // folha/app.js pra determinar a quinzena atual (hoje.getDate() <= 15 ? 1 : 16).
+    const dataFolha = _ultimaFolha.criadoEm && _ultimaFolha.criadoEm.toDate ? _ultimaFolha.criadoEm.toDate() : null;
+    const descontaInssPassagens = !dataFolha || dataFolha.getDate() >= 16;
     const CARGOS_POR_PRODUCAO_REL = ['PINTOR', 'RASPADOR'];
     const descontosMap = new Map();
     if (_funcionariosSnap) _funcionariosSnap.docs.forEach(d => {
@@ -1364,7 +1369,9 @@
       const porProd = CARGOS_POR_PRODUCAO_REL.includes((f.cargo || '').toUpperCase());
       const base = porProd ? Number(f.salarioReferencia || 0) : Number(f.salario || 0);
       const pct = Number(f.descontos || 0);
-      const valores = { inss: base * pct / 100, passagens: base * 0.06 };
+      const valores = descontaInssPassagens
+        ? { inss: base * pct / 100, passagens: base * 0.06 }
+        : { inss: 0, passagens: 0 };
       descontosMap.set(d.id, valores);
       descontosMap.set(normNome(f.nome), valores);
     });
