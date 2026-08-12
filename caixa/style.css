@@ -327,6 +327,11 @@ input:focus, select:focus {
   text-transform: capitalize;
   margin-left: 8px;
 }
+.picker-data {
+  color: #888;
+  font-weight: 400;
+  font-size: 0.85em;
+}
 
 
 @media (max-width: 430px) {

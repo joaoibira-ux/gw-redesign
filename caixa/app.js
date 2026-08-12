@@ -486,6 +486,16 @@ function abrirPickerContaReceber() {
   });
 }
 
+// Converte "D/M/AAAA" ou "DD/MM/AAAA" (formato salvo em contasPagar.data)
+// num Date pra dar pra ordenar cronologicamente — string pura ordenaria
+// errado (ex: "1/12/2026" viria antes de "15/1/2026" alfabeticamente).
+function parseDataBR(s) {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(String(s || "").trim());
+  if (!m) return new Date(0);
+  const [, d, mes, ano] = m;
+  return new Date(Number(ano.length === 2 ? "20" + ano : ano), Number(mes) - 1, Number(d));
+}
+
 function abrirPickerContaPagar() {
   const overlay = document.getElementById("picker-overlay");
   const lista   = document.getElementById("picker-lista");
@@ -494,7 +504,9 @@ function abrirPickerContaPagar() {
   overlay.classList.add("active");
   db.collection("contasPagar").get().then(snap => {
     contasPagarCache = {};
-    const abertas = snap.docs.filter(d => d.data().status !== "baixado");
+    const abertas = snap.docs
+      .filter(d => d.data().status !== "baixado")
+      .sort((a, b) => parseDataBR(a.data().data) - parseDataBR(b.data().data));
     if (!abertas.length) {
       lista.innerHTML = '<p style="color:#888;padding:12px;text-align:center">Nenhuma conta a pagar em aberto.</p>';
       return;
@@ -503,7 +515,7 @@ function abrirPickerContaPagar() {
       const c = d.data();
       contasPagarCache[d.id] = c;
       return `<div class="picker-item" data-id="${d.id}" onclick="selecionarContaPagar(this.dataset.id)">
-        ${c.numero ? `Nº ${escHtml(c.numero)} — ` : ""}${escHtml(c.descricao)}<span class="picker-cargo-badge">${fmtMoeda(c.valor)}</span>
+        <span>${c.data ? `<span class="picker-data">${escHtml(c.data)}</span> — ` : ""}${c.numero ? `Nº ${escHtml(c.numero)} — ` : ""}${escHtml(c.descricao)}</span><span class="picker-cargo-badge">${fmtMoeda(c.valor)}</span>
       </div>`;
     }).join("");
   }).catch(() => {
