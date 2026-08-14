@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "1.7";
+const VERSAO = "1.8";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -180,6 +180,7 @@ function abrirDetalhe(id) {
 
   const linhas = [`<div class="detalhe-linha"><span>Data</span><span>${escHtml(c.data)}</span></div>`];
   if (baixado && c.dataBaixa) linhas.push(`<div class="detalhe-linha"><span>Pago em</span><span>${escHtml(c.dataBaixa)}</span></div>`);
+  if (c.boletoUrl) linhas.push(`<div class="detalhe-linha"><span>Boleto</span><span><a href="${escHtml(c.boletoUrl)}" target="_blank" rel="noopener" class="link-boleto">Ver PDF ↗</a></span></div>`);
 
   const temPagamentoParcial = c.valorOriginal && c.valorOriginal > (c.valor || 0);
   if (temPagamentoParcial) {

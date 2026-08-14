@@ -283,6 +283,13 @@ header {
 }
 .detalhe-linha span:first-child { color: #888; }
 
+.link-boleto {
+  color: #1a3322;
+  font-weight: 700;
+  text-decoration: none;
+}
+.link-boleto:active { opacity: 0.7; }
+
 .detalhe-extrato-titulo {
   font-size: 0.75rem;
   font-weight: 700;
