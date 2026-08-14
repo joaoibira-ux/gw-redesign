@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.86";
+const VERSAO = "4.87";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1315,6 +1315,18 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
       .cp-footer{background:#0d1f14;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(165,214,167,0.2);flex-shrink:0}
       .cp-total-l{font-size:0.68rem;font-weight:700;letter-spacing:1px;color:#66bb6a}
       .cp-total-v{font-size:1rem;font-weight:900;color:#a5d6a7}
+      .cp-print-btn{background:rgba(165,214,167,0.15);border:1px solid rgba(165,214,167,0.4);color:#a5d6a7;
+        font-size:0.62rem;font-weight:700;letter-spacing:0.5px;padding:5px 10px;border-radius:6px;cursor:pointer}
+      @media print {
+        .cp-print-btn, .cp-meta span:last-child { display:none !important }
+        body{overflow:visible !important;height:auto !important;background:#fff !important}
+        .cp-wrap{transform:none !important;width:auto !important;height:auto !important;overflow:visible !important;background:#fff;color:#000}
+        .cp-header{background:#fff !important;border-bottom:1px solid #ccc}
+        .cp-title{color:#1b5e20 !important}
+        .cp-meta{color:#555 !important}
+        .cp-body{overflow:visible !important;background:#fff !important}
+        .cp-footer{background:#fff !important;border-top:2px solid #1b5e20}
+      }
     </style>
     <div class="cp-wrap" onclick="mostrarSucesso(window._sucPag,window._sucTotal)">
       <div class="cp-header">
@@ -1323,6 +1335,7 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
           <span>Emitida em ${hoje} · v${VERSAO}</span>
           <span>toque para continuar →</span>
         </div>
+        <button class="cp-print-btn" style="margin-top:6px" onclick="event.stopPropagation();window.print()">🖨 Imprimir</button>
       </div>
       <div class="cp-body">
         ${encHtml}
