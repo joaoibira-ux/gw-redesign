@@ -452,9 +452,9 @@
 
     /* ── Previsão da Folha ── */
     .previsao-wrap { margin: 0 32px 32px; }
-    #previsao-folha.previsao-wrap { margin-top: 28px; }
     .previsao-card { background: #1a3322; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
     .prev-titulo { background: #0d2318; color: #a5d6a7; padding: 10px 16px; font-size: 0.72rem; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; }
+    #previsao-quinzena.previsao-wrap { margin-top: 28px; }
     #previsao-folha .prev-titulo {
       background: #1a3322;
       color: #fff;
@@ -470,6 +470,10 @@
     .prev-cols { grid-template-columns: 1fr 100px 100px 100px 100px 100px; }
     .prev-cols-med { grid-template-columns: 1fr 90px 90px 90px 90px 90px 90px; }
     .prev-cols-pass { grid-template-columns: 1fr 100px 80px 100px 100px; }
+    .prev-cols-quinz { grid-template-columns: 1fr 110px; }
+    .prev-secao-titulo { color: #fff; font-size: 1.1rem; font-weight: 700; margin: 0 0 12px; }
+    .previsao-quinz-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 768px) { .previsao-quinz-grid { grid-template-columns: 1fr; } }
     .prev-header { display: grid; padding: 5px 16px; border-bottom: 1px solid rgba(165,214,167,0.15); }
     .prev-header span { font-size: 0.6rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #4a8a5a; text-align: right; white-space: nowrap; }
     .prev-header span:first-child { text-align: left; }
@@ -661,6 +665,7 @@
   </table>
 </div>
 
+<div class="previsao-wrap" id="previsao-quinzena"></div>
 <div class="previsao-wrap" id="previsao-folha"></div>
 <div class="previsao-wrap" id="previsao-medicao"></div>
 <div class="previsao-wrap" id="previsao-passagens"></div>
@@ -681,7 +686,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.87";
+  const VERSAO = "1.88";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1371,7 +1376,7 @@
           <div class="prev-liq">${fmt(liquido)}</div>
         </div>`);
     });
-    if (!linhas.length) { el.innerHTML = ''; return; }
+    if (!linhas.length) { el.innerHTML = ''; renderPrevisaoQuinzena(); return; }
     const totalLiq = total - totalDescontoFaltas;
     el.innerHTML = `
       <div class="previsao-card">
@@ -1390,6 +1395,7 @@
           <span>${fmt(totalLiq)}</span>
         </div>
       </div>`;
+    renderPrevisaoQuinzena();
   }
 
   let _funcionariosSnap = null;
@@ -1410,7 +1416,7 @@
   function renderPrevisaoFolha() {
     const el = document.getElementById('previsao-folha');
     if (!el || _ultimaFolha === undefined) return;
-    if (_ultimaFolha === null) { el.innerHTML = ''; return; }
+    if (_ultimaFolha === null) { el.innerHTML = ''; renderPrevisaoQuinzena(); return; }
 
     // Remove ajudantes do documento salvo — agora vêm da coleção 'diarias'
     let grupos = (_ultimaFolha.grupos || []).filter(g =>
@@ -1439,7 +1445,7 @@
       }];
     });
 
-    if (!grupos.length) { el.innerHTML = ''; return; }
+    if (!grupos.length) { el.innerHTML = ''; renderPrevisaoQuinzena(); return; }
 
     const adiantMap = new Map();
     if (_adiantSnap) _adiantSnap.docs.forEach(d => {
@@ -1531,6 +1537,7 @@
           <span>${fmt(totalLiq)}</span>
         </div>
       </div>`;
+    renderPrevisaoQuinzena();
   }
 
   db.collection('folhas').orderBy('criadoEm', 'desc').limit(1).onSnapshot(snap => {
@@ -1562,6 +1569,142 @@
   function fmtDataBR(d) {
     return [String(d.getDate()).padStart(2, '0'), String(d.getMonth() + 1).padStart(2, '0'), d.getFullYear()].join('/');
   }
+
+  // ── Previsão Financeira de Fechamento da Quinzena ──────────────────────
+  // Projeta, a partir dos dados já carregados em tela, quanto vai ser
+  // preciso ter em caixa nos próximos 3 e 7 dias: soma as contas a pagar já
+  // abertas (vencimento em 'data') com o que a Folha e as Passagens vão
+  // gerar quando fechadas (mesmo cálculo de fecharMedicaoFolha, usando
+  // proximaSexta() como data de vencimento projetada).
+  let _contasPagarSnap = null;
+
+  function calcularTotalFolhaAberta() {
+    if (_ultimaFolha === undefined || _ultimaFolha === null) return 0;
+    let grupos = (_ultimaFolha.grupos || []).filter(g =>
+      g.isEncarregado || !(g.funcionario?.cargo || '').toLowerCase().includes('ajudante')
+    );
+
+    const diariaPorFunc = new Map();
+    if (_diariasSnap) _diariasSnap.docs.forEach(d => {
+      const doc = d.data();
+      const subtotal = (doc.dias || []).reduce((s, dia) => s + Number(dia.valor || 0), 0);
+      if (subtotal <= 0) return;
+      const key = normNome(doc.funcionarioNome);
+      const atual = diariaPorFunc.get(key) || { total: 0, nome: doc.funcionarioNome, cargo: doc.cargo || 'Ajudante' };
+      atual.total += subtotal;
+      diariaPorFunc.set(key, atual);
+    });
+
+    const nomesExistentes = new Set(grupos.map(g => normNome(g.funcionario?.nome)));
+    diariaPorFunc.forEach((info, key) => {
+      if (!nomesExistentes.has(key)) grupos = [...grupos, {
+        isEncarregado: false,
+        funcionario: { nome: info.nome, cargo: info.cargo },
+        subtotal: 0
+      }];
+    });
+
+    const adiantMap = new Map();
+    if (_adiantSnap) _adiantSnap.docs.forEach(d => {
+      const r = d.data();
+      const desc = r.descricao || '';
+      if (!desc.startsWith('Adiantamento: ')) return;
+      const nome = desc.slice('Adiantamento: '.length).split(/\s*[—–\-]/)[0].trim().normalize('NFC');
+      if (!nome) return;
+      adiantMap.set(normNome(nome), (adiantMap.get(normNome(nome)) || 0) + (r.saida || 0));
+    });
+
+    let totalBruto = 0, totalAdiant = 0;
+    grupos.forEach(g => {
+      let bruto = g.subtotal || 0;
+      if (g.isEncarregado) {
+        if (_nServTotal !== null) {
+          const quinzena = (g.itens || []).find(i => i.servico === 'Quinzena 50%');
+          if (quinzena) bruto = Number(quinzena.valor || 0) + 5 * _nServTotal;
+        }
+      } else if (_porFuncProducao) {
+        const key = g.funcionario.id || g.funcionario.nome;
+        if (_porFuncProducao.has(key)) bruto = _porFuncProducao.get(key);
+      }
+      const diaria = diariaPorFunc.get(normNome(g.funcionario?.nome));
+      if (diaria) bruto += diaria.total;
+      totalBruto  += bruto;
+      totalAdiant += adiantMap.get(normNome(g.funcionario?.nome)) || 0;
+    });
+    return totalBruto - totalAdiant;
+  }
+
+  function calcularTotalPassagensQuinzena() {
+    if (!_funcionariosSnap) return 0;
+    let total = 0;
+    _funcionariosSnap.docs.forEach(d => {
+      const f = d.data();
+      if (f.ativo === false) return;
+      const bruto = Number(f.passagens || 0);
+      if (bruto <= 0) return;
+      const { faltasLiquidas } = combinarFaltasComCredito(_faltasMap, f.nome, f.creditoFaltas || 0);
+      total += bruto - faltasLiquidas * (bruto / 10);
+    });
+    return total;
+  }
+
+  function renderPrevisaoQuinzena() {
+    const el = document.getElementById('previsao-quinzena');
+    if (!el || _ultimaFolha === undefined || !_contasPagarSnap) return;
+
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    const dataFechamento = proximaSexta(); dataFechamento.setHours(0, 0, 0, 0);
+
+    const itens = [];
+    const totalFolha = calcularTotalFolhaAberta();
+    if (totalFolha > 0) itens.push({ desc: 'Folha de Pagamento da Produção', data: dataFechamento, valor: totalFolha });
+    const totalPassagens = calcularTotalPassagensQuinzena();
+    if (totalPassagens > 0) itens.push({ desc: 'Passagens da Quinzena', data: dataFechamento, valor: totalPassagens });
+
+    _contasPagarSnap.docs.forEach(d => {
+      const c = d.data();
+      if (c.status === 'baixado') return;
+      const dt = parseDateBR(c.data);
+      if (!dt) return;
+      itens.push({ desc: c.descricao || '(sem descrição)', data: dt, valor: Number(c.valor || 0) });
+    });
+
+    function montarJanela(dias) {
+      const limite = new Date(hoje); limite.setDate(limite.getDate() + dias);
+      const doPeriodo = itens.filter(it => it.data >= hoje && it.data <= limite).sort((a, b) => a.data - b.data);
+      if (!doPeriodo.length) return `
+        <div class="previsao-card">
+          <div class="prev-titulo"><span>Próximos ${dias} dias</span></div>
+          <div style="padding:16px;color:#4a8a5a;font-size:0.8rem;text-align:center">Nenhum compromisso no período.</div>
+        </div>`;
+      const total = doPeriodo.reduce((s, it) => s + it.valor, 0);
+      const linhas = doPeriodo.map(it => `
+        <div class="prev-linha prev-cols-quinz">
+          <div class="prev-nome">${escHtml(it.desc)} <span class="prev-cargo">${fmtDataBR(it.data)}</span></div>
+          <div class="prev-liq">${fmt(it.valor)}</div>
+        </div>`).join('');
+      return `
+        <div class="previsao-card">
+          <div class="prev-titulo"><span>Próximos ${dias} dias</span></div>
+          <div class="prev-header prev-cols-quinz">
+            <span>Compromisso</span><span>Valor</span>
+          </div>
+          ${linhas}
+          <div class="prev-total prev-cols-quinz">
+            <span>Total</span><span>${fmt(total)}</span>
+          </div>
+        </div>`;
+    }
+
+    el.innerHTML = `
+      <div class="prev-secao-titulo">Previsão Financeira de Fechamento da Quinzena</div>
+      <div class="previsao-quinz-grid">
+        ${montarJanela(3)}
+        ${montarJanela(7)}
+      </div>`;
+  }
+
+  db.collection('contasPagar').onSnapshot(snap => { _contasPagarSnap = snap; renderPrevisaoQuinzena(); });
 
   // Gera um snapshot do mapa de execução (estado ANTES do fechamento) e envia
   // por Telegram, abrindo a página do mapa num iframe oculto com ?snapshot=1.
