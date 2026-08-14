@@ -686,7 +686,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.89";
+  const VERSAO = "1.90";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1058,6 +1058,18 @@
         cefS += r.saida || 0;
       } else if (r.origem === "JOAO->ADIANTAMENTO" || r.origem === "JOAO->ANTECIPACAO") {
         interS += r.saida || 0;
+      } else if (r.origem === "JOAO->CTAS A RECEBER") {
+        interS += r.saida || 0;
+      } else if (r.origem === "JOAO->BAIXA CTAS A RECEBER") {
+        interE += r.entrada || 0;
+      } else if (r.origem === "ANE->BAIXA CTAS A RECEBER") {
+        cefE += r.entrada || 0;
+      } else if (r.origem === "JOAO->CTAS A PAGAR") {
+        interE += r.entrada || 0;
+      } else if (r.origem === "JOAO->BAIXA CTAS A PAGAR") {
+        interS += r.saida || 0;
+      } else if (r.origem === "ANE->BAIXA CTAS A PAGAR") {
+        cefS += r.saida || 0;
       } else if (r.origem === "ANE") {
         cefE += r.entrada || 0;
         cefS += r.saida   || 0;
