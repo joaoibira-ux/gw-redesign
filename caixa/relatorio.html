@@ -471,8 +471,12 @@
     .prev-cols-med { grid-template-columns: 1fr 90px 90px 90px 90px 90px 90px; }
     .prev-cols-pass { grid-template-columns: 1fr 100px 80px 100px 100px; }
     .prev-cols-quinz { grid-template-columns: 1fr 110px; }
-    .prev-secao-titulo { color: #fff; font-size: 1.1rem; font-weight: 700; margin: 0 0 12px; }
+    .prev-secao-titulo { color: #fff; font-size: 1.1rem; font-weight: 700; margin: 0 0 12px; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .prev-secao-saldo { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.5px; color: #a5d6a7; text-transform: uppercase; }
     .previsao-quinz-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .prev-saldo-proj { display: grid; padding: 8px 16px; background: #142a1c; font-weight: 700; font-size: 0.78rem; }
+    .prev-saldo-proj span:first-child { color: #7fb88a; text-align: left; }
+    .prev-saldo-proj span:last-child { text-align: right; white-space: nowrap; }
     @media (max-width: 768px) { .previsao-quinz-grid { grid-template-columns: 1fr; } }
     .prev-header { display: grid; padding: 5px 16px; border-bottom: 1px solid rgba(165,214,167,0.15); }
     .prev-header span { font-size: 0.6rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #4a8a5a; text-align: right; white-space: nowrap; }
@@ -686,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.90";
+  const VERSAO = "1.91";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1026,6 +1030,8 @@
   const HORACIO_BASE  = -136306.23;
   const JOAO_BASE     = -32250;
 
+  let _saldoCef = 0;
+
   function atualizaTotaisGlobais() {
     let cefE = 0, cefS = 0, interE = 0, interS = 0, horacioSaidas = 0, joaoE = 0;
     todosOsDocs.forEach(r => {
@@ -1082,12 +1088,14 @@
     });
     const joao    = JOAO_BASE + joaoE;
     const horacio = HORACIO_BASE + horacioSaidas;
-    document.getElementById("r-cef").textContent     = fmt(cefE - cefS);
+    _saldoCef = cefE - cefS;
+    document.getElementById("r-cef").textContent     = fmt(_saldoCef);
     document.getElementById("r-inter").textContent   = fmt(interE - interS);
     document.getElementById("r-joao").textContent    = fmt(joao);
     document.getElementById("r-joao").style.color    = joao    >= 0 ? "#ffffff" : "#ef9a9a";
     document.getElementById("r-horacio").textContent = fmt(horacio);
     document.getElementById("r-horacio").style.color = horacio >= 0 ? "#ffffff" : "#ef9a9a";
+    renderPrevisaoQuinzena();
   }
 
   function atualizaRodape(tE, tS, saldo) {
@@ -1758,6 +1766,16 @@
       itens.push({ desc: c.descricao || '(sem descrição)', data: dt, valor: Number(c.valor || 0) });
     });
 
+    function linhaSaldoProjetado(total) {
+      const projetado = _saldoCef - total;
+      const cor = projetado >= 0 ? '#a5d6a7' : '#ef9a9a';
+      return `
+        <div class="prev-saldo-proj prev-cols-quinz">
+          <span>Saldo CEF após pagar</span>
+          <span style="color:${cor}">${fmt(projetado)}</span>
+        </div>`;
+    }
+
     function montarJanela(dias) {
       const limite = new Date(hoje); limite.setDate(limite.getDate() + dias);
       const doPeriodo = itens.filter(it => it.data >= hoje && it.data <= limite).sort((a, b) => a.data - b.data);
@@ -1765,6 +1783,7 @@
         <div class="previsao-card">
           <div class="prev-titulo"><span>Próximos ${dias} dias</span></div>
           <div style="padding:16px;color:#4a8a5a;font-size:0.8rem;text-align:center">Nenhum compromisso no período.</div>
+          ${linhaSaldoProjetado(0)}
         </div>`;
       const total = doPeriodo.reduce((s, it) => s + it.valor, 0);
       const linhas = doPeriodo.map(it => `
@@ -1782,11 +1801,12 @@
           <div class="prev-total prev-cols-quinz">
             <span>Total</span><span>${fmt(total)}</span>
           </div>
+          ${linhaSaldoProjetado(total)}
         </div>`;
     }
 
     el.innerHTML = `
-      <div class="prev-secao-titulo">Previsão Financeira de Fechamento da Quinzena</div>
+      <div class="prev-secao-titulo">Previsão Financeira de Fechamento da Quinzena <span class="prev-secao-saldo">Saldo CEF atual: ${fmt(_saldoCef)}</span></div>
       <div class="previsao-quinz-grid">
         ${montarJanela(3)}
         ${montarJanela(7)}
