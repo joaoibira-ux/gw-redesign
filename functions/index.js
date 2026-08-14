@@ -8,6 +8,8 @@ const ExcelJS = require("exceljs");
 const sharp = require("sharp");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
+const pdfParse = require("pdf-parse");
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 
@@ -226,6 +228,22 @@ const TOOLS_GW = [
         senha: { type: "string", description: "Senha de autorização para alterar o banco de dados. Deve ser pedida ao usuário antes de chamar esta ferramenta." }
       },
       required: ["id", "senha"]
+    }
+  },
+  {
+    name: "registrar_boleto_contas_pagar",
+    description: "Cria um lançamento no Contas a Pagar a partir de um boleto em PDF recebido pelo WhatsApp, incluindo o link do PDF anexado. Use SOMENTE depois que o usuário confirmar (corrigindo se necessário) a descrição, o valor e a data de vencimento que foram extraídos automaticamente do PDF — nunca chame com dados que o usuário não confirmou. O campo boletoUrl deve ser exatamente o valor recebido na mensagem do sistema (nunca invente, altere ou omita essa URL — é o link permanente do PDF já salvo no Storage). ALTERA O BANCO DE DADOS: exige senha de autorização, peça ao usuário antes de chamar.",
+    input_schema: {
+      type: "object",
+      properties: {
+        descricao:         { type: "string", description: "Descrição do lançamento (ex: nome do beneficiário/cedente do boleto), confirmada ou corrigida pelo usuário." },
+        valor:             { type: "number", description: "Valor do boleto em reais, confirmado ou corrigido pelo usuário." },
+        data:              { type: "string", description: "Data de vencimento no formato DD/MM/AAAA, confirmada ou corrigida pelo usuário." },
+        boletoUrl:         { type: "string", description: "URL permanente do PDF do boleto no Cloud Storage — repassar EXATAMENTE como recebida na mensagem do sistema, nunca alterar." },
+        boletoNomeArquivo: { type: "string", description: "Nome original do arquivo PDF (opcional)." },
+        senha:             { type: "string", description: "Senha de autorização para alterar o banco de dados. Deve ser pedida ao usuário antes de chamar esta ferramenta." }
+      },
+      required: ["descricao", "valor", "data", "boletoUrl", "senha"]
     }
   },
   {
@@ -1380,6 +1398,35 @@ async function executarFerramenta(nome, input) {
     return { sucesso: true, id, descricao: atual.descricao, valor: atual.valor };
   }
 
+  if (nome === "registrar_boleto_contas_pagar") {
+    const { descricao, valor, data, boletoUrl, boletoNomeArquivo, senha } = input;
+    if (senha !== SENHA_ALTERACAO_BANCO) {
+      return { sucesso: false, erro: "senha_invalida", mensagem: "Senha incorreta. Peça a senha de autorização ao usuário para alterar o banco de dados." };
+    }
+    if (!descricao || !valor || !data || !boletoUrl) {
+      return { sucesso: false, erro: "parametros_invalidos", mensagem: "descricao, valor, data e boletoUrl são obrigatórios." };
+    }
+
+    const refContaPagar = db.collection("contasPagar").doc();
+    await refContaPagar.set({
+      data,
+      descricao,
+      valor: Number(valor) || 0,
+      status: "aberto",
+      boletoUrl,
+      ...(boletoNomeArquivo ? { boletoNomeArquivo } : {}),
+      criadoEm: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    return {
+      sucesso: true,
+      mensagem: "Lançamento criado no Contas a Pagar com o boleto anexado.",
+      contaPagarId: refContaPagar.id,
+      valor: Number(valor) || 0,
+      data
+    };
+  }
+
   if (nome === "cancelar_ponto") {
     const { id, senha } = input;
     if (senha !== SENHA_ALTERACAO_BANCO) {
@@ -1824,6 +1871,169 @@ async function executarFerramenta(nome, input) {
   return { erro: "ferramenta desconhecida" };
 }
 
+// ── Boleto em PDF recebido pelo WhatsApp ────────────────────────────────
+
+// Baixa o PDF de uma mensagem de documento recebida via Evolution API.
+// "msg" é o registro cru retornado por /chat/findMessages (tem .key e .message).
+// FORMATO DO REQUEST/RESPONSE NÃO TESTADO CONTRA A INSTÂNCIA REAL — isolado
+// nesta função de propósito pra ser fácil de ajustar só aqui se o formato
+// da Evolution instalada na VM for diferente do documentado.
+async function baixarMediaEvolution(msg, apiKeyValue) {
+  const resp = await fetch(`${EVOLUTION_API_URL}/chat/getBase64FromMediaMessage/${EVOLUTION_INSTANCE}`, {
+    method: "POST",
+    headers: { "apikey": apiKeyValue, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: { key: { id: msg.key.id, remoteJid: msg.key.remoteJid, fromMe: msg.key.fromMe } },
+      convertToMp4: false
+    })
+  });
+
+  if (!resp.ok) {
+    const respText = await resp.text();
+    throw new Error(`getBase64FromMediaMessage falhou: status ${resp.status} - ${respText.slice(0, 300)}`);
+  }
+
+  const json = await resp.json().catch(() => null);
+  if (!json || typeof json.base64 !== "string") {
+    logger.error("[baixarMediaEvolution] resposta em formato inesperado", {
+      camposRecebidos: json ? Object.keys(json) : null
+    });
+    throw new Error("Resposta do getBase64FromMediaMessage não trouxe o campo 'base64' esperado — ver log [baixarMediaEvolution] pra ajustar o parsing.");
+  }
+
+  return Buffer.from(json.base64, "base64");
+}
+
+// Salva o PDF do boleto no Cloud Storage (primeira vez que este projeto usa
+// Storage) e retorna uma URL permanente com token de download — funciona
+// independente das storage.rules, porque a posse do token já concede leitura
+// (mesmo mecanismo que getDownloadURL() do SDK cliente usa por trás).
+async function uploadBoletoStorage(buffer, nomeArquivo) {
+  const bucket = admin.storage().bucket();
+  const token = crypto.randomUUID();
+  const nomeSanitizado = String(nomeArquivo || "boleto.pdf").replace(/[^\w.\-]/g, "_");
+  const caminho = `boletos/${token}-${nomeSanitizado}`;
+
+  const file = bucket.file(caminho);
+  await file.save(buffer, {
+    metadata: { contentType: "application/pdf", metadata: { firebaseStorageDownloadTokens: token } }
+  });
+
+  return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(caminho)}?alt=media&token=${token}`;
+}
+
+// Prompt de extração de dados de boleto (texto → JSON). Mandado como texto
+// puro pro Claude (não imagem) — a maioria dos boletos gerados por banco tem
+// texto embutido no PDF, não são digitalizados/escaneados.
+function montarPromptBoleto(textoPdf) {
+  return `O texto abaixo foi extraído de um boleto bancário brasileiro em PDF (via extração de texto bruto — pode vir com espaçamento estranho, colunas misturadas ou quebras de linha fora do lugar, isso é normal e não indica erro).
+
+Extraia 3 campos:
+
+1. "descricao": uma descrição curta e útil pra um lançamento financeiro — geralmente o nome do beneficiário/cedente (quem vai receber o pagamento). Se houver informação complementar relevante (número da nota fiscal/fatura, referência, "condomínio", "aluguel", competência/mês), inclua de forma concisa. Não invente informação que não está no texto. Só use "Boleto - [nome do sacado/pagador]" como último recurso, se não conseguir identificar o beneficiário de jeito nenhum.
+
+2. "valor": o "Valor do Documento" (valor total a pagar). Use ponto como separador decimal, sem "R$" e sem separador de milhar. Não confunda com valores de desconto, juros, multa ou "(=) Valor Cobrado" a menos que seja a única informação de valor disponível no texto.
+
+3. "vencimento": a data de vencimento, formato DD/MM/AAAA.
+
+DICA (opcional, só use se ajudar): boletos brasileiros têm uma "linha digitável" de 47-48 dígitos, onde os últimos ~14 dígitos do último campo codificam de forma determinística um fator de vencimento (dias corridos desde 07/10/1997) e o valor em centavos. Se localizar essa linha claramente no texto, pode usar como checagem cruzada — mas é só um bônus: se não tiver certeza de como decodificá-la, ignore e confie nos campos escritos por extenso no boleto.
+
+Retorne APENAS um objeto JSON (sem texto antes ou depois, sem markdown), neste formato exato:
+{"descricao":"Nome do Beneficiário Ltda - NF 1234","valor":1150.00,"vencimento":"20/08/2026"}
+
+Se o texto não parecer ser de um boleto, ou os campos essenciais (valor/vencimento) não puderem ser identificados com confiança razoável, retorne exatamente:
+{"descricao":null,"valor":null,"vencimento":null}
+
+TEXTO DO BOLETO:
+"""
+${textoPdf.slice(0, 6000)}
+"""`;
+}
+
+// Chama o Claude pra extrair descrição/valor/vencimento do texto de um
+// boleto. Retorna null se o Claude não conseguiu extrair com confiança
+// (texto ilegível, não é boleto etc) — só lança erro em falha técnica real.
+async function extrairDadosBoletoTexto(textoPdf) {
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": anthropicApiKey.value(),
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-5",
+      max_tokens: 500,
+      messages: [{ role: "user", content: montarPromptBoleto(textoPdf) }]
+    })
+  });
+
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Claude retornou status ${resp.status} ao extrair dados do boleto: ${errText.slice(0, 200)}`);
+  }
+
+  const data = await resp.json();
+  const texto = (data.content && data.content[0] && data.content[0].text) || "";
+  const match = texto.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error("Resposta do Claude não trouxe JSON reconhecível ao extrair dados do boleto.");
+
+  const resultado = JSON.parse(match[0]);
+  if (resultado.descricao === null || resultado.valor === null || resultado.vencimento === null) return null;
+
+  return {
+    descricao: String(resultado.descricao || "").trim(),
+    valor: Number(resultado.valor) || 0,
+    vencimento: String(resultado.vencimento || "").trim()
+  };
+}
+
+// Pipeline completo de um boleto em PDF recebido: baixa → sobe pro Storage
+// (SEMPRE, mesmo se a extração falhar depois — nunca perde o anexo) → lê o
+// texto → extrai os campos. Sempre retorna uma mensagem sintética pronta pra
+// entrar no fluxo normal do assistente.
+async function processarBoletoPdf(msg, docMsg, apiKeyValue) {
+  const buffer = await baixarMediaEvolution(msg, apiKeyValue);
+  const nomeArquivo = docMsg.fileName || `boleto-${Date.now()}.pdf`;
+  const boletoUrl = await uploadBoletoStorage(buffer, nomeArquivo);
+
+  let textoPdf = "";
+  try {
+    const dadosPdf = await pdfParse(buffer);
+    textoPdf = (dadosPdf.text || "").trim();
+  } catch (e) {
+    logger.error("[processarBoletoPdf] falha ao ler texto do PDF", { erro: e.message });
+  }
+
+  if (!textoPdf) {
+    return `[BOLETO RECEBIDO EM PDF]
+Não foi possível extrair texto do arquivo "${nomeArquivo}" (provavelmente é uma imagem escaneada, não um PDF com texto). O arquivo já foi salvo em: ${boletoUrl}
+Peça ao usuário pra informar manualmente descrição, valor e data de vencimento, e só então chame registrar_boleto_contas_pagar usando exatamente esta boletoUrl.`;
+  }
+
+  let dados;
+  try {
+    dados = await extrairDadosBoletoTexto(textoPdf);
+  } catch (e) {
+    logger.error("[processarBoletoPdf] falha ao extrair dados via Claude", { erro: e.message });
+    dados = undefined;
+  }
+
+  if (!dados) {
+    return `[BOLETO RECEBIDO EM PDF]
+O texto do arquivo "${nomeArquivo}" foi lido, mas não foi possível identificar os dados do boleto automaticamente. O arquivo já foi salvo em: ${boletoUrl}
+Peça ao usuário pra informar manualmente descrição, valor e data de vencimento, e só então chame registrar_boleto_contas_pagar usando exatamente esta boletoUrl.`;
+  }
+
+  return `[BOLETO RECEBIDO EM PDF]
+Dados extraídos automaticamente do arquivo "${nomeArquivo}" (podem estar errados — confirme com o usuário, dando chance de corrigir, e peça a senha de autorização antes de registrar):
+descricao: "${dados.descricao}"
+valor: ${dados.valor}
+vencimento: "${dados.vencimento}"
+boletoUrl: "${boletoUrl}" (SEMPRE repassar esse valor EXATO pra registrar_boleto_contas_pagar, nunca inventar ou alterar essa URL)
+boletoNomeArquivo: "${nomeArquivo}"`;
+}
+
 // Núcleo do assistente do Sistema GW (system prompt + loop de tool use do
 // Claude) — usado tanto pelo chat do app (agenteGW, onCall) quanto pelo
 // webhook do WhatsApp (webhookEvolutionGW). Extraído pra um só lugar pra não
@@ -1845,6 +2055,7 @@ VERIFICAÇÃO OBRIGATÓRIA antes de qualquer resposta que confirme uma ação (r
 Depois que extrato_refeicoes_imagem enviar a imagem com sucesso, pergunte ao usuário se ele quer registrar esse valor total no Contas a Pagar. Se ele confirmar, peça a senha de autorização e chame registrar_pagamento_refeicoes com o mesmo período. Se o resultado de qualquer ferramenta de refeições trouxer "periodosJaPagos" preenchido, avise o usuário que esse período (ou parte dele) já foi registrado como pago antes, ANTES de prosseguir — não insista em registrar de novo sem ele confirmar que quer mesmo assim.
 Para editar ou excluir um lançamento do caixa, use consultar_caixa primeiro para encontrar o id correto e confirme com o usuário qual lançamento é (data, descrição e valor) antes de aplicar a alteração.
 Para editar ou dar baixa num lançamento do Contas a Pagar, use consultar_contas_pagar primeiro para encontrar o id correto — NUNCA invente um id (ex: "1", "2", "3" não são ids válidos, só o id exato que consultar_contas_pagar retornou) — e confirme com o usuário qual lançamento é (descrição e valor atuais) antes de aplicar. Pra "dar baixa"/"marcar como pago"/"quitar", use dar_baixa_conta_pagar. Pra mudar descrição, valor ou data, use editar_conta_pagar.
+Quando o usuário encaminhar um boleto em PDF pelo WhatsApp, o sistema já tenta extrair automaticamente descrição, valor e vencimento do texto do documento antes de te passar a mensagem — você vai receber isso identificado com "[BOLETO RECEBIDO EM PDF]", junto com os dados extraídos (ou um aviso de que a extração falhou/não teve confiança suficiente). NUNCA registre um boleto automaticamente: mostre ao usuário exatamente o que foi entendido (descrição, valor e vencimento) e pergunte se está correto, dando espaço pra ele corrigir qualquer campo. Só depois que o usuário confirmar os dados (corrigidos ou não) E informar a senha de autorização, chame registrar_boleto_contas_pagar. O campo boletoUrl que vier na mensagem é a URL permanente do PDF já salvo — repasse esse valor EXATAMENTE como recebido pra registrar_boleto_contas_pagar, nunca invente, altere ou omita essa URL. Se a extração vier marcada como falha, avise o usuário que não foi possível ler os dados automaticamente e peça pra ele informar manualmente descrição, valor e vencimento antes de registrar.
 Para cancelar um registro de ponto, use consultar_ponto primeiro para encontrar o id correto e confirme com o usuário qual registro é (funcionário, tipo e horário) antes de cancelar.
 Para corrigir um registro de ponto já existente (mudar data, horário ou tipo), use editar_ponto com o id obtido via consultar_ponto — NÃO cancele e registre de novo manualmente em duas chamadas separadas; editar_ponto já faz isso internamente (substitui o registro e guarda um histórico da alteração).
 Quando o usuário pedir para registrar ponto em uma data diferente de hoje (ex: "registre a saída de fulano dia 27/06"), SEMPRE preencha o campo "data" de registrar_ponto com essa data — nunca deixe em branco, senão o registro cai na data de hoje por engano.
@@ -1991,10 +2202,31 @@ async function passadaPollingWhatsApp(apiKeyValue) {
     maiorTimestamp = Math.max(maiorTimestamp, msg.messageTimestamp);
     novosIds.push(msg.key.id);
 
-    const texto = (msg.message && (
+    let texto = (msg.message && (
       msg.message.conversation ||
       (msg.message.extendedTextMessage && msg.message.extendedTextMessage.text)
     )) || "";
+
+    // Boletos encaminhados/enviados como documento chegam em
+    // msg.message.documentMessage — ou, quando encaminhados com legenda,
+    // aninhados em msg.message.documentWithCaptionMessage.message.documentMessage.
+    const docMsg = msg.message && (
+      msg.message.documentMessage ||
+      (msg.message.documentWithCaptionMessage &&
+       msg.message.documentWithCaptionMessage.message &&
+       msg.message.documentWithCaptionMessage.message.documentMessage)
+    );
+
+    if (docMsg && docMsg.mimetype === "application/pdf") {
+      try {
+        texto = await processarBoletoPdf(msg, docMsg, apiKeyValue);
+      } catch (e) {
+        logger.error("[pollingAgenteWhatsApp] erro ao processar boleto PDF", { erro: e.message, msgId: msg.key.id });
+        texto = `[BOLETO RECEBIDO EM PDF]
+Houve uma falha técnica ao processar o arquivo (${e.message}). Avise o usuário que não foi possível processar o boleto automaticamente, e peça pra reenviar ou informar os dados manualmente.`;
+      }
+    }
+
     if (!texto.trim()) continue;
 
     try {
@@ -2035,7 +2267,7 @@ async function passadaPollingWhatsApp(apiKeyValue) {
 // (~150s) que essa versão simples, provavelmente porque a execução mais
 // longa atrapalhou o agendamento do próximo minuto. Revertido.
 exports.pollingAgenteWhatsApp = onSchedule(
-  { schedule: "* * * * *", timeZone: "America/Sao_Paulo", secrets: [anthropicApiKey, evolutionApiKey], timeoutSeconds: 60 },
+  { schedule: "* * * * *", timeZone: "America/Sao_Paulo", secrets: [anthropicApiKey, evolutionApiKey], timeoutSeconds: 120, memory: "512MiB" },
   async () => {
     await passadaPollingWhatsApp(evolutionApiKey.value());
   }

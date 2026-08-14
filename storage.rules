@@ -4,5 +4,8 @@ service firebase.storage {
     match /medicoes/{arquivo} {
       allow read, write: if true;
     }
+    match /boletos/{arquivo} {
+      allow read, write: if true;
+    }
   }
 }
