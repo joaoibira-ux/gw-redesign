@@ -469,7 +469,7 @@
     }
     .prev-cols { grid-template-columns: 1fr 100px 100px 100px 100px 100px; }
     .prev-cols-med { grid-template-columns: 1fr 90px 90px 90px 90px 90px 90px; }
-    .prev-cols-pass { grid-template-columns: 1fr 100px 100px 100px; }
+    .prev-cols-pass { grid-template-columns: 1fr 100px 80px 100px 100px; }
     .prev-header { display: grid; padding: 5px 16px; border-bottom: 1px solid rgba(165,214,167,0.15); }
     .prev-header span { font-size: 0.6rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #4a8a5a; text-align: right; white-space: nowrap; }
     .prev-header span:first-child { text-align: left; }
@@ -479,6 +479,7 @@
     .prev-cargo { font-size: 0.68rem; font-weight: 400; color: #4a8a5a; text-transform: capitalize; margin-left: 8px; }
     .prev-valor { font-size: 0.85rem; font-weight: 700; color: #1b5e20; white-space: nowrap; text-align: right; }
     .prev-adiant { font-size: 0.85rem; font-weight: 700; color: #c62828; white-space: nowrap; text-align: right; }
+    .prev-dias   { font-size: 0.85rem; font-weight: 700; color: #6d4c00; white-space: nowrap; text-align: right; }
     .prev-liq    { font-size: 0.85rem; font-weight: 700; color: #1b5e20; white-space: nowrap; text-align: right; }
     .prev-custo  { font-size: 0.85rem; font-weight: 700; color: #e65100; white-space: nowrap; text-align: right; }
     .prev-total { display: grid; padding: 10px 16px; background: #0d2318; color: #a5d6a7; font-weight: 800; font-size: 0.9rem; }
@@ -680,7 +681,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.86";
+  const VERSAO = "1.87";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1349,7 +1350,7 @@
     const el = document.getElementById('previsao-passagens');
     if (!el) return;
     const linhas = [];
-    let total = 0, totalDescontoFaltas = 0;
+    let total = 0, totalDescontoFaltas = 0, totalDias = 0;
     snap.docs.forEach(d => {
       const f = d.data();
       if (f.ativo === false) return;
@@ -1360,10 +1361,12 @@
       const liquido = valor - descontoFaltas;
       total += valor;
       totalDescontoFaltas += descontoFaltas;
+      totalDias += faltasLiquidas;
       linhas.push(`
         <div class="prev-linha prev-cols-pass">
           <div class="prev-nome">${escHtml(f.nome)} <span class="prev-cargo">${escHtml(f.cargo||'')}</span></div>
           <div class="prev-valor">${fmt(valor)}</div>
+          <div class="prev-dias">${faltasLiquidas > 0 ? faltasLiquidas : '—'}</div>
           <div class="prev-adiant">${descontoFaltas > 0 ? '- '+fmt(descontoFaltas) : '—'}</div>
           <div class="prev-liq">${fmt(liquido)}</div>
         </div>`);
@@ -1376,12 +1379,13 @@
           <span>Passagens da Quinzena</span>
         </div>
         <div class="prev-header prev-cols-pass">
-          <span>Funcionário</span><span>Passagens</span><span>Faltas</span><span>Líquido</span>
+          <span>Funcionário</span><span>Passagens</span><span>Dias Falta</span><span>Desconto</span><span>Líquido</span>
         </div>
         ${linhas.join('')}
         <div class="prev-total prev-cols-pass">
           <span>Total</span>
           <span>${fmt(total)}</span>
+          <span>${totalDias > 0 ? totalDias : '—'}</span>
           <span style="color:#ef9a9a">${totalDescontoFaltas > 0 ? '- '+fmt(totalDescontoFaltas) : '—'}</span>
           <span>${fmt(totalLiq)}</span>
         </div>
