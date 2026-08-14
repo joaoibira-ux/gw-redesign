@@ -686,7 +686,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.88";
+  const VERSAO = "1.89";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1573,10 +1573,85 @@
   // ── Previsão Financeira de Fechamento da Quinzena ──────────────────────
   // Projeta, a partir dos dados já carregados em tela, quanto vai ser
   // preciso ter em caixa nos próximos 3 e 7 dias: soma as contas a pagar já
-  // abertas (vencimento em 'data') com o que a Folha e as Passagens vão
-  // gerar quando fechadas (mesmo cálculo de fecharMedicaoFolha, usando
-  // proximaSexta() como data de vencimento projetada).
+  // abertas (vencimento em 'data') com o que a Folha, as Passagens e as
+  // Refeições vão gerar quando fechadas (mesmo cálculo de fecharMedicaoFolha
+  // e de extrato_refeicoes do agenteGW, usando proximaSexta() como data de
+  // vencimento projetada).
   let _contasPagarSnap = null;
+
+  // Mesmos valores/cortes usados em functions/index.js (calcularExtratoRefeicoes)
+  const PRECO_CAFE = 10;
+  const PRECO_ALMOCO = 15;
+  const CORTE_CAFE_HORAS = 7;
+  const CORTE_ALMOCO_HORAS = 10.5;
+  let _refeicoesQuinzena = { custoCafe: 0, custoAlmoco: 0 };
+
+  function inicioQuinzenaAtual(hoje) {
+    const ano = hoje.getFullYear(), mes = hoje.getMonth();
+    return hoje.getDate() <= 15 ? new Date(ano, mes, 1) : new Date(ano, mes, 16);
+  }
+
+  function isoData(d) {
+    return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+  }
+
+  // Conta café (entrada < 7h) e almoço (entrada < 10h30) por funcionário/dia,
+  // igual à Cloud Function extrato_refeicoes — só a entrada mais cedo do dia
+  // conta, e dias já cobertos por um registro em 'refeicoesPagas' que se
+  // sobrepõe à quinzena atual são pulados, pra não contar em dobro.
+  async function calcularRefeicoesQuinzenaAtual() {
+    const hoje = new Date();
+    const inicio = inicioQuinzenaAtual(hoje);
+    const inicioISO = isoData(inicio), hojeISO = isoData(hoje);
+
+    const snap = await db.collection('pontos')
+      .where('tipo', '==', 'entrada')
+      .where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(inicio))
+      .orderBy('timestamp')
+      .get();
+
+    const porDia = {};
+    snap.docs.forEach(d => {
+      const p = d.data();
+      if (!p.timestamp) return;
+      const ts = p.timestamp.toDate();
+      const diaKey = isoData(ts);
+      if (!porDia[diaKey]) porDia[diaKey] = {};
+      const atual = porDia[diaKey][p.funcionarioId];
+      if (atual === undefined || ts.getTime() < atual) porDia[diaKey][p.funcionarioId] = ts.getTime();
+    });
+
+    const pagasSnap = await db.collection('refeicoesPagas').where('dataFim', '>=', inicioISO).get();
+    const diasPagos = new Set();
+    pagasSnap.docs.forEach(d => {
+      const r = d.data();
+      if (!r.dataInicio || r.dataInicio > hojeISO) return;
+      let cursor = new Date(Math.max(new Date(r.dataInicio + 'T00:00:00'), inicio));
+      const fimPago = new Date(Math.min(new Date(r.dataFim + 'T00:00:00'), hoje));
+      while (cursor <= fimPago) {
+        diasPagos.add(isoData(cursor));
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    });
+
+    let custoCafe = 0, custoAlmoco = 0;
+    Object.keys(porDia).forEach(diaKey => {
+      if (diasPagos.has(diaKey)) return;
+      let cafe = 0, almoco = 0;
+      Object.values(porDia[diaKey]).forEach(ms => {
+        const t = new Date(ms);
+        const horaDecimal = t.getHours() + t.getMinutes() / 60;
+        if (horaDecimal < CORTE_CAFE_HORAS)   cafe++;
+        if (horaDecimal < CORTE_ALMOCO_HORAS) almoco++;
+      });
+      custoCafe   += cafe * PRECO_CAFE;
+      custoAlmoco += almoco * PRECO_ALMOCO;
+    });
+
+    _refeicoesQuinzena = { custoCafe, custoAlmoco };
+    renderPrevisaoQuinzena();
+  }
+  calcularRefeicoesQuinzenaAtual().catch(e => console.error('Falha ao calcular refeições da quinzena:', e));
 
   function calcularTotalFolhaAberta() {
     if (_ultimaFolha === undefined || _ultimaFolha === null) return 0;
@@ -1660,6 +1735,8 @@
     if (totalFolha > 0) itens.push({ desc: 'Folha de Pagamento da Produção', data: dataFechamento, valor: totalFolha });
     const totalPassagens = calcularTotalPassagensQuinzena();
     if (totalPassagens > 0) itens.push({ desc: 'Passagens da Quinzena', data: dataFechamento, valor: totalPassagens });
+    const totalRefeicoes = _refeicoesQuinzena.custoCafe + _refeicoesQuinzena.custoAlmoco;
+    if (totalRefeicoes > 0) itens.push({ desc: 'Refeições da Quinzena (café + almoço)', data: dataFechamento, valor: totalRefeicoes });
 
     _contasPagarSnap.docs.forEach(d => {
       const c = d.data();
