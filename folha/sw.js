@@ -1,4 +1,4 @@
-const VERSION = "folha-v4.89";
+const VERSION = "folha-v4.90";
 const ASSETS = [
   "./index.html",
   "./style.css?v=4.21",

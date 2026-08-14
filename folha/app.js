@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.87";
+const VERSAO = "4.88";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1326,6 +1326,7 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
         .cp-meta{color:#555 !important}
         .cp-body{overflow:visible !important;background:#fff !important}
         .cp-footer{background:#fff !important;border-top:2px solid #1b5e20}
+        .cp-grupo{break-inside:avoid;page-break-inside:avoid}
       }
     </style>
     <div class="cp-wrap" onclick="mostrarSucesso(window._sucPag,window._sucTotal)">
