@@ -307,6 +307,16 @@ document.getElementById("form").addEventListener("submit", function(e) {
     return;
   }
 
+  // Já aconteceu de uma entrada da BBS Fomento (empresa de empréstimo) ser
+  // lançada como origem "ANE" comum em vez de "ANE->EMPRÉSTIMO", sem gerar
+  // o registro correspondente no Contas a Pagar. Se a descrição menciona
+  // "BBS" e a origem não é a de empréstimo, confirma com a Ane antes de
+  // seguir — fácil de corrigir aqui, difícil de notar depois.
+  if (origem.startsWith("ANE") && entrada > 0 && !origem.includes("EMPRESTIMO") && desc.toUpperCase().includes("BBS")) {
+    const confirmar = confirm('Essa entrada menciona "BBS" mas a origem não é "ENTRADA DE EMPRÉSTIMO".\n\nTem certeza que não é um EMPRÉSTIMO que deveria ter registro no Contas a Pagar?');
+    if (!confirmar) return;
+  }
+
   if (origem === "JOAO->CTAS A RECEBER") {
     criarContaAReceber(data, desc, saida);
   } else if (origem === "JOAO->BAIXA CTAS A RECEBER" || origem === "ANE->BAIXA CTAS A RECEBER") {
