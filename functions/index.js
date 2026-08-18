@@ -2815,6 +2815,73 @@ exports.avisoPagamentoAdiantamento = onDocumentUpdated(
   }
 );
 
+function normTexto(s) {
+  return String(s || "")
+    .normalize("NFD")
+    .split("")
+    .filter(ch => { const code = ch.charCodeAt(0); return code < 0x0300 || code > 0x036f; })
+    .join("")
+    .toUpperCase();
+}
+
+// Dispara quando o juros de uma antecipação/empréstimo da BBS Fomento é
+// lançado no Caixa (descrição com "BBS" e "JUROS" juntos, ex: "JUROS BBS
+// FOMENTO" ou "JÚROS BBS FOMENYO NF85" — normaliza acento/maiúscula pra não
+// depender de digitação exata). Procura, entre os lançamentos mais recentes
+// anteriores a este, o último com "BBS" (sem "JUROS") e entrada > 0 — é o
+// valor bruto creditado que esse juros está descontando. Se não achar um
+// par claro, não envia nada (evita mandar número errado sem revisão humana).
+exports.avisoJurosBbsFomento = onDocumentCreated(
+  { document: "lancamentos/{lancamentoId}", secrets: [evolutionApiKey] },
+  async (event) => {
+    const c = event.data?.data();
+    if (!c || !(c.saida > 0)) return;
+
+    const desc = normTexto(c.descricao);
+    if (!desc.includes("BBS") || !desc.includes("JUROS")) return;
+
+    const snap = await db.collection("lancamentos")
+      .orderBy("criadoEm", "desc")
+      .where("criadoEm", "<", c.criadoEm)
+      .limit(20)
+      .get();
+
+    const bruto = snap.docs
+      .map(d => d.data())
+      .find(l => {
+        if (!(l.entrada > 0)) return false;
+        const t = normTexto(l.descricao);
+        return t.includes("BBS") && !t.includes("JUROS");
+      });
+
+    if (!bruto) {
+      logger.warn("[avisoJurosBbsFomento] juros da BBS lançado sem achar o bruto correspondente nos últimos 20 lançamentos", { descricao: c.descricao, saida: c.saida });
+      return;
+    }
+
+    const valorBruto = Number(bruto.entrada) || 0;
+    const juros = Number(c.saida) || 0;
+    const creditado = valorBruto - juros;
+    const dataHoje = new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+
+    const texto = [
+      `BBS FOMENTO ${dataHoje}`,
+      `Valor Bruto: ${fmtMoeda(valorBruto)}`,
+      `Juros: ${fmtMoeda(juros)}`,
+      `Valor Creditado: ${fmtMoeda(creditado)}`
+    ].join("\n");
+
+    try {
+      await enviarWhatsAppEvolution(texto, evolutionApiKey.value(), ["5581992114764"]);
+    } catch (e) {
+      logger.error("Erro ao enviar aviso de juros BBS Fomento:", e.message);
+      throw e;
+    }
+
+    logger.info("[avisoJurosBbsFomento] aviso enviado", { valorBruto, juros, creditado });
+  }
+);
+
 // Roda toda manhã e avisa no WhatsApp quais contas em "contasPagar" vencem
 // hoje ou já passaram da data e ainda não foram baixadas. Contas que já
 // levaram o aviso imediato (avisoContaVencendoHoje, acima) no mesmo dia da
