@@ -10,7 +10,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <link rel="manifest" href="./manifest.json" />
   <link rel="apple-touch-icon" href="./logo-gw.png.jpeg" />
-  <link rel="stylesheet" href="./style.css?v=30" />
+  <link rel="stylesheet" href="./style.css?v=31" />
   <style>
     html.gw-blocked body > *:not(#aviso-instalacao) { display: none !important; }
     #aviso-instalacao {
@@ -145,6 +145,17 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<div class="modal-overlay" id="confirm-overlay">
+  <div class="modal">
+    <h3 id="confirm-titulo" style="color:#1565c0">Confirmar</h3>
+    <p id="confirm-mensagem" style="white-space:pre-line;margin-bottom:18px;color:#333;font-size:0.92rem"></p>
+    <div class="modal-btns">
+      <button class="btn-cancelar" id="confirm-btn-voltar">VOLTAR</button>
+      <button class="btn-continuar" id="confirm-btn-continuar">CONTINUAR</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="picker-overlay">
   <div class="modal">
     <h3 id="picker-titulo" style="color:#1565c0;margin-bottom:12px">Adiantamento — Funcionário</h3>
@@ -155,7 +166,7 @@
   </div>
 </div>
 
-<script src="./app.js?v=78"></script>
+<script src="./app.js?v=79"></script>
 <script>
   if (document.documentElement.classList.contains('gw-blocked')) {
     (function() {

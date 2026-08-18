@@ -294,8 +294,10 @@ input:focus, select:focus {
 }
 .btn-cancelar { background: #e0e0e0; color: #333; }
 .btn-excluir  { background: #c62828; color: #fff; }
+.btn-continuar { background: #1976d2; color: #fff; }
 .btn-cancelar:active { background: #bdbdbd; }
 .btn-excluir:active  { background: #8e0000; }
+.btn-continuar:active { background: #1251a0; }
 
 .empty {
   text-align: center;

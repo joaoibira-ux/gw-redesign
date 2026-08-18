@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.51";
+const VERSAO_CAIXA = "3.52";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -290,7 +290,7 @@ col.orderBy("criadoEm", "asc").onSnapshot(snapshot => {
     '<p class="empty">Erro ao conectar. Verifique sua internet.</p>';
 });
 
-document.getElementById("form").addEventListener("submit", function(e) {
+document.getElementById("form").addEventListener("submit", async function(e) {
   e.preventDefault();
   const data   = document.getElementById("f-data").value.trim();
   const origem = document.getElementById("f-origem").value.trim().toUpperCase();
@@ -313,7 +313,9 @@ document.getElementById("form").addEventListener("submit", function(e) {
   // "BBS" e a origem não é a de empréstimo, confirma com a Ane antes de
   // seguir — fácil de corrigir aqui, difícil de notar depois.
   if (origem.startsWith("ANE") && entrada > 0 && !origem.includes("EMPRESTIMO") && desc.toUpperCase().includes("BBS")) {
-    const confirmar = confirm('Essa entrada menciona "BBS" mas a origem não é "ENTRADA DE EMPRÉSTIMO".\n\nTem certeza que não é um EMPRÉSTIMO que deveria ter registro no Contas a Pagar?');
+    const confirmar = await confirmarModal(
+      'Essa entrada menciona "BBS" mas a origem não é "ENTRADA DE EMPRÉSTIMO".\n\nTem certeza que não é um EMPRÉSTIMO que deveria ter registro no Contas a Pagar?'
+    );
     if (!confirmar) return;
   }
 
@@ -530,6 +532,32 @@ function abrirPickerContaPagar() {
     }).join("");
   }).catch(() => {
     lista.innerHTML = '<p style="color:#c62828;padding:12px;text-align:center">Erro ao carregar contas a pagar.</p>';
+  });
+}
+
+// Modal de confirmação com botões próprios (VOLTAR/CONTINUAR) — usado no
+// lugar do confirm() nativo do navegador, cujos botões (OK/Cancelar) não
+// dá pra renomear.
+function confirmarModal(mensagem, titulo) {
+  return new Promise(resolve => {
+    const overlay = document.getElementById("confirm-overlay");
+    document.getElementById("confirm-titulo").textContent = titulo || "Confirmar";
+    document.getElementById("confirm-mensagem").textContent = mensagem;
+    const btnVoltar     = document.getElementById("confirm-btn-voltar");
+    const btnContinuar  = document.getElementById("confirm-btn-continuar");
+
+    function limpar(resultado) {
+      overlay.classList.remove("active");
+      btnVoltar.removeEventListener("click", onVoltar);
+      btnContinuar.removeEventListener("click", onContinuar);
+      resolve(resultado);
+    }
+    function onVoltar()    { limpar(false); }
+    function onContinuar() { limpar(true); }
+
+    btnVoltar.addEventListener("click", onVoltar);
+    btnContinuar.addEventListener("click", onContinuar);
+    overlay.classList.add("active");
   });
 }
 
