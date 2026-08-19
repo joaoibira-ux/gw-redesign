@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.89";
+const VERSAO = "4.90";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -265,16 +265,22 @@ async function sincronizarDiariasAjudantesPorPonto() {
     const quinzenaInicio = new Date(ano, mes, hoje.getDate() <= 15 ? 1 : 16);
     const quinzenaFim    = hoje.getDate() <= 15 ? new Date(ano, mes, 15) : new Date(ano, mes + 1, 0);
 
-    // Se a última folha paga foi criada dentro desta mesma quinzena, ela já foi
-    // fechada — não recria as diárias que o fechamento zerou de propósito.
-    const ultimaFolhaSnap = await db.collection('folhas').orderBy('criadoEm', 'desc').limit(1).get();
-    if (!ultimaFolhaSnap.empty) {
-      const ultima = ultimaFolhaSnap.docs[0].data();
-      if (ultima.status === 'paga' && ultima.criadoEm) {
-        const dtCriacao = ultima.criadoEm.toDate();
-        if (dtCriacao >= quinzenaInicio && dtCriacao <= quinzenaFim) return;
-      }
-    }
+    // Se alguma folha PAGA cobre esta quinzena, ela já foi fechada — não
+    // recria as diárias que o fechamento zerou de propósito. Checa TODAS as
+    // folhas pagas (não só "a mais recente por criadoEm"): assim que uma
+    // folha nova (ainda sem status paga) é criada — mesmo sem querer, só de
+    // abrir a tela — ela passa a ser "a mais recente", e checar só essa
+    // escondia o fechamento anterior, recriando dias já pagos (bug real,
+    // já causou diária duplicada em 2026-08-15).
+    const pagasSnap = await db.collection('folhas').where('status', '==', 'paga').get();
+    const jaFechouEssaQuinzena = pagasSnap.docs.some(doc => {
+      const p = doc.data();
+      const dt = p.pagaEm || p.criadoEm;
+      if (!dt) return false;
+      const dtPagamento = dt.toDate();
+      return dtPagamento >= quinzenaInicio && dtPagamento <= quinzenaFim;
+    });
+    if (jaFechouEssaQuinzena) return;
 
     // Margem generosa: mesmo que a quinzena comece no meio da semana (ex:
     // quarta), garante que segunda/terça daquela semana — que podem cair na
