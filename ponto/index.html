@@ -322,7 +322,7 @@ const FIREBASE_CONFIG = {
 };
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 const MATCH_THRESHOLD = 0.55;
-const VERSAO          = '2.13';
+const VERSAO          = '2.14';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let db;
@@ -465,8 +465,10 @@ async function carregarFuncionarios() {
     // Mantém compatibilidade com registros antigos (só faceDescriptor singular).
     labeledDescriptors = funcionariosCache
       .map(f => {
+        // Cada item de faceDescriptors vem envolvido em { d: [...] } (Firestore
+        // não aceita array dentro de array) — desembrulha antes de usar.
         const descritores = Array.isArray(f.faceDescriptors) && f.faceDescriptors.length
-          ? f.faceDescriptors
+          ? f.faceDescriptors.map(x => (x && Array.isArray(x.d)) ? x.d : x)
           : (Array.isArray(f.faceDescriptor) ? [f.faceDescriptor] : []);
         const validos = descritores.filter(d => Array.isArray(d) && d.length === 128);
         return { id: f.id, validos };

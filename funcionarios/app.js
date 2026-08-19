@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.25";
+const VERSAO = "3.26";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -539,15 +539,20 @@ function editarFuncionario(id) {
 // registros antigos que só têm os campos singulares faceDescriptor/fotoThumb.
 function _mergeFacePendente(existente) {
   if (!pendingFaceDescriptor) return null;
+  // Firestore não aceita array dentro de array ("nested arrays are not
+  // supported") — cada descritor vai envolvido num objeto ({ d: [...] })
+  // em vez de gravado direto como elemento do array faceDescriptors.
+  // Ao ler de volta, aceita tanto o formato novo ({d:[...]}) quanto um
+  // array cru (defensivo, caso algum registro antigo tenha escapado assim).
   const descritoresAtuais = (existente && Array.isArray(existente.faceDescriptors))
-    ? existente.faceDescriptors
+    ? existente.faceDescriptors.map(x => (x && Array.isArray(x.d)) ? x.d : x).filter(Array.isArray)
     : (existente && existente.faceDescriptor) ? [existente.faceDescriptor] : [];
   const thumbsAtuais = (existente && Array.isArray(existente.fotoThumbs))
     ? existente.fotoThumbs
     : (existente && existente.fotoThumb) ? [existente.fotoThumb] : [];
 
   return {
-    faceDescriptors: [pendingFaceDescriptor, ...descritoresAtuais].slice(0, 3),
+    faceDescriptors: [pendingFaceDescriptor, ...descritoresAtuais].slice(0, 3).map(d => ({ d })),
     fotoThumbs: [pendingFotoThumb, ...thumbsAtuais].slice(0, 3),
   };
 }
