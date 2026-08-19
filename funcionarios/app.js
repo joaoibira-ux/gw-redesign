@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.26";
+const VERSAO = "3.27";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -109,38 +109,35 @@ function render(docs) {
     funcionariosCache[doc.id] = f;
     const porProd = ehPorProducao(f.cargo);
     const ativo   = f.ativo !== false;
+    // Card enxuto: nome sempre visível na própria linha, resumo do salário
+    // numa frase curta (o detalhamento completo — INSS, passagens, diária —
+    // já está em "Consultar", não precisa repetir tudo na lista) e as
+    // ações num rodapé de verdade (não mais position:absolute, que na tela
+    // estreita do iPhone ficava sobrepondo e cobrindo o nome).
     return `
       <div class="card ${ativo ? '' : 'inativo'}">
-        <div class="card-acoes">
-          <button class="btn-consultar" onclick="consultarFuncionario('${doc.id}')">Consultar</button>
-          <button class="btn-adiantamento" onclick="abrirAdiantamento('${doc.id}')">💰 Adiantamento</button>
+        <div class="card-top">
+          <div class="card-nome">${escHtml(f.nome)}</div>
           <button class="btn-del" onclick="excluir('${doc.id}')" title="Excluir">✕</button>
         </div>
-        <div class="card-nome">${escHtml(f.nome)}</div>
         <div class="card-info">
           <span class="badge">${escHtml(f.cargo)}</span>
-          <span class="card-salario ${porProd ? 'por-producao' : ''}">
-            ${(() => {
-              const base = porProd ? f.salarioReferencia : f.salario;
-              const descInss = f.descontos ? ` · Desc. INSS: ${fmtMoeda(calcDescontoInss(base, f.descontos))}` : '';
-              const descPass = calcDescontoPassagens(base);
-              if (porProd) return `Por produção${descInss} · Desc. Passagens: ${fmtMoeda(descPass)}`;
-              const liq = calcLiquido(f.salario, f.descontos);
-              const dia = calcDiaria(f.salario);
-              return `${fmtMoeda(f.salario)}${descInss} · Desc. Passagens: ${fmtMoeda(descPass)} · Líq: ${fmtMoeda(liq)} · Diária: ${fmtMoeda(dia)}`;
-            })()}
-          </span>
           <button class="btn-ativo ${ativo ? 'ativo' : 'inativo'}" onclick="toggleAtivo('${doc.id}')">
             ${ativo ? '● Ativo' : '○ Inativo'}
           </button>
         </div>
+        <div class="card-salario ${porProd ? 'por-producao' : ''}">
+          ${porProd ? 'Por produção' : `${fmtMoeda(calcLiquido(f.salario, f.descontos))} líquido`}
+        </div>
         <div class="card-meta">
           <span>Admissão: ${escHtml(f.admissao||'')}</span>
           ${f.telefone ? `<span>📞 ${escHtml(f.telefone)}</span>` : ""}
-          ${f.cpf ? `<span>CPF: ${escHtml(f.cpf)}</span>` : ""}
-          ${f.passagens > 0 ? `<span>🚌 Passagens (15dd): ${fmtMoeda(f.passagens)}</span>` : ''}
         </div>
         ${f.obs ? `<div class="card-obs">${escHtml(f.obs)}</div>` : ""}
+        <div class="card-acoes">
+          <button class="btn-consultar" onclick="consultarFuncionario('${doc.id}')">Consultar</button>
+          <button class="btn-adiantamento" onclick="abrirAdiantamento('${doc.id}')">💰 Adiantamento</button>
+        </div>
       </div>`;
   }).join("");
 }

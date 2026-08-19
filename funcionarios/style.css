@@ -45,21 +45,30 @@ header {
   margin-bottom: 10px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.08);
   border-left: 4px solid #1a3322;
-  position: relative;
+}
+
+.card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .card-nome {
   font-size: 1rem;
   font-weight: 700;
   color: #1a3322;
-  margin-bottom: 6px;
-  padding-right: 28px;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 .card-info {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-bottom: 6px;
 }
 
@@ -73,9 +82,11 @@ header {
 }
 
 .card-salario {
-  font-size: 0.95rem;
+  display: block;
+  font-size: 0.88rem;
   font-weight: 700;
   color: #1565c0;
+  margin-bottom: 6px;
 }
 
 .card-salario.por-producao {
@@ -86,6 +97,7 @@ header {
 
 .card-meta {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   font-size: 0.78rem;
   color: #888;
@@ -99,32 +111,37 @@ header {
 }
 
 .card-acoes {
-  position: absolute;
-  top: 10px;
-  right: 10px;
   display: flex;
-  gap: 4px;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #f0f0f0;
 }
 
 .btn-consultar {
+  flex: 1;
+  text-align: center;
   background: #e8f5e9;
   color: #1a3322;
   border: none;
   border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 0.75rem;
+  padding: 7px 10px;
+  font-size: 0.78rem;
   font-weight: 700;
   cursor: pointer;
 }
 .btn-consultar:active { background: #c8e6c9; }
 
 .btn-adiantamento {
+  flex: 1;
+  text-align: center;
   background: #fff8e1;
   color: #8d6200;
   border: none;
   border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 0.75rem;
+  padding: 7px 10px;
+  font-size: 0.78rem;
   font-weight: 700;
   cursor: pointer;
 }
