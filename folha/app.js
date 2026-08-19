@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.88";
+const VERSAO = "4.89";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -218,6 +218,15 @@ function ehAjudante(cargo) {
   return (cargo || '').toLowerCase().includes('ajudante');
 }
 
+// Um funcionário com cargo Ajudante pode ser marcado no cadastro (campo
+// porProducao) pra ser remunerado por produção em vez de diária — nesse
+// caso ele deve ser tratado como Pintor/Raspador nos fluxos daqui, não
+// como ajudante. cargo continua "Ajudante" (é o cargo de verdade dele),
+// só a forma de pagamento muda.
+function ehAjudanteDiaria(func) {
+  return ehAjudante(func && func.cargo) && !(func && func.porProducao);
+}
+
 // Para ajudante, se no mesmo dia houver diária e produção, a diária prevalece:
 // o valor da produção daquele dia é zerado (não soma no total), mas o serviço
 // continua aparecendo na folha (com valor R$ 0,00) para efeito de registro.
@@ -286,7 +295,7 @@ async function sincronizarDiariasAjudantesPorPonto() {
 
     const ajudantes = snapFunc.docs
       .map(d => ({ id: d.id, ...d.data() }))
-      .filter(f => f.ativo !== false && ehAjudante(f.cargo));
+      .filter(f => f.ativo !== false && ehAjudanteDiaria(f));
     if (!ajudantes.length) return;
 
     // funcionarioId -> Map(diaKey -> { entrada, saida })
@@ -560,7 +569,10 @@ function renderFuncionarios() {
   const cargosValidos = apenasProducao ? ['pintor', 'raspador'] : ['pintor', 'raspador', 'ajudante'];
   const docs = _todosFunc
     .filter(f => f.ativo !== false)
-    .filter(f => cargosValidos.some(c => (f.cargo || '').toLowerCase().includes(c)));
+    // apenasProducao normalmente exclui ajudante — mas um ajudante marcado
+    // como porProducao é remunerado igual a pintor/raspador, então entra
+    // mesmo nesse modo restrito.
+    .filter(f => f.porProducao || cargosValidos.some(c => (f.cargo || '').toLowerCase().includes(c)));
 
   if (!docs.length) {
     lista.innerHTML = '<p class="vazio">Nenhum funcionário cadastrado.</p>';
@@ -601,7 +613,7 @@ function selecionarFuncionario(func) {
   document.getElementById('func-atual').textContent = func.nome;
   atualizarBtnOk();
   const cargo = (func.cargo || '').toLowerCase();
-  if (ehAjudante(func.cargo)) {
+  if (ehAjudanteDiaria(func)) {
     if (_pendingClick) {
       // Veio do mapa clicando direto num serviço de Tratamento — já sabemos o tipo, dá andamento
       aguardandoCalendarioAjudante = true;
