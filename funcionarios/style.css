@@ -466,6 +466,24 @@ header {
 
 input.upper { text-transform: uppercase; }
 
+.checkbox-label {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem !important;
+  font-weight: 500 !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+  color: #333 !important;
+  cursor: pointer;
+}
+.checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #1a3322;
+  flex-shrink: 0;
+}
+
 .radio-group {
   display: flex;
   gap: 14px;

@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.27";
+const VERSAO = "3.28";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -53,6 +53,14 @@ function ehServente(cargo) { return (cargo||"").toLowerCase().includes("ajudante
 function ehPorProducao(cargo) { return CARGOS_POR_PRODUCAO.includes((cargo||"").toUpperCase()); }
 // Por enquanto, Encarregado também usa o desconto de INSS padrão de 7,5% (além dos cargos por produção).
 function temDescontoInssPadrao(cargo) { return ehPorProducao(cargo) || (cargo||"").toUpperCase() === "ENCARREGADO"; }
+// Remuneração por produção normalmente segue o cargo (Pintor/Raspador), mas
+// pode ser marcada manualmente pra um funcionário específico com outro
+// cargo (ex: um Ajudante que vai ser remunerado por produção) — por isso
+// aceita tanto uma string de cargo quanto o registro completo do funcionário.
+function remuneradoPorProducao(f) {
+  if (typeof f === "string") return ehPorProducao(f);
+  return !!f && (ehPorProducao(f.cargo) || !!f.porProducao);
+}
 
 function diasDoMes() {
   const d = new Date();
@@ -107,7 +115,7 @@ function render(docs) {
   lista.innerHTML = docsOrdenados.map(doc => {
     const f = doc.data();
     funcionariosCache[doc.id] = f;
-    const porProd = ehPorProducao(f.cargo);
+    const porProd = remuneradoPorProducao(f);
     const ativo   = f.ativo !== false;
     // Card enxuto: nome sempre visível na própria linha, resumo do salário
     // numa frase curta (o detalhamento completo — INSS, passagens, diária —
@@ -286,6 +294,7 @@ function abrirFormulario() {
   document.getElementById("wrap-salario").style.display = "";
   document.getElementById("wrap-descontos").style.display = "";
   document.getElementById("wrap-salario-ref").style.display = "none";
+  document.getElementById("wrap-por-producao").style.display = "none";
   document.getElementById("form-overlay").style.display = "flex";
   document.getElementById("fab").classList.add("open");
   document.getElementById("f-nome").focus();
@@ -306,15 +315,30 @@ function fecharFormulario() {
 const SALARIO_REFERENCIA_PADRAO = 2407.00;
 const DESCONTO_INSS_PADRAO_PRODUCAO = 7.5;
 
-document.getElementById("f-cargo").addEventListener("change", function() {
-  const porProd = ehPorProducao(this.value);
+// Centraliza o show/hide dos campos de remuneração — chamado ao trocar o
+// cargo, ao marcar/desmarcar "Remunerar por produção" e ao abrir o form
+// (novo ou edição), pra não duplicar essa lógica em cada lugar.
+function atualizarCamposRemuneracao() {
+  const cargo = document.getElementById("f-cargo").value;
+  const cargoJaEhProducao = ehPorProducao(cargo);
+  const checkbox = document.getElementById("f-por-producao");
+
+  // O checkbox só faz sentido pra cargo que não é produção por padrão —
+  // pra Pintor/Raspador já é sempre por produção, esconde a opção.
+  document.getElementById("wrap-por-producao").style.display = (cargo && !cargoJaEhProducao) ? "" : "none";
+  if (cargoJaEhProducao) checkbox.checked = false;
+
+  const porProd = cargoJaEhProducao || checkbox.checked;
   document.getElementById("wrap-salario").style.display = porProd ? "none" : "";
   document.getElementById("wrap-salario-ref").style.display = porProd ? "" : "none";
   const salarioRef = document.getElementById("f-salario-ref");
   if (porProd && !salarioRef.value) salarioRef.value = SALARIO_REFERENCIA_PADRAO.toFixed(2).replace(".",",");
   const descontos = document.getElementById("f-descontos");
-  if (temDescontoInssPadrao(this.value) && !descontos.value) descontos.value = DESCONTO_INSS_PADRAO_PRODUCAO.toFixed(2).replace(".",",");
-});
+  if ((temDescontoInssPadrao(cargo) || checkbox.checked) && !descontos.value) descontos.value = DESCONTO_INSS_PADRAO_PRODUCAO.toFixed(2).replace(".",",");
+}
+
+document.getElementById("f-cargo").addEventListener("change", atualizarCamposRemuneracao);
+document.getElementById("f-por-producao").addEventListener("change", atualizarCamposRemuneracao);
 
 document.getElementById("f-salario").addEventListener("blur", function() {
   const v = parseMoeda(this.value);
@@ -416,7 +440,7 @@ function validarFormulario() {
   data(v("f-admissao"), "Admissão (DD/MM/AAAA)", erros);
   if (!editando && !v("f-telefone"))       erros.push("Telefone");
   if (simplificado) return erros;
-  if (!ehPorProducao(v("f-cargo")) && !parseMoeda(v("f-salario")) && !editando) erros.push("Salário / Diária");
+  if (!remuneradoPorProducao({ cargo: v("f-cargo"), porProducao: document.getElementById("f-por-producao").checked }) && !parseMoeda(v("f-salario")) && !editando) erros.push("Salário / Diária");
   if (!editando && !v("f-nacionalidade"))  erros.push("Nacionalidade");
   if (!editando && !v("f-estadocivil"))    erros.push("Estado Civil");
   data(v("f-nascimento"), "Data de Nascimento (DD/MM/AAAA)", erros);
@@ -446,13 +470,17 @@ function validarFormulario() {
 function lerCampos() {
   const v = id => (document.getElementById(id)||{}).value || "";
   const radios = name => { const r = document.querySelector(`input[name="${name}"]:checked`); return r ? r.value : ""; };
+  const cargo = v("f-cargo");
+  const porProducao = !ehPorProducao(cargo) && document.getElementById("f-por-producao").checked;
+  const remPorProd = ehPorProducao(cargo) || porProducao;
   return {
     nome:         v("f-nome").trim(),
-    cargo:        v("f-cargo"),
+    cargo:        cargo,
     admissao:     v("f-admissao").trim(),
-    salario:      ehPorProducao(v("f-cargo")) ? 0 : parseMoeda(v("f-salario")),
+    porProducao:  porProducao,
+    salario:      remPorProd ? 0 : parseMoeda(v("f-salario")),
     descontos:    parseFloat((v("f-descontos")||"0").replace(",",".")) || 0,
-    salarioReferencia: ehPorProducao(v("f-cargo")) ? parseMoeda(v("f-salario-ref")) : 0,
+    salarioReferencia: remPorProd ? parseMoeda(v("f-salario-ref")) : 0,
     passagens:    parseMoeda(v("f-passagens")),
     telefone:     v("f-telefone").trim(),
     obs:          v("f-obs").trim(),
@@ -513,9 +541,8 @@ function editarFuncionario(id) {
   if (f.instrucao) { const r = document.querySelector(`input[name="instrucao"][value="${f.instrucao}"]`); if (r) r.checked = true; }
   if (f.instrucaoStatus) { const r = document.querySelector(`input[name="instrucao_status"][value="${f.instrucaoStatus}"]`); if (r) r.checked = true; }
 
-  const porProd = ehPorProducao(f.cargo);
-  document.getElementById("wrap-salario").style.display = porProd ? "none" : "";
-  document.getElementById("wrap-salario-ref").style.display = porProd ? "" : "none";
+  document.getElementById("f-por-producao").checked = !!f.porProducao;
+  atualizarCamposRemuneracao();
   if (temDescontoInssPadrao(f.cargo) && !(f.descontos > 0)) {
     document.getElementById("f-descontos").value = DESCONTO_INSS_PADRAO_PRODUCAO.toFixed(2).replace(".",",");
   }
@@ -691,7 +718,7 @@ function consultarFuncionario(id) {
   document.getElementById('consultar-body').innerHTML = `
     ${sec('Identificação')}
       ${c('Nome', f.nome)}${c('Cargo', f.cargo)}${c('Admissão', f.admissao)}
-      ${ehPorProducao(f.cargo) ? `
+      ${remuneradoPorProducao(f) ? `
         ${c('Remuneração', 'Por produção')}
         ${c('Salário de Referência', fmtMoeda(f.salarioReferencia))}
         ${f.descontos > 0 ? c('Desconto de INSS ('+f.descontos.toFixed(2).replace('.',',')+'%)', fmtMoeda(calcDescontoInss(f.salarioReferencia, f.descontos))) : ''}
