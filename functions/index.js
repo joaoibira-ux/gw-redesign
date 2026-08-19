@@ -179,6 +179,18 @@ const TOOLS_GW = [
     }
   },
   {
+    name: "extrato_folha_funcionario_imagem",
+    description: "Gera, como imagem PNG estilizada com a logo da GW (mesmo estilo visual do extrato_refeicoes_imagem), o detalhamento dos itens de UM funcionário numa folha de pagamento (por padrão a mais recente) e envia pelo Telegram. Pra pintor/encarregado mostra local, serviço e data de cada item; pra ajudante pago por diária mostra data e tipo (Diária/Sábado/Repouso Remunerado) — o layout se ajusta sozinho ao que a folha tiver. Se o nome informado bater com mais de um funcionário na folha (ex: 'Paulo' bate com 'Paulo Ricardo' e 'Gustavo Paulo'), a ferramenta retorna erro 'nome_ambiguo' com a lista dos nomes encontrados — NUNCA escolha um dos dois por conta própria, pergunte ao usuário qual e chame de novo com o nome completo.",
+    input_schema: {
+      type: "object",
+      properties: {
+        funcionarioNome: { type: "string", description: "Nome (parcial ou completo) do funcionário, como aparece na folha de pagamento" },
+        folhaId: { type: "string", description: "ID de uma folha específica (opcional — se omitido, usa a folha mais recente)" }
+      },
+      required: ["funcionarioNome"]
+    }
+  },
+  {
     name: "registrar_pagamento_refeicoes",
     description: "Cria um lançamento no Contas a Pagar com o valor total do extrato de refeições de um período, e marca esse período como pago (fica registrado pra qualquer consulta futura que envolva esse período, ou parte dele, avisar que já foi pago — evita pagar em dobro). Recalcula o extrato do zero a partir do período informado, não confia em números ditos antes na conversa. ALTERA O BANCO DE DADOS: exige senha de autorização, peça ao usuário antes de chamar. Só chame depois que o usuário confirmar explicitamente que quer registrar (normalmente depois de extrato_refeicoes_imagem).",
     input_schema: {
@@ -1133,6 +1145,147 @@ async function gerarImagemExtratoPonto(dados) {
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
+// Busca, na folha de pagamento mais recente (ou numa específica, via
+// folhaId), o grupo de itens de UM funcionário — usado pra gerar o extrato
+// individual em imagem. Casamento de nome é parcial e tolerante a
+// acento/maiúscula (normTexto); se mais de um funcionário bater com o nome
+// informado (ex: "Paulo" -> "Paulo Ricardo" e "Gustavo Paulo"), retorna
+// "nome_ambiguo" em vez de escolher um dos dois sozinho.
+async function buscarExtratoFolhaFuncionario(nomeFuncionario, folhaId) {
+  let folha;
+  if (folhaId) {
+    const doc = await db.collection("folhas").doc(folhaId).get();
+    if (!doc.exists) return { erro: "folha_nao_encontrada" };
+    folha = doc.data();
+  } else {
+    const snap = await db.collection("folhas").orderBy("criadoEm", "desc").limit(1).get();
+    if (snap.empty) return { erro: "sem_folha" };
+    folha = snap.docs[0].data();
+  }
+
+  const alvo = normTexto(nomeFuncionario);
+  const candidatos = (folha.grupos || []).filter(g => normTexto(g.funcionario?.nome).includes(alvo));
+  if (candidatos.length === 0) return { erro: "funcionario_nao_encontrado" };
+  if (candidatos.length > 1) return { erro: "nome_ambiguo", nomesEncontrados: candidatos.map(g => g.funcionario.nome) };
+
+  const grupo = candidatos[0];
+  return {
+    funcionarioNome: grupo.funcionario.nome,
+    cargo: grupo.funcionario.cargo,
+    itens: grupo.itens || [],
+    subtotal: grupo.subtotal || 0,
+    folhaData: folha.data
+  };
+}
+
+function construirSVGExtratoFolha(dados, logoBase64) {
+  const LARGURA = 800;
+  const PAD = 44;
+  const ALT_HEADER = 190;
+  const ALT_LINHA = 44;
+  const ALT_TABELA_HEADER = 40;
+  const ALT_TOTAIS = 100;
+  const ALT_FOOTER = 50;
+
+  // Pintor/Encarregado: itens têm dataRegistro (local + serviço + data).
+  // Ajudante por diária: sem dataRegistro, localId já é a própria data.
+  const usaLocal = dados.itens.some(it => it.dataRegistro);
+
+  const ALTURA = ALT_HEADER + ALT_TABELA_HEADER + dados.itens.length * ALT_LINHA + ALT_TOTAIS + ALT_FOOTER + PAD;
+  const larguraTabela = LARGURA - PAD * 2;
+  const col1 = PAD + 24;
+  const col2 = PAD + larguraTabela * 0.40;
+  const col3 = PAD + larguraTabela * 0.80;
+  const colValor = PAD + larguraTabela - 24;
+
+  let y = ALT_HEADER;
+
+  const headerTabela = usaLocal ? `
+    <text x="${col1}" y="${y + 26}" font-size="13" font-weight="700" letter-spacing="1.5" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif">LOCAL</text>
+    <text x="${col2}" y="${y + 26}" font-size="13" font-weight="700" letter-spacing="1.5" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif">SERVIÇO</text>
+    <text x="${col3}" y="${y + 26}" font-size="13" font-weight="700" letter-spacing="1.5" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">DATA</text>
+    <text x="${colValor}" y="${y + 26}" font-size="13" font-weight="700" letter-spacing="1.5" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif" text-anchor="end">VALOR</text>
+    <line x1="${PAD}" y1="${y + 36}" x2="${PAD + larguraTabela}" y2="${y + 36}" stroke="rgba(165,214,167,0.25)" stroke-width="1"/>
+  ` : `
+    <text x="${col1}" y="${y + 26}" font-size="13" font-weight="700" letter-spacing="1.5" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif">DATA</text>
+    <text x="${col2}" y="${y + 26}" font-size="13" font-weight="700" letter-spacing="1.5" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif">TIPO</text>
+    <text x="${colValor}" y="${y + 26}" font-size="13" font-weight="700" letter-spacing="1.5" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif" text-anchor="end">VALOR</text>
+    <line x1="${PAD}" y1="${y + 36}" x2="${PAD + larguraTabela}" y2="${y + 36}" stroke="rgba(165,214,167,0.25)" stroke-width="1"/>
+  `;
+  y += ALT_TABELA_HEADER;
+
+  const linhas = dados.itens.map((it, i) => {
+    const bg = i % 2 === 0 ? "rgba(255,255,255,0.035)" : "transparent";
+    const rowY = y;
+    const linha = usaLocal ? `
+        <rect x="${PAD}" y="${rowY}" width="${larguraTabela}" height="${ALT_LINHA}" fill="${bg}" rx="10"/>
+        <text x="${col1}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="15" font-weight="700" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif">${escXml(it.localId)}</text>
+        <text x="${col2}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="14" fill="#c8e6c9" font-family="Arial, Helvetica, sans-serif">${escXml(it.servico)}</text>
+        <text x="${col3}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="14" fill="#a5d6a7" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">${escXml(it.dataRegistro || "")}</text>
+        <text x="${colValor}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="15" font-weight="600" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${fmtMoeda(it.valor)}</text>
+      ` : `
+        <rect x="${PAD}" y="${rowY}" width="${larguraTabela}" height="${ALT_LINHA}" fill="${bg}" rx="10"/>
+        <text x="${col1}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="15" font-weight="700" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif">${escXml(it.localId)}</text>
+        <text x="${col2}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="14" fill="#c8e6c9" font-family="Arial, Helvetica, sans-serif">${escXml(it.servico)}</text>
+        <text x="${colValor}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="15" font-weight="600" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${fmtMoeda(it.valor)}</text>
+      `;
+    y += ALT_LINHA;
+    return linha;
+  }).join("");
+
+  const totaisY = y + 16;
+  const totaisAltura = ALT_TOTAIS - 16;
+  const blocoTotais = `
+    <rect x="${PAD}" y="${totaisY}" width="${larguraTabela}" height="${totaisAltura}" rx="16" fill="rgba(105,240,174,0.08)" stroke="rgba(105,240,174,0.35)" stroke-width="1.5"/>
+    <text x="${PAD + 28}" y="${totaisY + totaisAltura / 2 - 6}" font-size="14" font-weight="700" letter-spacing="1" fill="#a5d6a7" font-family="Arial, Helvetica, sans-serif">TOTAL DA FOLHA</text>
+    <text x="${PAD + larguraTabela - 28}" y="${totaisY + totaisAltura / 2 + 10}" font-size="26" font-weight="800" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${fmtMoeda(dados.subtotal)}</text>
+  `;
+
+  const footerY = totaisY + totaisAltura + 30;
+  const footer = `
+    <text x="${LARGURA / 2}" y="${footerY}" font-size="11" letter-spacing="1" fill="#5a8a63" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">Extrato de Folha • Sistema GW • Gerado em ${new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</text>
+  `;
+
+  const logoW = 64, logoH = 64 * (1106 / 1422);
+
+  return `
+<svg width="${LARGURA}" height="${ALTURA}" viewBox="0 0 ${LARGURA} ${ALTURA}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#12331f"/>
+      <stop offset="45%" stop-color="#0c2417"/>
+      <stop offset="100%" stop-color="#06120b"/>
+    </linearGradient>
+    <clipPath id="logoClip"><rect x="0" y="0" width="${logoW}" height="${logoH}" rx="10"/></clipPath>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#69f0ae" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#69f0ae" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="${LARGURA}" height="${ALTURA}" fill="url(#bg)"/>
+  <circle cx="${LARGURA / 2}" cy="${40 + logoH / 2}" r="90" fill="url(#glow)"/>
+  <g transform="translate(${LARGURA / 2 - logoW / 2}, 40)">
+    <image href="data:image/png;base64,${logoBase64}" width="${logoW}" height="${logoH}" clip-path="url(#logoClip)"/>
+  </g>
+
+  <text x="${LARGURA / 2}" y="${40 + logoH + 34}" font-size="26" font-weight="800" letter-spacing="3" fill="#f1f8f2" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">GREEN WALL</text>
+  <text x="${LARGURA / 2}" y="${40 + logoH + 58}" font-size="13" font-weight="700" letter-spacing="4" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">EXTRATO DE FOLHA — ${escXml((dados.funcionarioNome || "").toUpperCase())}</text>
+  <text x="${LARGURA / 2}" y="${40 + logoH + 82}" font-size="14" fill="#a5d6a7" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">${escXml(dados.cargo || "")}${dados.folhaData ? " • Folha de " + escXml(dados.folhaData) : ""}</text>
+
+  ${headerTabela}
+  ${linhas}
+  ${blocoTotais}
+  ${footer}
+</svg>`;
+}
+
+async function gerarImagemExtratoFolha(dados) {
+  const logoBase64 = fs.readFileSync(path.join(__dirname, "Logo-gw.png")).toString("base64");
+  const svg = construirSVGExtratoFolha(dados, logoBase64);
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
 async function executarFerramenta(nome, input) {
   if (nome === "listar_funcionarios") {
     const snap = await db.collection("funcionarios").orderBy("nome").get();
@@ -1340,6 +1493,48 @@ async function executarFerramenta(nome, input) {
       mensagem: "Imagem do extrato de ponto gerada e enviada pelo Telegram com sucesso.",
       funcionarioNome: dados.funcionarioNome,
       totais: dados.totais
+    };
+  }
+
+  if (nome === "extrato_folha_funcionario_imagem") {
+    const { funcionarioNome, folhaId } = input;
+    const dados = await buscarExtratoFolhaFuncionario(funcionarioNome, folhaId);
+
+    if (dados.erro === "sem_folha") {
+      return { sucesso: false, erro: "sem_folha", mensagem: "Nenhuma folha de pagamento encontrada no sistema." };
+    }
+    if (dados.erro === "folha_nao_encontrada") {
+      return { sucesso: false, erro: "folha_nao_encontrada", mensagem: "O folhaId informado não corresponde a nenhuma folha." };
+    }
+    if (dados.erro === "funcionario_nao_encontrado") {
+      return { sucesso: false, erro: "funcionario_nao_encontrado", mensagem: `Nenhum funcionário chamado "${funcionarioNome}" encontrado nessa folha.` };
+    }
+    if (dados.erro === "nome_ambiguo") {
+      return {
+        sucesso: false,
+        erro: "nome_ambiguo",
+        mensagem: `Mais de um funcionário bate com "${funcionarioNome}" nessa folha — pergunte ao usuário qual dos dois e chame de novo com o nome completo.`,
+        nomesEncontrados: dados.nomesEncontrados
+      };
+    }
+
+    try {
+      const buffer = await gerarImagemExtratoFolha(dados);
+      await enviarFotoTelegram(
+        buffer,
+        `extrato-folha-${dados.funcionarioNome.replace(/\s+/g, "-")}.png`,
+        `Extrato de Folha — ${dados.funcionarioNome}${dados.folhaData ? " — " + dados.folhaData : ""}`
+      );
+    } catch (err) {
+      console.error(err);
+      return { sucesso: false, erro: "falha_geracao_ou_envio", mensagem: err.message };
+    }
+
+    return {
+      sucesso: true,
+      mensagem: "Imagem do extrato de folha gerada e enviada pelo Telegram com sucesso.",
+      funcionarioNome: dados.funcionarioNome,
+      subtotal: dados.subtotal
     };
   }
 
@@ -2221,6 +2416,7 @@ IMPORTANTE: qualquer ferramenta que altere o banco de dados (ex: registrar_ponto
 CRÍTICO: NUNCA diga ao usuário que uma ação foi concluída/registrada/salva com sucesso a menos que o resultado da ferramenta (o tool_result mais recente) traga explicitamente "sucesso": true. Se vier "sucesso": false, ou se você não tiver certeza de ter chamado a ferramenta de verdade, informe claramente que a ação FALHOU (use a "mensagem" do erro, se houver) e peça pra tentar de novo — nunca componha uma confirmação de sucesso a partir de memória da conversa ou suposição. Isso já causou TRÊS casos reais: (1) o assistente disse "Pagamento registrado com sucesso" sem a ferramenta ter sido executada de verdade, nada gravado no banco; (2) o usuário pediu baixa em 2 lançamentos do Contas a Pagar, o assistente confirmou os dois, mas NENHUMA ferramenta foi chamada pra nenhum dos dois; (3) o usuário pediu pra editar_conta_pagar mudar uma data, o assistente confirmou a troca, mas não chamou NENHUMA ferramenta — o registro no banco nunca mudou. SE O USUÁRIO PEDIR UMA AÇÃO EM MAIS DE UM ITEM (ex: "dá baixa nesses dois", "edita esses três"), chame a ferramenta correspondente UMA VEZ PARA CADA item, com o id real de cada um — nunca responda como se todos tivessem sido feitos sem ter chamado a ferramenta pra cada um individualmente.
 VERIFICAÇÃO OBRIGATÓRIA antes de qualquer resposta que confirme uma ação (registrar, editar, excluir, dar baixa, pagar, cancelar): pare e confira, nesta mesma resposta que você está montando, se existe um tool_result correspondente com "sucesso": true. Se a resposta que você está prestes a mandar afirma que algo foi feito e você não consegue apontar esse tool_result específico, isso é um sinal de que você pulou a chamada da ferramenta — pare, chame a ferramenta de verdade primeiro, e só confirme depois de ver o resultado real.
 Depois que extrato_refeicoes_imagem enviar a imagem com sucesso, pergunte ao usuário se ele quer registrar esse valor total no Contas a Pagar. Se ele confirmar, peça a senha de autorização e chame registrar_pagamento_refeicoes com o mesmo período. Se o resultado de qualquer ferramenta de refeições trouxer "periodosJaPagos" preenchido, avise o usuário que esse período (ou parte dele) já foi registrado como pago antes, ANTES de prosseguir — não insista em registrar de novo sem ele confirmar que quer mesmo assim.
+Se o usuário pedir o detalhamento/extrato dos serviços de UM funcionário na folha de pagamento (ex: "manda a folha do Geryson", "quanto foi pago pro Paulo nessa última folha, em imagem"), use extrato_folha_funcionario_imagem em vez de tentar montar a tabela de memória. Se a ferramenta retornar erro "nome_ambiguo" (nome bate com mais de um funcionário, ex: "Paulo" -> "Paulo Ricardo" e "Gustavo Paulo"), NUNCA escolha um dos dois sozinho — mostre a lista de nomes encontrados e pergunte qual o usuário quis dizer antes de chamar de novo com o nome completo.
 Para editar ou excluir um lançamento do caixa, use consultar_caixa primeiro para encontrar o id correto e confirme com o usuário qual lançamento é (data, descrição e valor) antes de aplicar a alteração.
 Para editar ou dar baixa num lançamento do Contas a Pagar, use consultar_contas_pagar primeiro para encontrar o id correto — NUNCA invente um id (ex: "1", "2", "3" não são ids válidos, só o id exato que consultar_contas_pagar retornou) — e confirme com o usuário qual lançamento é (descrição e valor atuais) antes de aplicar. Pra "dar baixa"/"marcar como pago"/"quitar", use dar_baixa_conta_pagar. Pra mudar descrição, valor ou data, use editar_conta_pagar.
 Contas a Receber funciona do mesmo jeito que Contas a Pagar, com o mesmo requisito de senha: use consultar_contas_receber primeiro pra encontrar o id correto antes de editar_conta_receber, dar_baixa_conta_receber ou excluir_conta_receber — NUNCA invente um id, só o id exato retornado por consultar_contas_receber é válido — e confirme com o usuário qual lançamento é (descrição e valor) antes de aplicar qualquer alteração. Pra criar um lançamento novo, use criar_conta_receber. Pra "dar baixa"/"marcar como recebido"/"quitar", use dar_baixa_conta_receber. Pra mudar descrição, valor ou data, use editar_conta_receber. Pra excluir, use excluir_conta_receber e confirme claramente com o usuário antes, já que é uma ação destrutiva.
