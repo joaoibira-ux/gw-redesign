@@ -1,7 +1,7 @@
 // Agente GW — chat com IA (v1.1)
 (function () {
   const CSS = `
-    #agente-btn {
+    .agente-btn {
       position: relative;
       background: none;
       border: none;
@@ -16,7 +16,7 @@
       line-height: 1;
       flex-shrink: 0;
     }
-    #agente-btn:active { opacity: 0.6; }
+    .agente-btn:active { opacity: 0.6; }
 
     #agente-overlay {
       position: fixed;
@@ -348,15 +348,23 @@
     document.getElementById("agente-ajuda-overlay").classList.remove("aberto");
   }
 
+  // Vários containers em potencial: <header> nos apps individuais, o
+  // header da tela de menu no celular (.home-header) e a área do usuário
+  // do dashboard desktop (.dd-topbar-user) — o menu troca entre home-screen
+  // e dashboard-desktop conforme a largura da tela (ver ehDesktop() em
+  // index.html), então o botão precisa existir nos dois pra sempre aparecer
+  // no que estiver visível.
   function adicionarBotaoNoHeader() {
-    const header = document.querySelector("header") || document.querySelector(".home-header");
-    if (!header) return;
-    const btn = document.createElement("button");
-    btn.id = "agente-btn";
-    btn.title = "Assistente IA";
-    btn.innerHTML = "🤖";
-    btn.addEventListener("click", abrir);
-    header.appendChild(btn);
+    ["header", ".home-header", ".dd-topbar-user"].forEach(seletor => {
+      const container = document.querySelector(seletor);
+      if (!container) return;
+      const btn = document.createElement("button");
+      btn.className = "agente-btn";
+      btn.title = "Assistente IA";
+      btn.innerHTML = "🤖";
+      btn.addEventListener("click", abrir);
+      container.appendChild(btn);
+    });
   }
 
   let historico = [];
