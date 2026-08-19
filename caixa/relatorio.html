@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.91";
+  const VERSAO = "1.92";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1312,6 +1312,14 @@
     return d;
   }
 
+  function parseDataBRparaDate(s) {
+    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec((s || '').trim());
+    if (!m) return null;
+    const [, d, mo, a] = m;
+    const ano = a.length === 2 ? '20' + a : a;
+    return new Date(Number(ano), Number(mo) - 1, Number(d));
+  }
+
   // Retorna Map: nome normalizado -> { faltas, creditos } ganhos na quinzena anterior.
   async function calcularFaltasQuinzenaAnterior(hoje) {
     const { inicio: qIni, fim: qFim } = limitesQuinzenaAnterior(hoje);
@@ -1320,10 +1328,13 @@
     const buscaIni = new Date(qIni); buscaIni.setDate(buscaIni.getDate() - 7);
     const buscaFimExclusiva = new Date(qFim); buscaFimExclusiva.setDate(buscaFimExclusiva.getDate() + 8);
 
-    const snap = await db.collection('pontos')
-      .where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(buscaIni))
-      .where('timestamp', '<',  firebase.firestore.Timestamp.fromDate(buscaFimExclusiva))
-      .get();
+    const [snap, funcSnap] = await Promise.all([
+      db.collection('pontos')
+        .where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(buscaIni))
+        .where('timestamp', '<',  firebase.firestore.Timestamp.fromDate(buscaFimExclusiva))
+        .get(),
+      db.collection('funcionarios').get()
+    ]);
 
     // Dias únicos com registro, agrupados por (funcionário, semana).
     const diasPorSemana = new Map(); // key: nome|segundaISO -> { nome, dias: Set }
@@ -1339,6 +1350,33 @@
       const key = `${nome}|${segunda.toISOString().slice(0, 10)}`;
       if (!diasPorSemana.has(key)) diasPorSemana.set(key, { nome, dias: new Set() });
       diasPorSemana.get(key).dias.add(ts.toDateString());
+    });
+
+    // Garante que TODA semana da quinzena entra no cálculo pra todo funcionário
+    // ativo já admitido — sem isso, uma semana inteira sem nenhum ponto batido
+    // (falta total, 6 dias) ficava invisível: só "diasPorSemana" via pontos
+    // reais contava falta de quem tinha ALGUM registro na semana (falta
+    // parcial); ausência completa nunca gerava uma entrada nesse Map, então
+    // nunca virava falta. Enumera as segundas cujo sábado fecha dentro da
+    // quinzena e força uma entrada (mesmo vazia) pra cada uma.
+    const segundasDaQuinzena = [];
+    for (let d = new Date(qIni); d <= qFim; d.setDate(d.getDate() + 1)) {
+      if (d.getDay() === 6) { // sábado fecha o ciclo da semana
+        const seg = new Date(d); seg.setDate(seg.getDate() - 5);
+        segundasDaQuinzena.push(seg);
+      }
+    }
+    funcSnap.docs.forEach(fd => {
+      const f = fd.data();
+      if (f.ativo === false) return;
+      const admissao = parseDataBRparaDate(f.admissao);
+      const nome = normNome(f.nome);
+      segundasDaQuinzena.forEach(seg => {
+        const sabado = new Date(seg); sabado.setDate(sabado.getDate() + 5);
+        if (admissao && sabado < admissao) return; // ainda não tinha sido admitido nessa semana
+        const key = `${nome}|${seg.toISOString().slice(0, 10)}`;
+        if (!diasPorSemana.has(key)) diasPorSemana.set(key, { nome, dias: new Set() });
+      });
     });
 
     const resultado = new Map();
