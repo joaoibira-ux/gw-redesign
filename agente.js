@@ -1,4 +1,4 @@
-// Agente GW — chat com IA (v1.0)
+// Agente GW — chat com IA (v1.1)
 (function () {
   const CSS = `
     #agente-btn {
@@ -75,6 +75,82 @@
       color: #999;
       padding: 2px 6px;
       line-height: 1;
+    }
+    #agente-ajuda {
+      background: none;
+      border: none;
+      font-size: 1.05rem;
+      cursor: pointer;
+      color: #1a6635;
+      padding: 2px 6px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    #agente-ajuda-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.5);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .2s;
+      padding: 20px;
+    }
+    #agente-ajuda-overlay.aberto {
+      opacity: 1;
+      pointer-events: all;
+    }
+    #agente-ajuda-panel {
+      background: #fff;
+      border-radius: 16px;
+      width: 100%;
+      max-width: 440px;
+      max-height: 80dvh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+    #agente-ajuda-cabecalho {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px 16px 12px;
+      border-bottom: 1px solid #eee;
+      flex-shrink: 0;
+    }
+    #agente-ajuda-cabecalho span {
+      flex: 1;
+      font-weight: 700;
+      font-size: 1rem;
+      color: #1a3322;
+    }
+    #agente-ajuda-corpo {
+      overflow-y: auto;
+      padding: 14px 18px 20px;
+      font-size: 0.86rem;
+      color: #333;
+      line-height: 1.5;
+    }
+    #agente-ajuda-corpo h4 {
+      color: #1a6635;
+      font-size: 0.82rem;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      margin: 16px 0 6px;
+    }
+    #agente-ajuda-corpo h4:first-child { margin-top: 0; }
+    #agente-ajuda-corpo ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+    #agente-ajuda-corpo li { margin-bottom: 4px; }
+    #agente-ajuda-corpo .ag-senha {
+      color: #b26a00;
+      font-size: 0.78rem;
     }
 
     #agente-msgs {
@@ -168,6 +244,7 @@
       <div id="agente-panel">
         <div id="agente-cabecalho">
           <span>🤖 Assistente GW</span>
+          <button id="agente-ajuda" title="O que eu posso fazer?" aria-label="Ajuda">❓</button>
           <button id="agente-fechar" aria-label="Fechar">✕</button>
         </div>
         <div id="agente-msgs"></div>
@@ -183,6 +260,7 @@
       if (e.target === overlay) fechar();
     });
     document.getElementById("agente-fechar").addEventListener("click", fechar);
+    document.getElementById("agente-ajuda").addEventListener("click", abrirAjuda);
 
     const input = document.getElementById("agente-input");
     const btnEnviar = document.getElementById("agente-enviar");
@@ -197,6 +275,77 @@
     });
 
     btnEnviar.addEventListener("click", enviar);
+  }
+
+  const AJUDA_HTML = `
+    <h4>Ponto Eletrônico</h4>
+    <ul>
+      <li>Ver quem bateu ponto hoje, num dia ou num período</li>
+      <li>Ver o último ponto de alguém (com localização)</li>
+      <li>Gerar o extrato de ponto de um funcionário em imagem, pelo Telegram</li>
+      <li>Registrar, editar ou cancelar um ponto <span class="ag-senha">(pede senha)</span></li>
+    </ul>
+    <h4>Refeições</h4>
+    <ul>
+      <li>Calcular o extrato de café/almoço de um período</li>
+      <li>Gerar esse extrato em imagem, pelo Telegram</li>
+      <li>Registrar o pagamento das refeições no Contas a Pagar <span class="ag-senha">(pede senha)</span></li>
+    </ul>
+    <h4>Folha de Pagamento</h4>
+    <ul>
+      <li>Gerar o extrato de um funcionário na folha mais recente (ou numa específica), em imagem, pelo Telegram</li>
+    </ul>
+    <h4>Caixa</h4>
+    <ul>
+      <li>Consultar lançamentos, saldo e período</li>
+      <li>Criar, editar ou excluir um lançamento <span class="ag-senha">(pede senha)</span></li>
+    </ul>
+    <h4>Contas a Pagar</h4>
+    <ul>
+      <li>Consultar lançamentos</li>
+      <li>Registrar um boleto recebido em PDF pelo WhatsApp <span class="ag-senha">(pede senha)</span></li>
+      <li>Editar ou dar baixa (marcar como pago) <span class="ag-senha">(pede senha)</span></li>
+    </ul>
+    <h4>Contas a Receber</h4>
+    <ul>
+      <li>Consultar, criar, editar, dar baixa (marcar como recebido) ou excluir <span class="ag-senha">(pede senha)</span></li>
+    </ul>
+    <h4>Serviços e Mapa de Obra</h4>
+    <ul>
+      <li>Listar serviços cadastrados e seus preços</li>
+      <li>Ver os serviços executados por um funcionário ou local</li>
+      <li>Criar novos locais/apartamentos <span class="ag-senha">(pede senha)</span></li>
+      <li>Editar o preço de um serviço <span class="ag-senha">(pede senha)</span></li>
+      <li>Gerar planilha de medições ou do Mapa de Obra (Excel, pelo Telegram)</li>
+    </ul>
+  `;
+
+  function criarHTMLAjuda() {
+    const overlay = document.createElement("div");
+    overlay.id = "agente-ajuda-overlay";
+    overlay.innerHTML = `
+      <div id="agente-ajuda-panel">
+        <div id="agente-ajuda-cabecalho">
+          <span>O que eu posso fazer</span>
+          <button id="agente-ajuda-fechar" aria-label="Fechar">✕</button>
+        </div>
+        <div id="agente-ajuda-corpo">${AJUDA_HTML}</div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener("click", e => {
+      if (e.target === overlay) fecharAjuda();
+    });
+    document.getElementById("agente-ajuda-fechar").addEventListener("click", fecharAjuda);
+  }
+
+  function abrirAjuda() {
+    document.getElementById("agente-ajuda-overlay").classList.add("aberto");
+  }
+
+  function fecharAjuda() {
+    document.getElementById("agente-ajuda-overlay").classList.remove("aberto");
   }
 
   function adicionarBotaoNoHeader() {
@@ -279,6 +428,7 @@
   document.addEventListener("DOMContentLoaded", () => {
     injetarCSS();
     criarHTML();
+    criarHTMLAjuda();
     adicionarBotaoNoHeader();
     verificarRelatorioPontoDiario();
   });
