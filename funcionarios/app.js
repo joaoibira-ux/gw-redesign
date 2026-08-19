@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.24";
+const VERSAO = "3.25";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -596,7 +596,12 @@ async function abrirCameraFace() {
     return;
   }
   video.srcObject = faceStream;
-  await new Promise(r => { video.onloadedmetadata = r; });
+  // Em alguns navegadores (Safari/WebViews) o evento onloadedmetadata pode
+  // disparar antes do handler ser anexado — sem essa checagem, a Promise
+  // nunca resolve e a tela trava em "Carregando..." pra sempre.
+  if (video.readyState < 1) {
+    await new Promise(r => { video.onloadedmetadata = r; });
+  }
   await video.play();
 
   document.getElementById("face-hint").textContent = "Posicione o rosto no oval e capture";
@@ -618,7 +623,14 @@ async function capturarFotoFace() {
   document.getElementById("btn-capture-face").disabled = true;
 
   const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.5 });
-  const det  = await faceapi.detectSingleFace(video, opts).withFaceLandmarks(true).withFaceDescriptor();
+  let det;
+  try {
+    det = await faceapi.detectSingleFace(video, opts).withFaceLandmarks(true).withFaceDescriptor();
+  } catch (e) {
+    document.getElementById("face-hint").textContent = "Erro ao processar o rosto. Tente novamente.";
+    document.getElementById("btn-capture-face").disabled = false;
+    return;
+  }
 
   if (!det) {
     document.getElementById("face-hint").textContent = "Nenhum rosto detectado. Tente novamente.";
@@ -723,7 +735,7 @@ function editarDoConsultar() {
   editarFuncionario(id);
 }
 
-function irParaAssinaturaParaSalvar() {
+async function irParaAssinaturaParaSalvar() {
   const erros = validarFormulario();
   if (erros.length) { alert('Campos obrigatórios incompletos ou inválidos:\n\n• ' + erros.join('\n• ')); return; }
 
@@ -732,7 +744,13 @@ function irParaAssinaturaParaSalvar() {
     const dados = lerCampos();
     const faceMerge = _mergeFacePendente(funcionariosCache[editandoId]);
     if (faceMerge) Object.assign(dados, faceMerge);
-    col.doc(editandoId).update(dados);
+    const idParaSalvar = editandoId;
+    try {
+      await col.doc(idParaSalvar).update(dados);
+    } catch (e) {
+      alert('Erro ao salvar: ' + e.message + '\n\nVerifique a conexão e tente novamente.');
+      return;
+    }
     editandoId = null;
     pendingFaceDescriptor = null;
     pendingFotoThumb = null;
@@ -771,7 +789,7 @@ function acaoAssinatura() {
   else assinarEGerarPDF();
 }
 
-function assinarESalvar() {
+async function assinarESalvar() {
   if (canvasVazio()) { alert('Por favor, assine antes de salvar.'); return; }
   const dados = lerCampos();
   if (!dados.nome || !dados.cargo) { alert('Nome e Cargo são obrigatórios.'); return; }
@@ -779,17 +797,31 @@ function assinarESalvar() {
   if (faceMerge) Object.assign(dados, faceMerge);
   const canvas = document.getElementById('assin-canvas');
   const assinatura = canvas.toDataURL('image/png');
-  if (editandoId) {
-    col.doc(editandoId).update({ ...dados, assinatura });
-    editandoId = null;
-  } else {
-    col.add({ ...dados, assinatura, ativo: true, criadoEm: firebase.firestore.FieldValue.serverTimestamp() });
+  const idEditando = editandoId;
+
+  const btn = document.getElementById('btn-assin-acao');
+  const btnTextoOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+
+  try {
+    if (idEditando) {
+      await col.doc(idEditando).update({ ...dados, assinatura });
+    } else {
+      await col.add({ ...dados, assinatura, ativo: true, criadoEm: firebase.firestore.FieldValue.serverTimestamp() });
+    }
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = btnTextoOriginal; }
+    alert('Erro ao salvar o funcionário: ' + e.message + '\n\nVerifique a conexão e tente novamente — nada foi salvo ainda.');
+    return;
   }
+
+  editandoId = null;
   pendingFaceDescriptor = null;
   pendingFotoThumb = null;
   document.getElementById('assin-overlay').style.display = 'none';
   document.getElementById('fab').classList.remove('open');
   consultandoId = null;
+  if (btn) { btn.disabled = false; btn.textContent = btnTextoOriginal; }
   mostrarToast('Funcionário salvo com sucesso!');
 }
 
