@@ -2314,11 +2314,11 @@ async function baixarMediaEvolution(msg, apiKeyValue) {
   return Buffer.from(json.base64, "base64");
 }
 
-// Salva o PDF do boleto no Cloud Storage (primeira vez que este projeto usa
-// Storage) e retorna uma URL permanente com token de download — funciona
-// independente das storage.rules, porque a posse do token já concede leitura
-// (mesmo mecanismo que getDownloadURL() do SDK cliente usa por trás).
-async function uploadBoletoStorage(buffer, nomeArquivo) {
+// Salva o anexo (boleto em PDF ou foto de documento) no Cloud Storage e
+// retorna uma URL permanente com token de download — funciona independente
+// das storage.rules, porque a posse do token já concede leitura (mesmo
+// mecanismo que getDownloadURL() do SDK cliente usa por trás).
+async function uploadBoletoStorage(buffer, nomeArquivo, contentType = "application/pdf") {
   const bucket = admin.storage().bucket();
   const token = crypto.randomUUID();
   const nomeSanitizado = String(nomeArquivo || "boleto.pdf").replace(/[^\w.\-]/g, "_");
@@ -2326,7 +2326,7 @@ async function uploadBoletoStorage(buffer, nomeArquivo) {
 
   const file = bucket.file(caminho);
   await file.save(buffer, {
-    metadata: { contentType: "application/pdf", metadata: { firebaseStorageDownloadTokens: token } }
+    metadata: { contentType, metadata: { firebaseStorageDownloadTokens: token } }
   });
 
   return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(caminho)}?alt=media&token=${token}`;
@@ -2444,6 +2444,103 @@ boletoUrl: "${boletoUrl}" (SEMPRE repassar esse valor EXATO pra registrar_boleto
 boletoNomeArquivo: "${nomeArquivo}"`;
 }
 
+// Mesma extração de descricao/valor/vencimento do boleto em PDF, mas pra
+// foto de um documento (boleto, comprovante, nota) — a imagem costuma ter
+// ruído de foto real (borrão, reflexo, ângulo, iluminação), diferente do
+// texto limpo extraído de um PDF nativo.
+function montarPromptBoletoImagem() {
+  return `A imagem em anexo é a foto de um documento financeiro brasileiro (boleto, comprovante ou nota de cobrança), tirada com celular — pode ter ângulo torto, reflexo, sombra ou partes desfocadas, isso é normal.
+
+Extraia 3 campos:
+
+1. "descricao": uma descrição curta e útil pra um lançamento financeiro — geralmente o nome do beneficiário/cedente (quem vai receber o pagamento). Se houver informação complementar relevante (número da nota fiscal/fatura, referência, "condomínio", "aluguel", competência/mês), inclua de forma concisa. Não invente informação que não está visível na imagem. Só use "Boleto - [nome do sacado/pagador]" como último recurso, se não conseguir identificar o beneficiário de jeito nenhum.
+
+2. "valor": o "Valor do Documento" (valor total a pagar). Use ponto como separador decimal, sem "R$" e sem separador de milhar. Não confunda com valores de desconto, juros, multa ou "(=) Valor Cobrado" a menos que seja a única informação de valor disponível.
+
+3. "vencimento": a data de vencimento, formato DD/MM/AAAA.
+
+Retorne APENAS um objeto JSON (sem texto antes ou depois, sem markdown), neste formato exato:
+{"descricao":"Nome do Beneficiário Ltda - NF 1234","valor":1150.00,"vencimento":"20/08/2026"}
+
+Se a imagem não parecer ser de um documento financeiro, estiver ilegível, ou os campos essenciais (valor/vencimento) não puderem ser identificados com confiança razoável, retorne exatamente:
+{"descricao":null,"valor":null,"vencimento":null}`;
+}
+
+async function extrairDadosBoletoImagem(imageBase64, mimeType) {
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": anthropicApiKey.value(),
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-5",
+      max_tokens: 500,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "image", source: { type: "base64", media_type: mimeType || "image/jpeg", data: imageBase64 } },
+          { type: "text", text: montarPromptBoletoImagem() }
+        ]
+      }]
+    })
+  });
+
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Claude retornou status ${resp.status} ao extrair dados da imagem do boleto: ${errText.slice(0, 200)}`);
+  }
+
+  const data = await resp.json();
+  const texto = (data.content && data.content[0] && data.content[0].text) || "";
+  const match = texto.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error("Resposta do Claude não trouxe JSON reconhecível ao extrair dados da imagem do boleto.");
+
+  const resultado = JSON.parse(match[0]);
+  if (resultado.descricao === null || resultado.valor === null || resultado.vencimento === null) return null;
+
+  return {
+    descricao: String(resultado.descricao || "").trim(),
+    valor: Number(resultado.valor) || 0,
+    vencimento: String(resultado.vencimento || "").trim()
+  };
+}
+
+// Pipeline completo de uma foto de documento recebida: baixa → sobe pro
+// Storage (SEMPRE, mesmo se a extração falhar depois — nunca perde o anexo)
+// → manda pro Claude (visão) extrair os campos. Sempre retorna uma mensagem
+// sintética pronta pra entrar no fluxo normal do assistente — mesmo padrão
+// de processarBoletoPdf, só que pra imagem em vez de PDF com texto.
+async function processarBoletoImagem(msg, imgMsg, apiKeyValue) {
+  const buffer = await baixarMediaEvolution(msg, apiKeyValue);
+  const mimeType = imgMsg.mimetype || "image/jpeg";
+  const extensao = mimeType.split("/")[1] || "jpg";
+  const nomeArquivo = `documento-${Date.now()}.${extensao}`;
+  const boletoUrl = await uploadBoletoStorage(buffer, nomeArquivo, mimeType);
+
+  let dados;
+  try {
+    dados = await extrairDadosBoletoImagem(buffer.toString("base64"), mimeType);
+  } catch (e) {
+    logger.error("[processarBoletoImagem] falha ao extrair dados via Claude", { erro: e.message });
+    dados = undefined;
+  }
+
+  if (!dados) {
+    return `[DOCUMENTO RECEBIDO EM IMAGEM]
+A imagem foi recebida e salva em: ${boletoUrl}, mas não foi possível identificar os dados do documento automaticamente (foto ilegível, ou não parece ser um boleto/comprovante). Peça ao usuário pra informar manualmente descrição, valor e data de vencimento.`;
+  }
+
+  return `[DOCUMENTO RECEBIDO EM IMAGEM]
+Dados extraídos automaticamente da foto (podem estar errados — confirme com o usuário, dando chance de corrigir, e peça a senha de autorização antes de registrar):
+descricao: "${dados.descricao}"
+valor: ${dados.valor}
+vencimento: "${dados.vencimento}"
+boletoUrl: "${boletoUrl}" (SEMPRE repassar esse valor EXATO pra registrar_boleto_contas_pagar ou anexar_boleto_conta_pagar, nunca inventar ou alterar essa URL)
+boletoNomeArquivo: "${nomeArquivo}"`;
+}
+
 // Núcleo do assistente do Sistema GW (system prompt + loop de tool use do
 // Claude) — usado tanto pelo chat do app (agenteGW, onCall) quanto pelo
 // webhook do WhatsApp (webhookEvolutionGW). Extraído pra um só lugar pra não
@@ -2467,7 +2564,7 @@ Se o usuário pedir o detalhamento/extrato dos serviços de UM funcionário na f
 Para editar ou excluir um lançamento do caixa, use consultar_caixa primeiro para encontrar o id correto e confirme com o usuário qual lançamento é (data, descrição e valor) antes de aplicar a alteração.
 Para editar ou dar baixa num lançamento do Contas a Pagar, use consultar_contas_pagar primeiro para encontrar o id correto — NUNCA invente um id (ex: "1", "2", "3" não são ids válidos, só o id exato que consultar_contas_pagar retornou) — e confirme com o usuário qual lançamento é (descrição e valor atuais) antes de aplicar. Pra "dar baixa"/"marcar como pago"/"quitar", use dar_baixa_conta_pagar. Pra mudar descrição, valor ou data, use editar_conta_pagar.
 Contas a Receber funciona do mesmo jeito que Contas a Pagar, com o mesmo requisito de senha: use consultar_contas_receber primeiro pra encontrar o id correto antes de editar_conta_receber, dar_baixa_conta_receber ou excluir_conta_receber — NUNCA invente um id, só o id exato retornado por consultar_contas_receber é válido — e confirme com o usuário qual lançamento é (descrição e valor) antes de aplicar qualquer alteração. Pra criar um lançamento novo, use criar_conta_receber. Pra "dar baixa"/"marcar como recebido"/"quitar", use dar_baixa_conta_receber. Pra mudar descrição, valor ou data, use editar_conta_receber. Pra excluir, use excluir_conta_receber e confirme claramente com o usuário antes, já que é uma ação destrutiva.
-Quando o usuário encaminhar um boleto em PDF pelo WhatsApp, o sistema já tenta extrair automaticamente descrição, valor e vencimento do texto do documento antes de te passar a mensagem — você vai receber isso identificado com "[BOLETO RECEBIDO EM PDF]", junto com os dados extraídos (ou um aviso de que a extração falhou/não teve confiança suficiente). NUNCA registre um boleto automaticamente: mostre ao usuário exatamente o que foi entendido (descrição, valor e vencimento) e pergunte se está correto, dando espaço pra ele corrigir qualquer campo. Depois de confirmados os dados, PERGUNTE se é pra criar um lançamento NOVO no Contas a Pagar ou ANEXAR esse PDF a um lançamento JÁ EXISTENTE — nunca presuma. Se for novo: só depois que o usuário confirmar os dados (corrigidos ou não) E informar a senha de autorização, chame registrar_boleto_contas_pagar. Se for anexar a um existente: chame consultar_contas_pagar (de preferência filtrando por status "aberto") e mostre a lista pro usuário escolher qual lançamento é — igual ao seletor de Contas a Pagar que já existe na tela de Caixa do app — e só depois que ele indicar o lançamento certo E informar a senha, chame anexar_boleto_conta_pagar com o id daquele lançamento E o campo data com o vencimento confirmado do boleto (mesmo que o usuário não tenha comentado nada sobre a data do lançamento existente) — se vier diferente da data que o lançamento já tinha, a ferramenta atualiza sozinha; avise o usuário dessa mudança de data no resultado. Em ambos os casos, o campo boletoUrl que vier na mensagem é a URL permanente do PDF já salvo — repasse esse valor EXATAMENTE como recebido, nunca invente, altere ou omita essa URL. Se a extração vier marcada como falha, avise o usuário que não foi possível ler os dados automaticamente e peça pra ele informar manualmente descrição, valor e vencimento — pra criar um lançamento novo os três são obrigatórios; pra anexar a um existente, pelo menos o vencimento é necessário (pra decidir se atualiza a data do lançamento).
+Quando o usuário encaminhar um boleto em PDF, ou a FOTO de um documento (boleto, comprovante, nota), pelo WhatsApp, o sistema já tenta extrair automaticamente descrição, valor e vencimento antes de te passar a mensagem — você vai receber isso identificado com "[BOLETO RECEBIDO EM PDF]" ou "[DOCUMENTO RECEBIDO EM IMAGEM]" (mesma lógica pros dois, só muda a etiqueta), junto com os dados extraídos (ou um aviso de que a extração falhou/não teve confiança suficiente). NUNCA registre um boleto automaticamente: mostre ao usuário exatamente o que foi entendido (descrição, valor e vencimento) e pergunte se está correto, dando espaço pra ele corrigir qualquer campo. Depois de confirmados os dados, PERGUNTE se é pra criar um lançamento NOVO no Contas a Pagar ou ANEXAR esse PDF/imagem a um lançamento JÁ EXISTENTE — nunca presuma. Se for novo: só depois que o usuário confirmar os dados (corrigidos ou não) E informar a senha de autorização, chame registrar_boleto_contas_pagar. Se for anexar a um existente: chame consultar_contas_pagar (de preferência filtrando por status "aberto") e mostre a lista pro usuário escolher qual lançamento é — igual ao seletor de Contas a Pagar que já existe na tela de Caixa do app — e só depois que ele indicar o lançamento certo E informar a senha, chame anexar_boleto_conta_pagar com o id daquele lançamento E o campo data com o vencimento confirmado do boleto (mesmo que o usuário não tenha comentado nada sobre a data do lançamento existente) — se vier diferente da data que o lançamento já tinha, a ferramenta atualiza sozinha; avise o usuário dessa mudança de data no resultado. Em ambos os casos, o campo boletoUrl que vier na mensagem é a URL permanente do arquivo (PDF ou imagem) já salvo — repasse esse valor EXATAMENTE como recebido, nunca invente, altere ou omita essa URL. Se a extração vier marcada como falha, avise o usuário que não foi possível ler os dados automaticamente e peça pra ele informar manualmente descrição, valor e vencimento — pra criar um lançamento novo os três são obrigatórios; pra anexar a um existente, pelo menos o vencimento é necessário (pra decidir se atualiza a data do lançamento).
 Para cancelar um registro de ponto, use consultar_ponto primeiro para encontrar o id correto e confirme com o usuário qual registro é (funcionário, tipo e horário) antes de cancelar.
 Para corrigir um registro de ponto já existente (mudar data, horário ou tipo), use editar_ponto com o id obtido via consultar_ponto — NÃO cancele e registre de novo manualmente em duas chamadas separadas; editar_ponto já faz isso internamente (substitui o registro e guarda um histórico da alteração).
 Quando o usuário pedir para registrar ponto em uma data diferente de hoje (ex: "registre a saída de fulano dia 27/06"), SEMPRE preencha o campo "data" de registrar_ponto com essa data — nunca deixe em branco, senão o registro cai na data de hoje por engano.
@@ -2629,6 +2726,12 @@ async function passadaPollingWhatsApp(apiKeyValue) {
        msg.message.documentWithCaptionMessage.message.documentMessage)
     );
 
+    // Foto de documento (boleto/comprovante) enviada como imagem — chega em
+    // msg.message.imageMessage. Tratada como um possível anexo de Contas a
+    // Pagar, igual ao boleto em PDF (ver instrução no system prompt sobre
+    // perguntar se é lançamento novo ou anexar a um já existente).
+    const imgMsg = msg.message && msg.message.imageMessage;
+
     if (docMsg && docMsg.mimetype === "application/pdf") {
       try {
         texto = await processarBoletoPdf(msg, docMsg, apiKeyValue);
@@ -2636,6 +2739,14 @@ async function passadaPollingWhatsApp(apiKeyValue) {
         logger.error("[pollingAgenteWhatsApp] erro ao processar boleto PDF", { erro: e.message, msgId: msg.key.id });
         texto = `[BOLETO RECEBIDO EM PDF]
 Houve uma falha técnica ao processar o arquivo (${e.message}). Avise o usuário que não foi possível processar o boleto automaticamente, e peça pra reenviar ou informar os dados manualmente.`;
+      }
+    } else if (imgMsg) {
+      try {
+        texto = await processarBoletoImagem(msg, imgMsg, apiKeyValue);
+      } catch (e) {
+        logger.error("[pollingAgenteWhatsApp] erro ao processar imagem de documento", { erro: e.message, msgId: msg.key.id });
+        texto = `[DOCUMENTO RECEBIDO EM IMAGEM]
+Houve uma falha técnica ao processar a imagem (${e.message}). Avise o usuário que não foi possível processar o documento automaticamente, e peça pra reenviar ou informar os dados manualmente.`;
       }
     }
 
