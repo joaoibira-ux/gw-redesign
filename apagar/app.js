@@ -7,12 +7,13 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "1.8";
+const VERSAO = "1.9";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
-const db  = firebase.firestore();
-const col = db.collection("contasPagar");
+const db      = firebase.firestore();
+const storage = firebase.storage();
+const col     = db.collection("contasPagar");
 
 function escHtml(s) {
   return String(s || "")
@@ -180,7 +181,9 @@ function abrirDetalhe(id) {
 
   const linhas = [`<div class="detalhe-linha"><span>Data</span><span>${escHtml(c.data)}</span></div>`];
   if (baixado && c.dataBaixa) linhas.push(`<div class="detalhe-linha"><span>Pago em</span><span>${escHtml(c.dataBaixa)}</span></div>`);
-  if (c.boletoUrl) linhas.push(`<div class="detalhe-linha"><span>Boleto</span><span><a href="${escHtml(c.boletoUrl)}" target="_blank" rel="noopener" class="link-boleto">Ver PDF ↗</a></span></div>`);
+  linhas.push(c.boletoUrl
+    ? `<div class="detalhe-linha"><span>Boleto</span><span><a href="${escHtml(c.boletoUrl)}" target="_blank" rel="noopener" class="link-boleto">📎 Ver PDF</a></span></div>`
+    : `<div class="detalhe-linha"><span>Boleto</span><span><button type="button" class="btn-anexar-boleto" onclick="anexarBoleto('${id}')">📎 Anexar</button></span></div>`);
 
   const temPagamentoParcial = c.valorOriginal && c.valorOriginal > (c.valor || 0);
   if (temPagamentoParcial) {
@@ -207,6 +210,37 @@ function fecharDetalhe() {
   document.getElementById("detalhe-overlay").style.display = "none";
   detalheAbertoId = null;
 }
+
+// ── Anexar boleto (PDF) direto pelo app ──────────────────────
+let _idAnexandoBoleto = null;
+
+function anexarBoleto(id) {
+  _idAnexandoBoleto = id;
+  document.getElementById("input-anexar-boleto").click();
+}
+
+document.getElementById("input-anexar-boleto").addEventListener("change", async function() {
+  const file = this.files[0];
+  const id = _idAnexandoBoleto;
+  this.value = ""; // permite selecionar o mesmo arquivo de novo depois
+  if (!file || !id) return;
+
+  if (file.type !== "application/pdf") {
+    alert("Selecione um arquivo PDF.");
+    return;
+  }
+
+  try {
+    const ref = storage.ref(`boletos/${Date.now()}_${file.name}`);
+    await ref.put(file, { contentType: "application/pdf" });
+    const boletoUrl = await ref.getDownloadURL();
+    await col.doc(id).update({ boletoUrl, boletoNomeArquivo: file.name });
+    if (detalheAbertoId === id) abrirDetalhe(id); // atualiza a tela de detalhe já aberta
+  } catch (e) {
+    alert("Erro ao anexar o boleto. Tente novamente.");
+    console.error(e);
+  }
+});
 
 function cancelarDaTelaDetalhe() {
   if (!detalheAbertoId) return;

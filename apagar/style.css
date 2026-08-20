@@ -290,6 +290,17 @@ header {
 }
 .link-boleto:active { opacity: 0.7; }
 
+.btn-anexar-boleto {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #1a3322;
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+.btn-anexar-boleto:active { opacity: 0.7; }
+
 .detalhe-extrato-titulo {
   font-size: 0.75rem;
   font-weight: 700;
