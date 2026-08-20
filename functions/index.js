@@ -260,11 +260,12 @@ const TOOLS_GW = [
   },
   {
     name: "anexar_boleto_conta_pagar",
-    description: "Anexa o PDF de um boleto recebido pelo WhatsApp a um lançamento JÁ EXISTENTE no Contas a Pagar, em vez de criar um lançamento novo (pra criar um novo, use registrar_boleto_contas_pagar). Use consultar_contas_pagar antes para listar os lançamentos em aberto e obter o id correto (NUNCA invente um id) — mostre a lista ao usuário e confirme qual lançamento é antes de aplicar. O campo boletoUrl deve ser exatamente o valor recebido na mensagem do sistema (nunca invente, altere ou omita essa URL). ALTERA O BANCO DE DADOS: exige senha de autorização, peça ao usuário antes de chamar.",
+    description: "Anexa o PDF de um boleto recebido pelo WhatsApp a um lançamento JÁ EXISTENTE no Contas a Pagar, em vez de criar um lançamento novo (pra criar um novo, use registrar_boleto_contas_pagar). Use consultar_contas_pagar antes para listar os lançamentos em aberto e obter o id correto (NUNCA invente um id) — mostre a lista ao usuário e confirme qual lançamento é antes de aplicar. Se o vencimento do boleto (data) for diferente da data que o lançamento já tinha, a data do lançamento é atualizada para a do boleto automaticamente. O campo boletoUrl deve ser exatamente o valor recebido na mensagem do sistema (nunca invente, altere ou omita essa URL). ALTERA O BANCO DE DADOS: exige senha de autorização, peça ao usuário antes de chamar.",
     input_schema: {
       type: "object",
       properties: {
         id:                { type: "string", description: "ID do lançamento já existente (obtido via consultar_contas_pagar)" },
+        data:              { type: "string", description: "Data de vencimento do boleto, DD/MM/AAAA, confirmada ou corrigida pelo usuário. Se vier diferente da data atual do lançamento, o lançamento é atualizado pra essa data." },
         boletoUrl:         { type: "string", description: "URL permanente do PDF do boleto no Cloud Storage — repassar EXATAMENTE como recebida na mensagem do sistema, nunca alterar." },
         boletoNomeArquivo: { type: "string", description: "Nome original do arquivo PDF (opcional)." },
         senha:             { type: "string", description: "Senha de autorização para alterar o banco de dados. Deve ser pedida ao usuário antes de chamar esta ferramenta." }
@@ -1701,7 +1702,7 @@ async function executarFerramenta(nome, input) {
   }
 
   if (nome === "anexar_boleto_conta_pagar") {
-    const { id, boletoUrl, boletoNomeArquivo, senha } = input;
+    const { id, data, boletoUrl, boletoNomeArquivo, senha } = input;
     if (senha !== SENHA_ALTERACAO_BANCO) {
       return { sucesso: false, erro: "senha_invalida", mensagem: "Senha incorreta. Peça a senha de autorização ao usuário para alterar o banco de dados." };
     }
@@ -1712,17 +1713,23 @@ async function executarFerramenta(nome, input) {
     const doc = await ref.get();
     if (!doc.exists) return { sucesso: false, erro: "nao_encontrado", mensagem: "Lançamento não encontrado no Contas a Pagar." };
 
+    const atual = doc.data();
     const updates = { boletoUrl };
     if (boletoNomeArquivo) updates.boletoNomeArquivo = boletoNomeArquivo;
+    const dataAlterada = data && data !== atual.data;
+    if (dataAlterada) updates.data = data;
     await ref.update(updates);
 
-    const atual = doc.data();
     return {
       sucesso: true,
-      mensagem: "Boleto anexado ao lançamento existente no Contas a Pagar.",
+      mensagem: dataAlterada
+        ? `Boleto anexado ao lançamento existente no Contas a Pagar. Data atualizada de ${atual.data} para ${data} (vencimento do boleto).`
+        : "Boleto anexado ao lançamento existente no Contas a Pagar.",
       id,
       descricao: atual.descricao,
-      valor: atual.valor
+      valor: atual.valor,
+      dataAnterior: atual.data,
+      dataAtual: dataAlterada ? data : atual.data
     };
   }
 
@@ -2460,7 +2467,7 @@ Se o usuário pedir o detalhamento/extrato dos serviços de UM funcionário na f
 Para editar ou excluir um lançamento do caixa, use consultar_caixa primeiro para encontrar o id correto e confirme com o usuário qual lançamento é (data, descrição e valor) antes de aplicar a alteração.
 Para editar ou dar baixa num lançamento do Contas a Pagar, use consultar_contas_pagar primeiro para encontrar o id correto — NUNCA invente um id (ex: "1", "2", "3" não são ids válidos, só o id exato que consultar_contas_pagar retornou) — e confirme com o usuário qual lançamento é (descrição e valor atuais) antes de aplicar. Pra "dar baixa"/"marcar como pago"/"quitar", use dar_baixa_conta_pagar. Pra mudar descrição, valor ou data, use editar_conta_pagar.
 Contas a Receber funciona do mesmo jeito que Contas a Pagar, com o mesmo requisito de senha: use consultar_contas_receber primeiro pra encontrar o id correto antes de editar_conta_receber, dar_baixa_conta_receber ou excluir_conta_receber — NUNCA invente um id, só o id exato retornado por consultar_contas_receber é válido — e confirme com o usuário qual lançamento é (descrição e valor) antes de aplicar qualquer alteração. Pra criar um lançamento novo, use criar_conta_receber. Pra "dar baixa"/"marcar como recebido"/"quitar", use dar_baixa_conta_receber. Pra mudar descrição, valor ou data, use editar_conta_receber. Pra excluir, use excluir_conta_receber e confirme claramente com o usuário antes, já que é uma ação destrutiva.
-Quando o usuário encaminhar um boleto em PDF pelo WhatsApp, o sistema já tenta extrair automaticamente descrição, valor e vencimento do texto do documento antes de te passar a mensagem — você vai receber isso identificado com "[BOLETO RECEBIDO EM PDF]", junto com os dados extraídos (ou um aviso de que a extração falhou/não teve confiança suficiente). NUNCA registre um boleto automaticamente: mostre ao usuário exatamente o que foi entendido (descrição, valor e vencimento) e pergunte se está correto, dando espaço pra ele corrigir qualquer campo. Depois de confirmados os dados, PERGUNTE se é pra criar um lançamento NOVO no Contas a Pagar ou ANEXAR esse PDF a um lançamento JÁ EXISTENTE — nunca presuma. Se for novo: só depois que o usuário confirmar os dados (corrigidos ou não) E informar a senha de autorização, chame registrar_boleto_contas_pagar. Se for anexar a um existente: chame consultar_contas_pagar (de preferência filtrando por status "aberto") e mostre a lista pro usuário escolher qual lançamento é — igual ao seletor de Contas a Pagar que já existe na tela de Caixa do app — e só depois que ele indicar o lançamento certo E informar a senha, chame anexar_boleto_conta_pagar com o id daquele lançamento. Em ambos os casos, o campo boletoUrl que vier na mensagem é a URL permanente do PDF já salvo — repasse esse valor EXATAMENTE como recebido, nunca invente, altere ou omita essa URL. Se a extração vier marcada como falha, avise o usuário que não foi possível ler os dados automaticamente e peça pra ele informar manualmente descrição, valor e vencimento (só necessário se for criar um lançamento novo — pra anexar a um existente não precisa desses três campos).
+Quando o usuário encaminhar um boleto em PDF pelo WhatsApp, o sistema já tenta extrair automaticamente descrição, valor e vencimento do texto do documento antes de te passar a mensagem — você vai receber isso identificado com "[BOLETO RECEBIDO EM PDF]", junto com os dados extraídos (ou um aviso de que a extração falhou/não teve confiança suficiente). NUNCA registre um boleto automaticamente: mostre ao usuário exatamente o que foi entendido (descrição, valor e vencimento) e pergunte se está correto, dando espaço pra ele corrigir qualquer campo. Depois de confirmados os dados, PERGUNTE se é pra criar um lançamento NOVO no Contas a Pagar ou ANEXAR esse PDF a um lançamento JÁ EXISTENTE — nunca presuma. Se for novo: só depois que o usuário confirmar os dados (corrigidos ou não) E informar a senha de autorização, chame registrar_boleto_contas_pagar. Se for anexar a um existente: chame consultar_contas_pagar (de preferência filtrando por status "aberto") e mostre a lista pro usuário escolher qual lançamento é — igual ao seletor de Contas a Pagar que já existe na tela de Caixa do app — e só depois que ele indicar o lançamento certo E informar a senha, chame anexar_boleto_conta_pagar com o id daquele lançamento E o campo data com o vencimento confirmado do boleto (mesmo que o usuário não tenha comentado nada sobre a data do lançamento existente) — se vier diferente da data que o lançamento já tinha, a ferramenta atualiza sozinha; avise o usuário dessa mudança de data no resultado. Em ambos os casos, o campo boletoUrl que vier na mensagem é a URL permanente do PDF já salvo — repasse esse valor EXATAMENTE como recebido, nunca invente, altere ou omita essa URL. Se a extração vier marcada como falha, avise o usuário que não foi possível ler os dados automaticamente e peça pra ele informar manualmente descrição, valor e vencimento — pra criar um lançamento novo os três são obrigatórios; pra anexar a um existente, pelo menos o vencimento é necessário (pra decidir se atualiza a data do lançamento).
 Para cancelar um registro de ponto, use consultar_ponto primeiro para encontrar o id correto e confirme com o usuário qual registro é (funcionário, tipo e horário) antes de cancelar.
 Para corrigir um registro de ponto já existente (mudar data, horário ou tipo), use editar_ponto com o id obtido via consultar_ponto — NÃO cancele e registre de novo manualmente em duas chamadas separadas; editar_ponto já faz isso internamente (substitui o registro e guarda um histórico da alteração).
 Quando o usuário pedir para registrar ponto em uma data diferente de hoje (ex: "registre a saída de fulano dia 27/06"), SEMPRE preencha o campo "data" de registrar_ponto com essa data — nunca deixe em branco, senão o registro cai na data de hoje por engano.
