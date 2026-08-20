@@ -7,13 +7,12 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "1.10";
+const VERSAO = "1.11";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
-const db      = firebase.firestore();
-const storage = firebase.storage();
-const col     = db.collection("contasPagar");
+const db  = firebase.firestore();
+const col = db.collection("contasPagar");
 
 function escHtml(s) {
   return String(s || "")
@@ -57,7 +56,7 @@ let detalheAbertoId = null;
 function cardHtml(id, c, opts) {
   const baixado = c.status === "baixado";
   const sel = opts.selecionavel && selecionados.has(id);
-  const onclick = opts.onClick || (opts.selecionavel ? `onCardClick('${id}')` : `abrirDetalhe('${id}')`);
+  const onclick = opts.selecionavel ? `onCardClick('${id}')` : `abrirDetalhe('${id}')`;
   return `
     <div class="card ${baixado ? "baixado" : ""} ${sel ? "selecionado" : ""}" onclick="${onclick}">
       <div class="card-top">
@@ -68,6 +67,7 @@ function cardHtml(id, c, opts) {
         <span>${escHtml(c.data)}</span>
         <span class="badge ${baixado ? "baixado" : "aberto"}">${baixado ? "Pago" : "Em aberto"}</span>
         ${baixado && c.dataBaixa ? `<span>Pagto: ${escHtml(c.dataBaixa)}</span>` : ""}
+        ${c.boletoUrl ? `<a href="${escHtml(c.boletoUrl)}" target="_blank" rel="noopener" class="card-boleto-clip" onclick="event.stopPropagation()" title="Ver boleto anexado">📎</a>` : ""}
       </div>
     </div>`;
 }
@@ -207,58 +207,6 @@ function fecharDetalhe() {
   document.getElementById("detalhe-overlay").style.display = "none";
   detalheAbertoId = null;
 }
-
-// ── Anexar boleto (PDF) direto pelo app ──────────────────────
-// Botão flutuante próprio (📎) na lista: abre um seletor com as contas em
-// aberto, e ao escolher uma, abre o seletor de arquivo do celular pra
-// anexar o PDF direto naquele lançamento.
-let _idAnexandoBoleto = null;
-
-function abrirAnexarBoleto() {
-  const lista = document.getElementById("lista-anexar-picker");
-  const abertos = Object.entries(docsCache).filter(([, c]) => c.status !== "baixado");
-  lista.innerHTML = abertos.length === 0
-    ? '<p class="empty">Nenhuma conta em aberto.</p>'
-    : abertos
-        .map(([id, c]) => ({ id, c }))
-        .sort((a, b) => parseDataOrdenacao(a.c.data) - parseDataOrdenacao(b.c.data))
-        .map(({ id, c }) => cardHtml(id, c, { selecionavel: false, onClick: `selecionarParaAnexar('${id}')` }))
-        .join("");
-  document.getElementById("anexar-picker-overlay").style.display = "flex";
-}
-
-function fecharAnexarBoleto() {
-  document.getElementById("anexar-picker-overlay").style.display = "none";
-}
-
-function selecionarParaAnexar(id) {
-  _idAnexandoBoleto = id;
-  fecharAnexarBoleto();
-  document.getElementById("input-anexar-boleto").click();
-}
-
-document.getElementById("input-anexar-boleto").addEventListener("change", async function() {
-  const file = this.files[0];
-  const id = _idAnexandoBoleto;
-  this.value = ""; // permite selecionar o mesmo arquivo de novo depois
-  if (!file || !id) return;
-
-  if (file.type !== "application/pdf") {
-    alert("Selecione um arquivo PDF.");
-    return;
-  }
-
-  try {
-    const ref = storage.ref(`boletos/${Date.now()}_${file.name}`);
-    await ref.put(file, { contentType: "application/pdf" });
-    const boletoUrl = await ref.getDownloadURL();
-    await col.doc(id).update({ boletoUrl, boletoNomeArquivo: file.name });
-    alert("Boleto anexado com sucesso!");
-  } catch (e) {
-    alert("Erro ao anexar o boleto. Tente novamente.");
-    console.error(e);
-  }
-});
 
 function cancelarDaTelaDetalhe() {
   if (!detalheAbertoId) return;

@@ -120,6 +120,15 @@ header {
   color: #888;
 }
 
+.card-boleto-clip {
+  margin-left: auto;
+  font-size: 1rem;
+  line-height: 1;
+  text-decoration: none;
+  padding: 2px 4px;
+}
+.card-boleto-clip:active { opacity: 0.6; }
+
 .badge {
   display: inline-block;
   border-radius: 4px;
@@ -341,12 +350,6 @@ header {
   z-index: 100;
 }
 .fab.open { background: #c62828; transform: rotate(45deg); }
-
-.fab-anexar {
-  right: 84px;
-  background: #1565c0;
-  font-size: 1.3rem;
-}
 
 .form-card {
   position: fixed;
