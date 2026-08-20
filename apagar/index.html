@@ -9,7 +9,7 @@
   <title>A Pagar</title>
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <link rel="manifest" href="./manifest.json" />
-  <link rel="stylesheet" href="./style.css?v=4" />
+  <link rel="stylesheet" href="./style.css?v=5" />
   <link rel="apple-touch-icon" href="./Logo-gw.png" />
 </head>
 <body>
@@ -40,6 +40,15 @@
 </div>
 
 <button class="fab" id="fab" onclick="toggleForm()">+</button>
+<button class="fab fab-anexar" id="fab-anexar" onclick="abrirAnexarBoleto()" title="Anexar boleto">📎</button>
+
+<div class="pagos-overlay" id="anexar-picker-overlay" style="display:none">
+  <div class="pagos-header">
+    <span>Anexar boleto em qual conta?</span>
+    <button class="pagos-fechar" onclick="fecharAnexarBoleto()">✕</button>
+  </div>
+  <div id="lista-anexar-picker" class="lista"></div>
+</div>
 
 <div class="detalhe-overlay" id="detalhe-overlay" style="display:none" onclick="if(event.target===this) fecharDetalhe()">
   <div class="detalhe-box">
@@ -81,7 +90,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 <input type="file" id="input-anexar-boleto" accept="application/pdf" style="display:none" />
-<script src="./app.js?v=8"></script>
+<script src="./app.js?v=9"></script>
 <script src="../agente.js"></script>
 <script src="../bfcache-fix.js"></script>
 </body>
