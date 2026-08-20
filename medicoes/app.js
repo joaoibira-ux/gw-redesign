@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.3";
+const VERSAO = "3.4";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -255,6 +255,34 @@ function cancelarRevisao() {
   document.getElementById("overlay-revisao").style.display = "none";
 }
 
+// Data de vencimento da NF fica sempre no dia quinzenal mais próximo (15 ou
+// 30) a partir da data do registro — ex: registrado dia 03 -> vence dia 15;
+// registrado dia 20 -> vence dia 30; registrado dia 31 -> vence dia 15 do
+// mês seguinte (não existe dia 30 depois do dia 31 no mesmo mês).
+function proximoDiaQuinzenal(dataStr) {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec((dataStr || "").trim());
+  if (!m) return dataStr;
+  const dia = parseInt(m[1], 10);
+  let mes = parseInt(m[2], 10);
+  let ano = parseInt(m[3].length === 2 ? "20" + m[3] : m[3], 10);
+  let diaAlvo;
+  if (dia <= 15) {
+    diaAlvo = 15;
+  } else if (dia <= 30) {
+    diaAlvo = 30;
+  } else {
+    diaAlvo = 15;
+    mes += 1;
+    if (mes > 12) { mes = 1; ano += 1; }
+  }
+  return `${String(diaAlvo).padStart(2, "0")}/${String(mes).padStart(2, "0")}/${ano}`;
+}
+
+// A Paradigma só libera a retenção de garantia bem mais adiante — enquanto
+// não tem uma data real prevista, fica com essa data fixa (o João pediu
+// especificamente esse valor, não é um cálculo).
+const DATA_RETENCAO_PARADIGMA = "30/06/2027";
+
 function salvarRevisao() {
   const nome = document.getElementById("rv-nome").value.trim();
   const data = document.getElementById("rv-data").value.trim();
@@ -297,6 +325,9 @@ function salvarRevisao() {
   // valor não ficar esquecido sem nenhum registro em lugar nenhum. O valor
   // da retenção é a NF menos o valor líquido já arredondado (não 5% batido
   // à parte), pra os dois somados baterem exatamente com o valor da NF.
+  // Vencimento da conta do BM: dia quinzenal (15/30) mais próximo a partir
+  // da data do registro. Vencimento da retenção: sempre a data fixa da
+  // Paradigma (não calculada — não tem previsão real de liberação ainda).
   // Só no registro de medição nova, não em edição de uma já existente, pra
   // não duplicar o lançamento.
   if (valorNotaFiscal > 0) {
@@ -304,7 +335,7 @@ function salvarRevisao() {
     const valorRetencao = Math.round((valorNotaFiscal - valorLiquido) * 100) / 100;
 
     colReceber.add({
-      data,
+      data: proximoDiaQuinzenal(data),
       descricao: `Medição ${nome}`,
       valor: valorLiquido,
       status: "aberto",
@@ -313,7 +344,7 @@ function salvarRevisao() {
 
     if (valorRetencao > 0) {
       colReceber.add({
-        data,
+        data: DATA_RETENCAO_PARADIGMA,
         descricao: `Retenção 5% Paradigma ${nome}`,
         valor: valorRetencao,
         status: "aberto",
