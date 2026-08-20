@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.2";
+const VERSAO = "3.3";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -292,16 +292,34 @@ function salvarRevisao() {
 
   // Toda medição nova gera automaticamente a conta a receber correspondente
   // (95% do Valor da NF — os outros 5% ficam retidos, mesma regra mostrada
-  // no detalhe da medição). Só no registro de medição nova, não em edição
-  // de uma já existente, pra não duplicar o lançamento.
+  // no detalhe da medição) E, junto, uma segunda conta a receber só com os
+  // 5% retidos pela Paradigma (com o número do BM na descrição), pra esse
+  // valor não ficar esquecido sem nenhum registro em lugar nenhum. O valor
+  // da retenção é a NF menos o valor líquido já arredondado (não 5% batido
+  // à parte), pra os dois somados baterem exatamente com o valor da NF.
+  // Só no registro de medição nova, não em edição de uma já existente, pra
+  // não duplicar o lançamento.
   if (valorNotaFiscal > 0) {
+    const valorLiquido  = Math.round(valorNotaFiscal * 0.95 * 100) / 100;
+    const valorRetencao = Math.round((valorNotaFiscal - valorLiquido) * 100) / 100;
+
     colReceber.add({
       data,
       descricao: `Medição ${nome}`,
-      valor: Math.round(valorNotaFiscal * 0.95 * 100) / 100,
+      valor: valorLiquido,
       status: "aberto",
       criadoEm: firebase.firestore.FieldValue.serverTimestamp()
     });
+
+    if (valorRetencao > 0) {
+      colReceber.add({
+        data,
+        descricao: `Retenção 5% Paradigma ${nome}`,
+        valor: valorRetencao,
+        status: "aberto",
+        criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
   }
 
   itensRevisao = [];
