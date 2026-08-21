@@ -3021,6 +3021,54 @@ exports.lancarDespesasRecorrentes = onSchedule(
   }
 );
 
+// Toda segunda-feira, lança no Contas a Pagar uma cópia de cada despesa
+// recorrente SEMANAL cadastrada em Configurações, com vencimento na própria
+// segunda do lançamento. Mesmo padrão de lancarDespesasRecorrentes (marca a
+// semana já lançada pra nunca duplicar, respeita prazo de validade em
+// semanas em vez de meses) — coleção separada porque o ciclo (toda segunda,
+// sem "dia do mês" pra escolher) é mais simples que o mensal.
+exports.lancarDespesasRecorrentesSemanais = onSchedule(
+  { schedule: "0 6 * * 1", timeZone: "America/Sao_Paulo" },
+  async () => {
+    const hojeStr = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }); // YYYY-MM-DD, chave da semana
+    const [ano, mes, dia] = hojeStr.split("-");
+    const dataVencimento = `${dia}/${mes}/${ano}`;
+
+    const snap = await db.collection("despesasRecorrentesSemanais").get();
+    if (snap.empty) return;
+
+    const batch = db.batch();
+    let algumLancado = false;
+
+    for (const doc of snap.docs) {
+      const d = doc.data();
+      if (d.ultimoLancamento === hojeStr) continue;
+
+      // Prazo de validade: se definido (não indeterminado) e já atingido, não
+      // lança mais — a despesa recorrente fica "encerrada" mas não é apagada.
+      const lancamentosFeitos = d.lancamentosFeitos || 0;
+      if (d.prazoSemanas && lancamentosFeitos >= d.prazoSemanas) continue;
+
+      batch.set(db.collection("contasPagar").doc(), {
+        data: dataVencimento,
+        descricao: d.descricao,
+        valor: d.valor,
+        status: "aberto",
+        despesaRecorrenteSemanalId: doc.id,
+        criadoEm: admin.firestore.FieldValue.serverTimestamp()
+      });
+      batch.update(doc.ref, {
+        ultimoLancamento: hojeStr,
+        lancamentosFeitos: admin.firestore.FieldValue.increment(1)
+      });
+      algumLancado = true;
+    }
+
+    if (algumLancado) await batch.commit();
+    logger.info(`[despesasRecorrentesSemanais] lançamento da semana ${hojeStr} concluído`, { totalCadastradas: snap.size });
+  }
+);
+
 // Converte "DD/MM/AAAA" pro timestamp de meia-noite (America/Sao_Paulo) do dia de vencimento
 function parseDataVencimento(s) {
   const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec((s || "").trim());

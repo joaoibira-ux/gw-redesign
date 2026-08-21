@@ -1,4 +1,4 @@
-const VERSAO = "1.7";
+const VERSAO = "1.8";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp({
@@ -12,6 +12,7 @@ firebase.initializeApp({
 const db = firebase.firestore();
 const docRef = db.collection("configuracoes").doc("geral");
 const colRecorrentes = db.collection("despesasRecorrentes");
+const colRecorrentesSemanais = db.collection("despesasRecorrentesSemanais");
 
 function escHtml(s) {
   return String(s || "")
@@ -36,6 +37,7 @@ const DEFAULTS = {
 
 let cfg = { ...DEFAULTS };
 let recorrentes = [];
+let recorrentesSemanais = [];
 
 // ── Carrega e renderiza ───────────────────────────────────────
 docRef.onSnapshot(snap => {
@@ -46,6 +48,11 @@ docRef.onSnapshot(snap => {
 
 colRecorrentes.orderBy("diaMes").onSnapshot(snap => {
   recorrentes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  renderizar();
+});
+
+colRecorrentesSemanais.orderBy("criadoEm").onSnapshot(snap => {
+  recorrentesSemanais = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   renderizar();
 });
 
@@ -73,6 +80,12 @@ function renderizar() {
       : '<div class="cfg-item" style="justify-content:center;color:#888">Nenhuma despesa recorrente cadastrada.</div>'}
     <button class="btn-nova-recorrente" onclick="abrirModalRecorrente(null)">+ Nova Despesa Recorrente</button>
 
+    <div class="secao-titulo">🗓️ Despesas Recorrentes Semanais (lançadas no Contas a Pagar toda Segunda)</div>
+    ${recorrentesSemanais.length
+      ? recorrentesSemanais.map(recorrenteSemanalItemHtml).join("")
+      : '<div class="cfg-item" style="justify-content:center;color:#888">Nenhuma despesa recorrente semanal cadastrada.</div>'}
+    <button class="btn-nova-recorrente" onclick="abrirModalRecorrenteSemanal(null)">+ Nova Despesa Recorrente Semanal</button>
+
     <div class="secao-titulo">🔑 Senhas de Autorização</div>
     ${item("Excluir / Ativar / Desativar", cfg.senhaExcluir, "senhaExcluir", true)}
     ${item("Alterar Banco de Dados", cfg.senhaAlterarBanco, "senhaAlterarBanco", true)}
@@ -99,6 +112,23 @@ function recorrenteItemHtml(r) {
         <div class="cfg-valor">${fmtMoeda(r.valor)} · todo dia ${r.diaMes} · ${prazoLabel(r)}</div>
       </div>
       <button class="btn-editar" onclick="abrirModalRecorrente('${r.id}')">Editar</button>
+    </div>`;
+}
+
+function prazoSemanalLabel(r) {
+  if (!r.prazoSemanas) return "Indeterminado";
+  const feitos = r.lancamentosFeitos || 0;
+  return feitos >= r.prazoSemanas ? `Encerrado (${feitos}/${r.prazoSemanas} semanas)` : `${feitos}/${r.prazoSemanas} semanas`;
+}
+
+function recorrenteSemanalItemHtml(r) {
+  return `
+    <div class="cfg-item">
+      <div>
+        <div class="cfg-label">${escHtml(r.descricao)}</div>
+        <div class="cfg-valor">${fmtMoeda(r.valor)} · toda Segunda · ${prazoSemanalLabel(r)}</div>
+      </div>
+      <button class="btn-editar" onclick="abrirModalRecorrenteSemanal('${r.id}')">Editar</button>
     </div>`;
 }
 
@@ -263,6 +293,75 @@ function excluirRecorrente() {
 }
 
 document.getElementById("rec-senha").addEventListener("keydown", e => { if (e.key === "Enter") salvarRecorrente(); });
+
+// ── Modal despesa recorrente semanal ───────────────────────────
+let _recorrenteSemanalEditandoId = null;
+
+function abrirModalRecorrenteSemanal(id) {
+  _recorrenteSemanalEditandoId = id;
+  const r = id ? recorrentesSemanais.find(x => x.id === id) : null;
+
+  document.getElementById("modal-recorrente-semanal-titulo").textContent = id ? "Editar Despesa Recorrente Semanal" : "Nova Despesa Recorrente Semanal";
+  document.getElementById("recs-descricao").value = r ? r.descricao : "";
+  document.getElementById("recs-valor").value = r ? Number(r.valor || 0).toFixed(2).replace(".", ",") : "";
+  document.getElementById("recs-prazo").value = r && r.prazoSemanas ? r.prazoSemanas : "";
+  document.getElementById("recs-senha").value = "";
+  document.getElementById("recs-erro").textContent = "";
+  document.getElementById("recs-excluir-btn").style.display = id ? "block" : "none";
+  document.getElementById("modal-recorrente-semanal-overlay").style.display = "flex";
+  setTimeout(() => document.getElementById("recs-descricao").focus(), 50);
+}
+
+function fecharModalRecorrenteSemanal() {
+  document.getElementById("modal-recorrente-semanal-overlay").style.display = "none";
+  _recorrenteSemanalEditandoId = null;
+}
+
+function salvarRecorrenteSemanal() {
+  const erroEl = document.getElementById("recs-erro");
+  const senha = document.getElementById("recs-senha").value.trim();
+  if (senha !== cfg.pinCompleto) {
+    erroEl.textContent = "Senha de autorização incorreta.";
+    return;
+  }
+
+  const descricao = document.getElementById("recs-descricao").value.trim();
+  const valor = parseFloat(document.getElementById("recs-valor").value.trim().replace(",", "."));
+  const prazoStr = document.getElementById("recs-prazo").value.trim();
+  const prazoSemanas = prazoStr ? parseInt(prazoStr, 10) : null;
+
+  if (!descricao) { erroEl.textContent = "Informe a descrição."; return; }
+  if (isNaN(valor) || valor <= 0) { erroEl.textContent = "Valor inválido."; return; }
+  if (prazoStr && (isNaN(prazoSemanas) || prazoSemanas < 1)) { erroEl.textContent = "Prazo de validade deve ser em branco (indeterminado) ou um número de semanas maior que zero."; return; }
+
+  erroEl.textContent = "";
+  const dados = { descricao, valor, prazoSemanas };
+
+  // lancamentosFeitos só é zerado na criação — editar descrição/valor/prazo
+  // de uma recorrente existente não reinicia a contagem de semanas já lançadas.
+  const salvar = _recorrenteSemanalEditandoId
+    ? colRecorrentesSemanais.doc(_recorrenteSemanalEditandoId).update(dados)
+    : colRecorrentesSemanais.add({ ...dados, lancamentosFeitos: 0, criadoEm: firebase.firestore.FieldValue.serverTimestamp() });
+
+  salvar.then(() => fecharModalRecorrenteSemanal())
+    .catch(() => { erroEl.textContent = "Erro ao salvar. Tente novamente."; });
+}
+
+function excluirRecorrenteSemanal() {
+  const erroEl = document.getElementById("recs-erro");
+  const senha = document.getElementById("recs-senha").value.trim();
+  if (senha !== cfg.pinCompleto) {
+    erroEl.textContent = "Senha de autorização incorreta.";
+    return;
+  }
+  if (!_recorrenteSemanalEditandoId) return;
+
+  colRecorrentesSemanais.doc(_recorrenteSemanalEditandoId).delete()
+    .then(() => fecharModalRecorrenteSemanal())
+    .catch(() => { erroEl.textContent = "Erro ao excluir. Tente novamente."; });
+}
+
+document.getElementById("recs-senha").addEventListener("keydown", e => { if (e.key === "Enter") salvarRecorrenteSemanal(); });
 
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" })
