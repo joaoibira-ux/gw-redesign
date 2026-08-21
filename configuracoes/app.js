@@ -1,4 +1,4 @@
-const VERSAO = "1.8";
+const VERSAO = "1.9";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp({
@@ -38,6 +38,7 @@ const DEFAULTS = {
 let cfg = { ...DEFAULTS };
 let recorrentes = [];
 let recorrentesSemanais = [];
+let funcionariosCache = [];
 
 // ── Carrega e renderiza ───────────────────────────────────────
 docRef.onSnapshot(snap => {
@@ -54,6 +55,13 @@ colRecorrentes.orderBy("diaMes").onSnapshot(snap => {
 colRecorrentesSemanais.orderBy("criadoEm").onSnapshot(snap => {
   recorrentesSemanais = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   renderizar();
+});
+
+// Só pra popular o seletor de funcionário da condição de presença — não afeta o resto da tela.
+db.collection("funcionarios").orderBy("nome").onSnapshot(snap => {
+  funcionariosCache = snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(f => f.ativo !== false);
 });
 
 function fmtMoeda(v) {
@@ -122,11 +130,14 @@ function prazoSemanalLabel(r) {
 }
 
 function recorrenteSemanalItemHtml(r) {
+  const condicao = r.condicaoFuncionarioId
+    ? `<br>Se: ${escHtml(r.condicaoFuncionarioNome || "funcionário")} sem falta na semana anterior + entrada até ${escHtml(r.condicaoHorarioLimite || "11:59")}`
+    : "";
   return `
     <div class="cfg-item">
       <div>
         <div class="cfg-label">${escHtml(r.descricao)}</div>
-        <div class="cfg-valor">${fmtMoeda(r.valor)} · toda Segunda · ${prazoSemanalLabel(r)}</div>
+        <div class="cfg-valor">${fmtMoeda(r.valor)} · toda Segunda · ${prazoSemanalLabel(r)}${condicao}</div>
       </div>
       <button class="btn-editar" onclick="abrirModalRecorrenteSemanal('${r.id}')">Editar</button>
     </div>`;
@@ -297,6 +308,20 @@ document.getElementById("rec-senha").addEventListener("keydown", e => { if (e.ke
 // ── Modal despesa recorrente semanal ───────────────────────────
 let _recorrenteSemanalEditandoId = null;
 
+function popularSelectFuncionarioCondicao(selecionadoId) {
+  const sel = document.getElementById("recs-condicao-funcionario");
+  sel.innerHTML = funcionariosCache
+    .map(f => `<option value="${f.id}">${escHtml(f.nome)}</option>`)
+    .join("");
+  if (selecionadoId) sel.value = selecionadoId;
+}
+
+function toggleCondicaoRecorrenteSemanal() {
+  const ativa = document.getElementById("recs-condicao-ativa").checked;
+  document.getElementById("recs-condicao-wrap").style.display = ativa ? "block" : "none";
+  if (ativa) popularSelectFuncionarioCondicao();
+}
+
 function abrirModalRecorrenteSemanal(id) {
   _recorrenteSemanalEditandoId = id;
   const r = id ? recorrentesSemanais.find(x => x.id === id) : null;
@@ -305,6 +330,13 @@ function abrirModalRecorrenteSemanal(id) {
   document.getElementById("recs-descricao").value = r ? r.descricao : "";
   document.getElementById("recs-valor").value = r ? Number(r.valor || 0).toFixed(2).replace(".", ",") : "";
   document.getElementById("recs-prazo").value = r && r.prazoSemanas ? r.prazoSemanas : "";
+
+  const temCondicao = !!(r && r.condicaoFuncionarioId);
+  document.getElementById("recs-condicao-ativa").checked = temCondicao;
+  document.getElementById("recs-condicao-wrap").style.display = temCondicao ? "block" : "none";
+  popularSelectFuncionarioCondicao(r ? r.condicaoFuncionarioId : null);
+  document.getElementById("recs-condicao-horario").value = (r && r.condicaoHorarioLimite) || "11:59";
+
   document.getElementById("recs-senha").value = "";
   document.getElementById("recs-erro").textContent = "";
   document.getElementById("recs-excluir-btn").style.display = id ? "block" : "none";
@@ -329,13 +361,29 @@ function salvarRecorrenteSemanal() {
   const valor = parseFloat(document.getElementById("recs-valor").value.trim().replace(",", "."));
   const prazoStr = document.getElementById("recs-prazo").value.trim();
   const prazoSemanas = prazoStr ? parseInt(prazoStr, 10) : null;
+  const condicaoAtiva = document.getElementById("recs-condicao-ativa").checked;
 
   if (!descricao) { erroEl.textContent = "Informe a descrição."; return; }
   if (isNaN(valor) || valor <= 0) { erroEl.textContent = "Valor inválido."; return; }
   if (prazoStr && (isNaN(prazoSemanas) || prazoSemanas < 1)) { erroEl.textContent = "Prazo de validade deve ser em branco (indeterminado) ou um número de semanas maior que zero."; return; }
+  if (condicaoAtiva && !document.getElementById("recs-condicao-funcionario").value) { erroEl.textContent = "Selecione o funcionário da condição de presença."; return; }
 
   erroEl.textContent = "";
   const dados = { descricao, valor, prazoSemanas };
+
+  if (condicaoAtiva) {
+    const funcId = document.getElementById("recs-condicao-funcionario").value;
+    const func = funcionariosCache.find(f => f.id === funcId);
+    dados.condicaoFuncionarioId = funcId;
+    dados.condicaoFuncionarioNome = func ? func.nome : "";
+    dados.condicaoHorarioLimite = document.getElementById("recs-condicao-horario").value || "11:59";
+  } else if (_recorrenteSemanalEditandoId) {
+    // FieldValue.delete() só é válido em update() de doc existente — numa
+    // recorrente nova sem condição, simplesmente não inclui os campos.
+    dados.condicaoFuncionarioId = firebase.firestore.FieldValue.delete();
+    dados.condicaoFuncionarioNome = firebase.firestore.FieldValue.delete();
+    dados.condicaoHorarioLimite = firebase.firestore.FieldValue.delete();
+  }
 
   // lancamentosFeitos só é zerado na criação — editar descrição/valor/prazo
   // de uma recorrente existente não reinicia a contagem de semanas já lançadas.

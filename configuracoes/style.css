@@ -137,6 +137,28 @@ header {
 
 .modal-input:focus { border-color: #1a3322; }
 
+.modal-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  color: #333;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+.modal-checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #1a3322;
+  flex-shrink: 0;
+}
+
+.modal-condicao-hint {
+  font-size: 0.75rem;
+  color: #888;
+  margin: -4px 0 10px;
+}
+
 .modal-senha-wrap { margin-top: 4px; }
 
 .modal-senha-label {

@@ -3021,14 +3021,64 @@ exports.lancarDespesasRecorrentes = onSchedule(
   }
 );
 
-// Toda segunda-feira, lança no Contas a Pagar uma cópia de cada despesa
-// recorrente SEMANAL cadastrada em Configurações, com vencimento na própria
-// segunda do lançamento. Mesmo padrão de lancarDespesasRecorrentes (marca a
-// semana já lançada pra nunca duplicar, respeita prazo de validade em
-// semanas em vez de meses) — coleção separada porque o ciclo (toda segunda,
-// sem "dia do mês" pra escolher) é mais simples que o mensal.
+// Conta dias únicos com ao menos um ponto batido (segunda a sábado — domingo
+// fora do ciclo) na semana anterior à segundaStr informada (a própria semana
+// que termina no sábado antes dessa segunda). Usa o mesmo critério "5 de 6
+// dias" já usado em calcularFaltasQuinzenaAnterior (caixa/relatorio.html):
+// menos de 5 dias com ponto == teve falta na semana.
+async function funcionarioTeveFaltaSemanaAnterior(funcionarioId, segundaStr) {
+  const segundaAtual = new Date(segundaStr + "T00:00:00-03:00");
+  const inicioSemanaAnterior = new Date(segundaAtual);
+  inicioSemanaAnterior.setDate(inicioSemanaAnterior.getDate() - 7); // segunda passada
+
+  const snap = await db.collection("pontos")
+    .where("funcionarioId", "==", funcionarioId)
+    .where("timestamp", ">=", admin.firestore.Timestamp.fromDate(inicioSemanaAnterior))
+    .where("timestamp", "<", admin.firestore.Timestamp.fromDate(segundaAtual))
+    .get();
+
+  const diasUnicos = new Set();
+  snap.docs.forEach(doc => {
+    const ts = doc.data().timestamp && doc.data().timestamp.toDate();
+    if (!ts || ts.getDay() === 0) return; // domingo fora do ciclo
+    diasUnicos.add(ts.toDateString());
+  });
+
+  return diasUnicos.size < 5;
+}
+
+// Confere se o funcionário registrou ENTRADA hoje até (e incluindo) o
+// horarioLimite ("HH:MM").
+async function funcionarioRegistrouEntradaAte(funcionarioId, hojeStr, horarioLimite) {
+  const [h, m] = (horarioLimite || "23:59").split(":").map(Number);
+  const inicioDia = new Date(hojeStr + "T00:00:00-03:00");
+  const limite = new Date(hojeStr + "T00:00:00-03:00");
+  limite.setHours(h, m, 59, 999);
+
+  const snap = await db.collection("pontos")
+    .where("funcionarioId", "==", funcionarioId)
+    .where("tipo", "==", "entrada")
+    .where("timestamp", ">=", admin.firestore.Timestamp.fromDate(inicioDia))
+    .where("timestamp", "<=", admin.firestore.Timestamp.fromDate(limite))
+    .limit(1)
+    .get();
+
+  return !snap.empty;
+}
+
+// Toda segunda-feira ao meio-dia, lança no Contas a Pagar uma cópia de cada
+// despesa recorrente SEMANAL cadastrada em Configurações, com vencimento na
+// própria segunda do lançamento. Mesmo padrão de lancarDespesasRecorrentes
+// (marca a semana já lançada pra nunca duplicar, respeita prazo de validade
+// em semanas em vez de meses) — coleção separada porque o ciclo (toda
+// segunda, sem "dia do mês" pra escolher) é mais simples que o mensal.
+//
+// Roda ao MEIO-DIA (não de manhã cedo, como a mensal) de propósito: quem tem
+// condicaoFuncionarioId cadastrado só lança se esse funcionário (a) não teve
+// falta na semana anterior E (b) já bateu ENTRADA hoje até condicaoHorarioLimite
+// — precisa rodar depois desse horário limite pra essa checagem fazer sentido.
 exports.lancarDespesasRecorrentesSemanais = onSchedule(
-  { schedule: "0 6 * * 1", timeZone: "America/Sao_Paulo" },
+  { schedule: "0 12 * * 1", timeZone: "America/Sao_Paulo" },
   async () => {
     const hojeStr = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }); // YYYY-MM-DD, chave da semana
     const [ano, mes, dia] = hojeStr.split("-");
@@ -3048,6 +3098,23 @@ exports.lancarDespesasRecorrentesSemanais = onSchedule(
       // lança mais — a despesa recorrente fica "encerrada" mas não é apagada.
       const lancamentosFeitos = d.lancamentosFeitos || 0;
       if (d.prazoSemanas && lancamentosFeitos >= d.prazoSemanas) continue;
+
+      // Condição de presença (opcional): se não cumprida, pula esta semana
+      // sem marcar ultimoLancamento — não conta como "não lançada" pro
+      // prazo, só fica de fora mesmo (fica pra checar de novo na próxima
+      // segunda, quando hojeStr já vai ser outro).
+      if (d.condicaoFuncionarioId) {
+        try {
+          const [teveFalta, registrouEntrada] = await Promise.all([
+            funcionarioTeveFaltaSemanaAnterior(d.condicaoFuncionarioId, hojeStr),
+            funcionarioRegistrouEntradaAte(d.condicaoFuncionarioId, hojeStr, d.condicaoHorarioLimite || "11:59")
+          ]);
+          if (teveFalta || !registrouEntrada) continue;
+        } catch (e) {
+          logger.error("[despesasRecorrentesSemanais] falha ao checar condição de presença", { erro: e.message, despesaId: doc.id });
+          continue;
+        }
+      }
 
       batch.set(db.collection("contasPagar").doc(), {
         data: dataVencimento,
