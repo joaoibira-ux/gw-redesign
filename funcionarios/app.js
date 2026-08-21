@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.28";
+const VERSAO = "3.29";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -234,7 +234,7 @@ function renderAdiantCorpo(usado) {
       <div id="adiant-form-solicitar" style="display:none">
         <input id="adiant-valor-input" class="modal-input" type="text" inputmode="decimal" placeholder="Valor (R$, até ${fmtMoeda(resta)})" />
         <div id="adiant-solicitar-erro" class="modal-erro"></div>
-        <button type="button" class="btn-save" style="width:100%" onclick="confirmarSolicitar()">Confirmar solicitação</button>
+        <button type="button" id="adiant-btn-confirmar" class="btn-save" style="width:100%" onclick="confirmarSolicitar()">Confirmar solicitação</button>
       </div>` : ''}`;
 }
 
@@ -246,7 +246,10 @@ function mostrarFormSolicitar(resta) {
   document.getElementById("adiant-valor-input").focus();
 }
 
+let _solicitandoAdiantamento = false;
+
 async function confirmarSolicitar() {
+  if (_solicitandoAdiantamento) return; // trava contra duplo toque/clique enquanto salva
   const id = _adiantIdAtual;
   const f = funcionariosCache[id];
   if (!f) return;
@@ -255,12 +258,15 @@ async function confirmarSolicitar() {
   const resta  = Number(form.dataset.resta || 0);
   const inp    = document.getElementById("adiant-valor-input");
   const erroEl = document.getElementById("adiant-solicitar-erro");
+  const btn    = document.getElementById("adiant-btn-confirmar");
 
   const valor = parseMoeda(inp.value);
   if (!valor || valor <= 0) { erroEl.textContent = "Informe um valor maior que zero."; return; }
   if (valor > resta + 0.005) { erroEl.textContent = `Valor acima do disponível (${fmtMoeda(resta)}).`; return; }
 
   erroEl.textContent = "";
+  _solicitandoAdiantamento = true;
+  if (btn) { btn.disabled = true; btn.textContent = "Salvando..."; }
   try {
     await db.collection("contasPagar").add({
       data: hoje(),
@@ -271,8 +277,11 @@ async function confirmarSolicitar() {
     });
   } catch (e) {
     erroEl.textContent = "Erro ao salvar. Tente novamente.";
+    _solicitandoAdiantamento = false;
+    if (btn) { btn.disabled = false; btn.textContent = "Confirmar solicitação"; }
     return;
   }
+  _solicitandoAdiantamento = false;
 
   mostrarToast("Adiantamento solicitado — lançado no Contas a Pagar.");
   abrirAdiantamento(id);
