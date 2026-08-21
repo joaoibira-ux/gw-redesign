@@ -3021,11 +3021,11 @@ exports.lancarDespesasRecorrentes = onSchedule(
   }
 );
 
-// Conta dias únicos com ao menos um ponto batido (segunda a sábado — domingo
-// fora do ciclo) na semana anterior à segundaStr informada (a própria semana
-// que termina no sábado antes dessa segunda). Usa o mesmo critério "5 de 6
-// dias" já usado em calcularFaltasQuinzenaAnterior (caixa/relatorio.html):
-// menos de 5 dias com ponto == teve falta na semana.
+// Conta dias únicos com ao menos um ponto batido SÓ de segunda a sexta (não
+// segunda a sábado) na semana anterior à segundaStr informada. Diferente do
+// critério "5 de 6 dias" usado em calcularFaltasQuinzenaAnterior
+// (caixa/relatorio.html) — aqui é intencional: sábado NUNCA compensa falta
+// de dia de semana pra essa condição, precisa dos 5 dias úteis completos.
 async function funcionarioTeveFaltaSemanaAnterior(funcionarioId, segundaStr) {
   const segundaAtual = new Date(segundaStr + "T00:00:00-03:00");
   const inicioSemanaAnterior = new Date(segundaAtual);
@@ -3037,14 +3037,16 @@ async function funcionarioTeveFaltaSemanaAnterior(funcionarioId, segundaStr) {
     .where("timestamp", "<", admin.firestore.Timestamp.fromDate(segundaAtual))
     .get();
 
-  const diasUnicos = new Set();
+  const diasUteisUnicos = new Set();
   snap.docs.forEach(doc => {
     const ts = doc.data().timestamp && doc.data().timestamp.toDate();
-    if (!ts || ts.getDay() === 0) return; // domingo fora do ciclo
-    diasUnicos.add(ts.toDateString());
+    if (!ts) return;
+    const dow = ts.getDay(); // 0 = domingo ... 6 = sábado
+    if (dow === 0 || dow === 6) return; // só segunda a sexta conta — sábado não compensa
+    diasUteisUnicos.add(ts.toDateString());
   });
 
-  return diasUnicos.size < 5;
+  return diasUteisUnicos.size < 5;
 }
 
 // Confere se o funcionário registrou ENTRADA hoje até (e incluindo) o

@@ -1,4 +1,4 @@
-const VERSAO = "1.9";
+const VERSAO = "1.10";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp({
@@ -131,7 +131,7 @@ function prazoSemanalLabel(r) {
 
 function recorrenteSemanalItemHtml(r) {
   const condicao = r.condicaoFuncionarioId
-    ? `<br>Se: ${escHtml(r.condicaoFuncionarioNome || "funcionário")} sem falta na semana anterior + entrada até ${escHtml(r.condicaoHorarioLimite || "11:59")}`
+    ? `<br>Se: ${escHtml(r.condicaoFuncionarioNome || "funcionário")} sem falta seg-sex na semana anterior + entrada até ${escHtml(r.condicaoHorarioLimite || "11:59")}`
     : "";
   return `
     <div class="cfg-item">
