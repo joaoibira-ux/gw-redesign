@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.92";
+  const VERSAO = "1.93";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1471,6 +1471,35 @@
   // _ultimaFolha: undefined = ainda carregando, null = sem folha aberta, objeto = dados da folha
   let _ultimaFolha = undefined, _diariasSnap = null, _adiantSnap = null;
 
+  // Soma no adiantMap os adiantamentos lançados direto no caixa (origem 'Adiantamento').
+  function somarAdiantamentosCaixa(lancamentosDocs, adiantMap) {
+    lancamentosDocs.forEach(d => {
+      const r = d.data();
+      const desc = r.descricao || '';
+      if (!desc.startsWith('Adiantamento: ')) return;
+      const nome = desc.slice('Adiantamento: '.length).split(/\s*[—–\-]/)[0].trim().normalize('NFC');
+      if (!nome) return;
+      adiantMap.set(normNome(nome), (adiantMap.get(normNome(nome)) || 0) + (r.saida || 0));
+    });
+  }
+
+  // Soma no adiantMap os adiantamentos solicitados em Funcionários e pagos via Contas a
+  // Pagar (baixado = empresa já desembolsou pro funcionário) — esses nunca passam pelo
+  // caixa com origem 'Adiantamento', então precisam ser somados à parte. 'descontadoDaFolha'
+  // marca os que já foram abatidos de alguma folha, pra não contar duas vezes.
+  function somarAdiantamentosContasPagar(contasPagarDocs, adiantMap) {
+    contasPagarDocs.forEach(d => {
+      const r = d.data();
+      if (r.status !== 'baixado' || r.descontadoDaFolha) return;
+      const desc = r.descricao || '';
+      if (!desc.startsWith('Adiantamento: ')) return;
+      const nome = desc.slice('Adiantamento: '.length).split(/\s*[—–\-]/)[0].trim().normalize('NFC');
+      if (!nome) return;
+      const valor = r.valorOriginal !== undefined ? r.valorOriginal : r.valor;
+      adiantMap.set(normNome(nome), (adiantMap.get(normNome(nome)) || 0) + (valor || 0));
+    });
+  }
+
   function renderPrevisaoFolha() {
     const el = document.getElementById('previsao-folha');
     if (!el || _ultimaFolha === undefined) return;
@@ -1506,14 +1535,8 @@
     if (!grupos.length) { el.innerHTML = ''; renderPrevisaoQuinzena(); return; }
 
     const adiantMap = new Map();
-    if (_adiantSnap) _adiantSnap.docs.forEach(d => {
-      const r = d.data();
-      const desc = r.descricao || '';
-      if (!desc.startsWith('Adiantamento: ')) return;
-      const nome = desc.slice('Adiantamento: '.length).split(/\s*[—–\-]/)[0].trim().normalize('NFC');
-      if (!nome) return;
-      adiantMap.set(normNome(nome), (adiantMap.get(normNome(nome)) || 0) + (r.saida || 0));
-    });
+    if (_adiantSnap) somarAdiantamentosCaixa(_adiantSnap.docs, adiantMap);
+    if (_contasPagarSnap) somarAdiantamentosContasPagar(_contasPagarSnap.docs, adiantMap);
 
     // Desconto de INSS e Passagens em R$, fixos — os mesmos já calculados em
     // Funcionários sobre o salário base (Salário Bruto ou Salário de
@@ -1738,14 +1761,8 @@
     });
 
     const adiantMap = new Map();
-    if (_adiantSnap) _adiantSnap.docs.forEach(d => {
-      const r = d.data();
-      const desc = r.descricao || '';
-      if (!desc.startsWith('Adiantamento: ')) return;
-      const nome = desc.slice('Adiantamento: '.length).split(/\s*[—–\-]/)[0].trim().normalize('NFC');
-      if (!nome) return;
-      adiantMap.set(normNome(nome), (adiantMap.get(normNome(nome)) || 0) + (r.saida || 0));
-    });
+    if (_adiantSnap) somarAdiantamentosCaixa(_adiantSnap.docs, adiantMap);
+    if (_contasPagarSnap) somarAdiantamentosContasPagar(_contasPagarSnap.docs, adiantMap);
 
     let totalBruto = 0, totalAdiant = 0;
     grupos.forEach(g => {
@@ -1851,7 +1868,7 @@
       </div>`;
   }
 
-  db.collection('contasPagar').onSnapshot(snap => { _contasPagarSnap = snap; renderPrevisaoQuinzena(); });
+  db.collection('contasPagar').onSnapshot(snap => { _contasPagarSnap = snap; renderPrevisaoFolha(); renderPrevisaoQuinzena(); });
 
   // Gera um snapshot do mapa de execução (estado ANTES do fechamento) e envia
   // por Telegram, abrindo a página do mapa num iframe oculto com ?snapshot=1.
@@ -1889,12 +1906,13 @@
     btn.textContent = '⏳ Calculando...';
 
     try {
-      const [folhaSnap, locaisSnap, servicosSnap, diariasSnap, adSnap, funcSnap] = await Promise.all([
+      const [folhaSnap, locaisSnap, servicosSnap, diariasSnap, adSnap, cpAdSnap, funcSnap] = await Promise.all([
         db.collection('folhas').orderBy('criadoEm', 'desc').limit(1).get(),
         db.collection('locais').get(),
         db.collection('servicos').get(),
         db.collection('diarias').get(),
         db.collection('lancamentos').where('origem', 'in', ['ANE->ADIANTAMENTO', 'JOAO->ADIANTAMENTO']).get(),
+        db.collection('contasPagar').get(),
         db.collection('funcionarios').get()
       ]);
 
@@ -1956,14 +1974,8 @@
       });
 
       const adiantMap = new Map();
-      adSnap.docs.forEach(d => {
-        const r = d.data();
-        const ddesc = r.descricao || '';
-        if (!ddesc.startsWith('Adiantamento: ')) return;
-        const nome = ddesc.slice('Adiantamento: '.length).split(/\s*[—–\-]/)[0].trim().normalize('NFC');
-        if (!nome) return;
-        adiantMap.set(normNome(nome), (adiantMap.get(normNome(nome)) || 0) + (r.saida || 0));
-      });
+      somarAdiantamentosCaixa(adSnap.docs, adiantMap);
+      somarAdiantamentosContasPagar(cpAdSnap.docs, adiantMap);
 
       let totalBruto = 0, totalAdiant = 0;
       grupos.forEach(g => {
@@ -2066,6 +2078,16 @@
       adSnap.docs.forEach(doc => {
         const novaOrigem = doc.data().origem === 'JOAO->ADIANTAMENTO' ? 'JOAO->ANTECIPACAO' : 'ANE->ANTECIPACAO';
         batch.update(doc.ref, { origem: novaOrigem });
+      });
+
+      // Marca os adiantamentos pagos via Contas a Pagar (Funcionários) que entraram
+      // nesse desconto, pra não serem contados de novo numa folha futura.
+      cpAdSnap.docs.forEach(doc => {
+        const r = doc.data();
+        const desc = r.descricao || '';
+        if (r.status === 'baixado' && !r.descontadoDaFolha && desc.startsWith('Adiantamento: ')) {
+          batch.update(doc.ref, { descontadoDaFolha: true });
+        }
       });
 
       Object.entries(passagensPorFunc).forEach(([id, { liquido, creditoRestante }]) => {
