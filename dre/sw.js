@@ -1,5 +1,5 @@
-const VERSION = "gw-redesign-v5.65";
-const ASSETS = ["./index.html", "./instalar.html", "./Logo-gw.png", "./icon-192.png", "./icon-512.png", "./manifest.json", "./instrucoes_sistema_gw.png", "./Aviso iPhone.png", "./Aviso Adroide.png", "./bg-pin.jpg", "./bg-instalar.jpg"];
+const VERSION = "dre-v1.0";
+const ASSETS = ["./index.html", "./style.css", "./app.js"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));

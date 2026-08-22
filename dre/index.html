@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>DRE</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="apple-touch-icon" href="../Logo-gw.png" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+
+<header>
+  <a href="https://sistema.gwrevestimentos.com.br/" style="display:flex;align-items:center;line-height:0;">
+    <img src="../Logo-gw.png" alt="GW" style="height:34px;width:34px;object-fit:contain;border-radius:6px;" />
+  </a>
+  <span>📈 DRE</span>
+  <span id="versao-app" class="header-versao"></span>
+</header>
+
+<div class="mes-seletor">
+  <button class="mes-btn" onclick="mesAnterior()">‹</button>
+  <span id="mes-label">—</span>
+  <button class="mes-btn" onclick="mesSeguinte()">›</button>
+</div>
+
+<div id="conteudo" class="conteudo">
+  <div class="loading">Carregando...</div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="./app.js"></script>
+<script src="../bfcache-fix.js"></script>
+
+</body>
+</html>
