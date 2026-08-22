@@ -191,6 +191,17 @@ const TOOLS_GW = [
     }
   },
   {
+    name: "extrato_adiantamentos_funcionario_imagem",
+    description: "Gera, como imagem PNG estilizada com a logo da GW (mesmo estilo visual do extrato_refeicoes_imagem), a lista de TODOS os adiantamentos de UM funcionário — tanto os lançados direto no caixa quanto os solicitados em Funcionários e pagos via Contas a Pagar — e envia pelo Telegram. Cada linha mostra a data, a origem (Caixa ou Contas a Pagar) e o status: 'Aguardando pagamento' (empresa ainda não desembolsou), 'Em aberto' (já desembolsado, ainda não descontado de nenhuma folha) ou 'Descontado da folha' (já quitado via desconto na folha). No fim mostra o total ainda em aberto (o que o funcionário ainda deve). Se o nome informado bater com mais de um funcionário, a ferramenta retorna erro 'nome_ambiguo' com a lista dos nomes encontrados — NUNCA escolha um por conta própria, pergunte ao usuário qual e chame de novo com o nome completo. Use quando o usuário pedir os adiantamentos, vales ou dívida de um funcionário específico.",
+    input_schema: {
+      type: "object",
+      properties: {
+        funcionarioNome: { type: "string", description: "Nome (parcial ou completo) do funcionário" }
+      },
+      required: ["funcionarioNome"]
+    }
+  },
+  {
     name: "registrar_pagamento_refeicoes",
     description: "Cria um lançamento no Contas a Pagar com o valor total do extrato de refeições de um período, e marca esse período como pago (fica registrado pra qualquer consulta futura que envolva esse período, ou parte dele, avisar que já foi pago — evita pagar em dobro). Recalcula o extrato do zero a partir do período informado, não confia em números ditos antes na conversa. ALTERA O BANCO DE DADOS: exige senha de autorização, peça ao usuário antes de chamar. Só chame depois que o usuário confirmar explicitamente que quer registrar (normalmente depois de extrato_refeicoes_imagem).",
     input_schema: {
@@ -1301,6 +1312,164 @@ async function gerarImagemExtratoFolha(dados) {
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
+// Extrai o nome do funcionário de uma descrição "Adiantamento: {nome} — ..."
+// (mesmo padrão usado em funcionarios/app.js e caixa/relatorio.html).
+function extrairNomeAdiantamento(descricao) {
+  const desc = descricao || "";
+  if (!desc.startsWith("Adiantamento: ")) return null;
+  return desc.slice("Adiantamento: ".length).split(/\s*[—–\-]/)[0].trim();
+}
+
+async function buscarExtratoAdiantamentosFuncionario(nomeFuncionario) {
+  const funcSnap = await db.collection("funcionarios").get();
+  const alvo = normTexto(nomeFuncionario);
+  const candidatos = funcSnap.docs.filter(d => normTexto(d.data().nome).includes(alvo));
+  if (candidatos.length === 0) return { erro: "funcionario_nao_encontrado" };
+  if (candidatos.length > 1) return { erro: "nome_ambiguo", nomesEncontrados: candidatos.map(d => d.data().nome) };
+
+  const nomeReal = candidatos[0].data().nome;
+  const alvoNome = normTexto(nomeReal);
+  const itens = [];
+
+  const lancSnap = await db.collection("lancamentos")
+    .where("origem", "in", ["ANE->ADIANTAMENTO", "JOAO->ADIANTAMENTO", "ANE->ANTECIPACAO", "JOAO->ANTECIPACAO"])
+    .get();
+  lancSnap.docs.forEach(d => {
+    const r = d.data();
+    const nome = extrairNomeAdiantamento(r.descricao);
+    if (!nome || normTexto(nome) !== alvoNome) return;
+    const descontado = (r.origem || "").endsWith("ANTECIPACAO");
+    itens.push({
+      data: r.data || "",
+      valor: r.saida || 0,
+      origem: "Caixa",
+      status: descontado ? "Descontado da folha" : "Em aberto",
+      descontado
+    });
+  });
+
+  const cpSnap = await db.collection("contasPagar").get();
+  cpSnap.docs.forEach(d => {
+    const r = d.data();
+    const nome = extrairNomeAdiantamento(r.descricao);
+    if (!nome || normTexto(nome) !== alvoNome) return;
+    const baixado = r.status === "baixado";
+    const valor = baixado ? (r.valorOriginal !== undefined ? r.valorOriginal : r.valor || 0) : (r.valor || 0);
+    const descontado = baixado && !!r.descontadoDaFolha;
+    const status = !baixado ? "Aguardando pagamento" : (descontado ? "Descontado da folha" : "Em aberto");
+    itens.push({
+      data: (baixado ? r.dataBaixa : r.data) || r.data || "",
+      valor,
+      origem: "Contas a Pagar",
+      status,
+      descontado
+    });
+  });
+
+  itens.sort((a, b) => (parseDataVencimento(a.data) || 0) - (parseDataVencimento(b.data) || 0));
+
+  const totalEmAberto = itens
+    .filter(it => it.status === "Em aberto")
+    .reduce((s, it) => s + it.valor, 0);
+
+  return { funcionarioNome: nomeReal, itens, totalEmAberto };
+}
+
+function construirSVGExtratoAdiantamentos(dados, logoBase64) {
+  const LARGURA = 800;
+  const PAD = 44;
+  const ALT_HEADER = 190;
+  const ALT_LINHA = 44;
+  const ALT_TABELA_HEADER = 40;
+  const ALT_TOTAIS = 100;
+  const ALT_FOOTER = 50;
+
+  const ALTURA = ALT_HEADER + ALT_TABELA_HEADER + dados.itens.length * ALT_LINHA + ALT_TOTAIS + ALT_FOOTER + PAD;
+  const larguraTabela = LARGURA - PAD * 2;
+  const col1 = PAD + 24;
+  const col2 = PAD + larguraTabela * 0.30;
+  const col3 = PAD + larguraTabela * 0.58;
+  const colValor = PAD + larguraTabela - 24;
+
+  let y = ALT_HEADER;
+
+  const headerTabela = `
+    <text x="${col1}" y="${y + 26}" font-size="13" font-weight="700" letter-spacing="1.5" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif">DATA</text>
+    <text x="${col2}" y="${y + 26}" font-size="13" font-weight="700" letter-spacing="1.5" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif">ORIGEM</text>
+    <text x="${col3}" y="${y + 26}" font-size="13" font-weight="700" letter-spacing="1.5" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif">STATUS</text>
+    <text x="${colValor}" y="${y + 26}" font-size="13" font-weight="700" letter-spacing="1.5" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif" text-anchor="end">VALOR</text>
+    <line x1="${PAD}" y1="${y + 36}" x2="${PAD + larguraTabela}" y2="${y + 36}" stroke="rgba(165,214,167,0.25)" stroke-width="1"/>
+  `;
+  y += ALT_TABELA_HEADER;
+
+  const corStatus = s => s === "Em aberto" ? "#ffab40" : (s === "Aguardando pagamento" ? "#90a4ae" : "#69f0ae");
+
+  const linhas = dados.itens.map((it, i) => {
+    const bg = i % 2 === 0 ? "rgba(255,255,255,0.035)" : "transparent";
+    const rowY = y;
+    const linha = `
+        <rect x="${PAD}" y="${rowY}" width="${larguraTabela}" height="${ALT_LINHA}" fill="${bg}" rx="10"/>
+        <text x="${col1}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="14" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif">${escXml(it.data)}</text>
+        <text x="${col2}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="13" fill="#c8e6c9" font-family="Arial, Helvetica, sans-serif">${escXml(it.origem)}</text>
+        <text x="${col3}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="13" font-weight="600" fill="${corStatus(it.status)}" font-family="Arial, Helvetica, sans-serif">${escXml(it.status)}</text>
+        <text x="${colValor}" y="${rowY + ALT_LINHA / 2 + 6}" font-size="15" font-weight="600" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${fmtMoeda(it.valor)}</text>
+      `;
+    y += ALT_LINHA;
+    return linha;
+  }).join("");
+
+  const totaisY = y + 16;
+  const totaisAltura = ALT_TOTAIS - 16;
+  const blocoTotais = `
+    <rect x="${PAD}" y="${totaisY}" width="${larguraTabela}" height="${totaisAltura}" rx="16" fill="rgba(255,171,64,0.08)" stroke="rgba(255,171,64,0.35)" stroke-width="1.5"/>
+    <text x="${PAD + 28}" y="${totaisY + totaisAltura / 2 - 6}" font-size="14" font-weight="700" letter-spacing="1" fill="#ffcc80" font-family="Arial, Helvetica, sans-serif">TOTAL EM ABERTO</text>
+    <text x="${PAD + larguraTabela - 28}" y="${totaisY + totaisAltura / 2 + 10}" font-size="26" font-weight="800" fill="#ffab40" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${fmtMoeda(dados.totalEmAberto)}</text>
+  `;
+
+  const footerY = totaisY + totaisAltura + 30;
+  const footer = `
+    <text x="${LARGURA / 2}" y="${footerY}" font-size="11" letter-spacing="1" fill="#5a8a63" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">Extrato de Adiantamentos • Sistema GW • Gerado em ${new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</text>
+  `;
+
+  const logoW = 64, logoH = 64 * (1106 / 1422);
+
+  return `
+<svg width="${LARGURA}" height="${ALTURA}" viewBox="0 0 ${LARGURA} ${ALTURA}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#12331f"/>
+      <stop offset="45%" stop-color="#0c2417"/>
+      <stop offset="100%" stop-color="#06120b"/>
+    </linearGradient>
+    <clipPath id="logoClip"><rect x="0" y="0" width="${logoW}" height="${logoH}" rx="10"/></clipPath>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#69f0ae" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#69f0ae" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="${LARGURA}" height="${ALTURA}" fill="url(#bg)"/>
+  <circle cx="${LARGURA / 2}" cy="${40 + logoH / 2}" r="90" fill="url(#glow)"/>
+  <g transform="translate(${LARGURA / 2 - logoW / 2}, 40)">
+    <image href="data:image/png;base64,${logoBase64}" width="${logoW}" height="${logoH}" clip-path="url(#logoClip)"/>
+  </g>
+
+  <text x="${LARGURA / 2}" y="${40 + logoH + 34}" font-size="26" font-weight="800" letter-spacing="3" fill="#f1f8f2" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">GREEN WALL</text>
+  <text x="${LARGURA / 2}" y="${40 + logoH + 58}" font-size="13" font-weight="700" letter-spacing="4" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">ADIANTAMENTOS — ${escXml((dados.funcionarioNome || "").toUpperCase())}</text>
+
+  ${headerTabela}
+  ${linhas}
+  ${blocoTotais}
+  ${footer}
+</svg>`;
+}
+
+async function gerarImagemExtratoAdiantamentos(dados) {
+  const logoBase64 = fs.readFileSync(path.join(__dirname, "Logo-gw.png")).toString("base64");
+  const svg = construirSVGExtratoAdiantamentos(dados, logoBase64);
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
 async function executarFerramenta(nome, input) {
   if (nome === "listar_funcionarios") {
     const snap = await db.collection("funcionarios").orderBy("nome").get();
@@ -1550,6 +1719,45 @@ async function executarFerramenta(nome, input) {
       mensagem: "Imagem do extrato de folha gerada e enviada pelo Telegram com sucesso.",
       funcionarioNome: dados.funcionarioNome,
       subtotal: dados.subtotal
+    };
+  }
+
+  if (nome === "extrato_adiantamentos_funcionario_imagem") {
+    const { funcionarioNome } = input;
+    const dados = await buscarExtratoAdiantamentosFuncionario(funcionarioNome);
+
+    if (dados.erro === "funcionario_nao_encontrado") {
+      return { sucesso: false, erro: "funcionario_nao_encontrado", mensagem: `Nenhum funcionário chamado "${funcionarioNome}" encontrado.` };
+    }
+    if (dados.erro === "nome_ambiguo") {
+      return {
+        sucesso: false,
+        erro: "nome_ambiguo",
+        mensagem: `Mais de um funcionário bate com "${funcionarioNome}" — pergunte ao usuário qual dos dois e chame de novo com o nome completo.`,
+        nomesEncontrados: dados.nomesEncontrados
+      };
+    }
+    if (!dados.itens.length) {
+      return { sucesso: false, erro: "sem_dados", mensagem: `Nenhum adiantamento encontrado para ${dados.funcionarioNome}.` };
+    }
+
+    try {
+      const buffer = await gerarImagemExtratoAdiantamentos(dados);
+      await enviarFotoTelegram(
+        buffer,
+        `adiantamentos-${dados.funcionarioNome.replace(/\s+/g, "-")}.png`,
+        `Adiantamentos — ${dados.funcionarioNome}`
+      );
+    } catch (err) {
+      console.error(err);
+      return { sucesso: false, erro: "falha_geracao_ou_envio", mensagem: err.message };
+    }
+
+    return {
+      sucesso: true,
+      mensagem: "Imagem do extrato de adiantamentos gerada e enviada pelo Telegram com sucesso.",
+      funcionarioNome: dados.funcionarioNome,
+      totalEmAberto: dados.totalEmAberto
     };
   }
 
@@ -2561,6 +2769,7 @@ CRÍTICO: NUNCA diga ao usuário que uma ação foi concluída/registrada/salva 
 VERIFICAÇÃO OBRIGATÓRIA antes de qualquer resposta que confirme uma ação (registrar, editar, excluir, dar baixa, pagar, cancelar): pare e confira, nesta mesma resposta que você está montando, se existe um tool_result correspondente com "sucesso": true. Se a resposta que você está prestes a mandar afirma que algo foi feito e você não consegue apontar esse tool_result específico, isso é um sinal de que você pulou a chamada da ferramenta — pare, chame a ferramenta de verdade primeiro, e só confirme depois de ver o resultado real.
 Depois que extrato_refeicoes_imagem enviar a imagem com sucesso, pergunte ao usuário se ele quer registrar esse valor total no Contas a Pagar. Se ele confirmar, peça a senha de autorização e chame registrar_pagamento_refeicoes com o mesmo período. Se o resultado de qualquer ferramenta de refeições trouxer "periodosJaPagos" preenchido, avise o usuário que esse período (ou parte dele) já foi registrado como pago antes, ANTES de prosseguir — não insista em registrar de novo sem ele confirmar que quer mesmo assim.
 Se o usuário pedir o detalhamento/extrato dos serviços de UM funcionário na folha de pagamento (ex: "manda a folha do Geryson", "quanto foi pago pro Paulo nessa última folha, em imagem"), use extrato_folha_funcionario_imagem em vez de tentar montar a tabela de memória. Se a ferramenta retornar erro "nome_ambiguo" (nome bate com mais de um funcionário, ex: "Paulo" -> "Paulo Ricardo" e "Gustavo Paulo"), NUNCA escolha um dos dois sozinho — mostre a lista de nomes encontrados e pergunte qual o usuário quis dizer antes de chamar de novo com o nome completo.
+Se o usuário pedir os adiantamentos/vales/dívida de UM funcionário (ex: "manda os adiantamentos do Leonardo", "quanto o Marcos ainda deve de adiantamento"), use extrato_adiantamentos_funcionario_imagem — ela já junta os dois tipos de adiantamento (lançado direto no caixa e solicitado em Funcionários/pago via Contas a Pagar) e mostra o status de cada um (aguardando pagamento, em aberto ou já descontado da folha), com o total ainda em aberto no final. Mesmo tratamento de "nome_ambiguo" do item acima se aplica aqui.
 Para editar ou excluir um lançamento do caixa, use consultar_caixa primeiro para encontrar o id correto e confirme com o usuário qual lançamento é (data, descrição e valor) antes de aplicar a alteração.
 Para editar ou dar baixa num lançamento do Contas a Pagar, use consultar_contas_pagar primeiro para encontrar o id correto — NUNCA invente um id (ex: "1", "2", "3" não são ids válidos, só o id exato que consultar_contas_pagar retornou) — e confirme com o usuário qual lançamento é (descrição e valor atuais) antes de aplicar. Pra "dar baixa"/"marcar como pago"/"quitar", use dar_baixa_conta_pagar. Pra mudar descrição, valor ou data, use editar_conta_pagar.
 Contas a Receber funciona do mesmo jeito que Contas a Pagar, com o mesmo requisito de senha: use consultar_contas_receber primeiro pra encontrar o id correto antes de editar_conta_receber, dar_baixa_conta_receber ou excluir_conta_receber — NUNCA invente um id, só o id exato retornado por consultar_contas_receber é válido — e confirme com o usuário qual lançamento é (descrição e valor) antes de aplicar qualquer alteração. Pra criar um lançamento novo, use criar_conta_receber. Pra "dar baixa"/"marcar como recebido"/"quitar", use dar_baixa_conta_receber. Pra mudar descrição, valor ou data, use editar_conta_receber. Pra excluir, use excluir_conta_receber e confirme claramente com o usuário antes, já que é uma ação destrutiva.
