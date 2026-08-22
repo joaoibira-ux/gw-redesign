@@ -192,11 +192,12 @@ const TOOLS_GW = [
   },
   {
     name: "extrato_adiantamentos_funcionario_imagem",
-    description: "Gera, como imagem PNG estilizada com a logo da GW (mesmo estilo visual do extrato_refeicoes_imagem), a lista de TODOS os adiantamentos de UM funcionário — tanto os lançados direto no caixa quanto os solicitados em Funcionários e pagos via Contas a Pagar — e envia pelo Telegram. Cada linha mostra a data, a origem (Caixa ou Contas a Pagar) e o status: 'Aguardando pagamento' (empresa ainda não desembolsou), 'Em aberto' (já desembolsado, ainda não descontado de nenhuma folha) ou 'Descontado da folha' (já quitado via desconto na folha). No fim mostra o total ainda em aberto (o que o funcionário ainda deve). Se o nome informado bater com mais de um funcionário, a ferramenta retorna erro 'nome_ambiguo' com a lista dos nomes encontrados — NUNCA escolha um por conta própria, pergunte ao usuário qual e chame de novo com o nome completo. Use quando o usuário pedir os adiantamentos, vales ou dívida de um funcionário específico.",
+    description: "Gera, como imagem PNG estilizada com a logo da GW (mesmo estilo visual do extrato_refeicoes_imagem), a lista dos adiantamentos de UM funcionário — tanto os lançados direto no caixa quanto os solicitados em Funcionários e pagos via Contas a Pagar — e envia pelo Telegram. Por padrão (apenasPagos omitido ou false) mostra só os AINDA EM ABERTO (status 'Aguardando pagamento' ou 'Em aberto' — o que o funcionário ainda deve). Se o usuário pedir especificamente os já pagos/quitados/descontados, chame com apenasPagos:true, que mostra só os com status 'Descontado da folha'. Cada linha mostra data, origem (Caixa ou Contas a Pagar) e status. Se o nome informado bater com mais de um funcionário, a ferramenta retorna erro 'nome_ambiguo' com a lista dos nomes encontrados — NUNCA escolha um por conta própria, pergunte ao usuário qual e chame de novo com o nome completo. Use quando o usuário pedir os adiantamentos, vales ou dívida de um funcionário específico.",
     input_schema: {
       type: "object",
       properties: {
-        funcionarioNome: { type: "string", description: "Nome (parcial ou completo) do funcionário" }
+        funcionarioNome: { type: "string", description: "Nome (parcial ou completo) do funcionário" },
+        apenasPagos: { type: "boolean", description: "Se true, mostra só os adiantamentos já descontados da folha (quitados). Se omitido ou false (padrão), mostra só os ainda em aberto." }
       },
       required: ["funcionarioNome"]
     }
@@ -1320,7 +1321,7 @@ function extrairNomeAdiantamento(descricao) {
   return desc.slice("Adiantamento: ".length).split(/\s*[—–\-]/)[0].trim();
 }
 
-async function buscarExtratoAdiantamentosFuncionario(nomeFuncionario) {
+async function buscarExtratoAdiantamentosFuncionario(nomeFuncionario, apenasPagos) {
   const funcSnap = await db.collection("funcionarios").get();
   const alvo = normTexto(nomeFuncionario);
   const candidatos = funcSnap.docs.filter(d => normTexto(d.data().nome).includes(alvo));
@@ -1368,11 +1369,15 @@ async function buscarExtratoAdiantamentosFuncionario(nomeFuncionario) {
 
   itens.sort((a, b) => (parseDataVencimento(a.data) || 0) - (parseDataVencimento(b.data) || 0));
 
-  const totalEmAberto = itens
-    .filter(it => it.status === "Em aberto")
-    .reduce((s, it) => s + it.valor, 0);
+  const itensFiltrados = apenasPagos
+    ? itens.filter(it => it.descontado)
+    : itens.filter(it => !it.descontado);
 
-  return { funcionarioNome: nomeReal, itens, totalEmAberto };
+  const total = apenasPagos
+    ? itensFiltrados.reduce((s, it) => s + it.valor, 0)
+    : itensFiltrados.filter(it => it.status === "Em aberto").reduce((s, it) => s + it.valor, 0);
+
+  return { funcionarioNome: nomeReal, itens: itensFiltrados, total, apenasPagos: !!apenasPagos };
 }
 
 function construirSVGExtratoAdiantamentos(dados, logoBase64) {
@@ -1418,12 +1423,14 @@ function construirSVGExtratoAdiantamentos(dados, logoBase64) {
     return linha;
   }).join("");
 
+  const corTotal = dados.apenasPagos ? "#69f0ae" : "#ffab40";
+  const rotuloTotal = dados.apenasPagos ? "TOTAL PAGO" : "TOTAL EM ABERTO";
   const totaisY = y + 16;
   const totaisAltura = ALT_TOTAIS - 16;
   const blocoTotais = `
-    <rect x="${PAD}" y="${totaisY}" width="${larguraTabela}" height="${totaisAltura}" rx="16" fill="rgba(255,171,64,0.08)" stroke="rgba(255,171,64,0.35)" stroke-width="1.5"/>
-    <text x="${PAD + 28}" y="${totaisY + totaisAltura / 2 - 6}" font-size="14" font-weight="700" letter-spacing="1" fill="#ffcc80" font-family="Arial, Helvetica, sans-serif">TOTAL EM ABERTO</text>
-    <text x="${PAD + larguraTabela - 28}" y="${totaisY + totaisAltura / 2 + 10}" font-size="26" font-weight="800" fill="#ffab40" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${fmtMoeda(dados.totalEmAberto)}</text>
+    <rect x="${PAD}" y="${totaisY}" width="${larguraTabela}" height="${totaisAltura}" rx="16" fill="${dados.apenasPagos ? "rgba(105,240,174,0.08)" : "rgba(255,171,64,0.08)"}" stroke="${dados.apenasPagos ? "rgba(105,240,174,0.35)" : "rgba(255,171,64,0.35)"}" stroke-width="1.5"/>
+    <text x="${PAD + 28}" y="${totaisY + totaisAltura / 2 - 6}" font-size="14" font-weight="700" letter-spacing="1" fill="${dados.apenasPagos ? "#a5d6a7" : "#ffcc80"}" font-family="Arial, Helvetica, sans-serif">${rotuloTotal}</text>
+    <text x="${PAD + larguraTabela - 28}" y="${totaisY + totaisAltura / 2 + 10}" font-size="26" font-weight="800" fill="${corTotal}" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${fmtMoeda(dados.total)}</text>
   `;
 
   const footerY = totaisY + totaisAltura + 30;
@@ -1455,7 +1462,7 @@ function construirSVGExtratoAdiantamentos(dados, logoBase64) {
   </g>
 
   <text x="${LARGURA / 2}" y="${40 + logoH + 34}" font-size="26" font-weight="800" letter-spacing="3" fill="#f1f8f2" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">GREEN WALL</text>
-  <text x="${LARGURA / 2}" y="${40 + logoH + 58}" font-size="13" font-weight="700" letter-spacing="4" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">ADIANTAMENTOS — ${escXml((dados.funcionarioNome || "").toUpperCase())}</text>
+  <text x="${LARGURA / 2}" y="${40 + logoH + 58}" font-size="13" font-weight="700" letter-spacing="4" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">ADIANTAMENTOS ${dados.apenasPagos ? "PAGOS" : "EM ABERTO"} — ${escXml((dados.funcionarioNome || "").toUpperCase())}</text>
 
   ${headerTabela}
   ${linhas}
@@ -1723,8 +1730,8 @@ async function executarFerramenta(nome, input) {
   }
 
   if (nome === "extrato_adiantamentos_funcionario_imagem") {
-    const { funcionarioNome } = input;
-    const dados = await buscarExtratoAdiantamentosFuncionario(funcionarioNome);
+    const { funcionarioNome, apenasPagos } = input;
+    const dados = await buscarExtratoAdiantamentosFuncionario(funcionarioNome, !!apenasPagos);
 
     if (dados.erro === "funcionario_nao_encontrado") {
       return { sucesso: false, erro: "funcionario_nao_encontrado", mensagem: `Nenhum funcionário chamado "${funcionarioNome}" encontrado.` };
@@ -1738,7 +1745,13 @@ async function executarFerramenta(nome, input) {
       };
     }
     if (!dados.itens.length) {
-      return { sucesso: false, erro: "sem_dados", mensagem: `Nenhum adiantamento encontrado para ${dados.funcionarioNome}.` };
+      return {
+        sucesso: false,
+        erro: "sem_dados",
+        mensagem: apenasPagos
+          ? `Nenhum adiantamento já pago/descontado encontrado para ${dados.funcionarioNome}.`
+          : `Nenhum adiantamento em aberto encontrado para ${dados.funcionarioNome}.`
+      };
     }
 
     try {
@@ -1746,7 +1759,7 @@ async function executarFerramenta(nome, input) {
       await enviarFotoTelegram(
         buffer,
         `adiantamentos-${dados.funcionarioNome.replace(/\s+/g, "-")}.png`,
-        `Adiantamentos — ${dados.funcionarioNome}`
+        `Adiantamentos ${apenasPagos ? "pagos" : "em aberto"} — ${dados.funcionarioNome}`
       );
     } catch (err) {
       console.error(err);
@@ -1757,7 +1770,8 @@ async function executarFerramenta(nome, input) {
       sucesso: true,
       mensagem: "Imagem do extrato de adiantamentos gerada e enviada pelo Telegram com sucesso.",
       funcionarioNome: dados.funcionarioNome,
-      totalEmAberto: dados.totalEmAberto
+      apenasPagos: !!apenasPagos,
+      total: dados.total
     };
   }
 
@@ -2769,7 +2783,7 @@ CRÍTICO: NUNCA diga ao usuário que uma ação foi concluída/registrada/salva 
 VERIFICAÇÃO OBRIGATÓRIA antes de qualquer resposta que confirme uma ação (registrar, editar, excluir, dar baixa, pagar, cancelar): pare e confira, nesta mesma resposta que você está montando, se existe um tool_result correspondente com "sucesso": true. Se a resposta que você está prestes a mandar afirma que algo foi feito e você não consegue apontar esse tool_result específico, isso é um sinal de que você pulou a chamada da ferramenta — pare, chame a ferramenta de verdade primeiro, e só confirme depois de ver o resultado real.
 Depois que extrato_refeicoes_imagem enviar a imagem com sucesso, pergunte ao usuário se ele quer registrar esse valor total no Contas a Pagar. Se ele confirmar, peça a senha de autorização e chame registrar_pagamento_refeicoes com o mesmo período. Se o resultado de qualquer ferramenta de refeições trouxer "periodosJaPagos" preenchido, avise o usuário que esse período (ou parte dele) já foi registrado como pago antes, ANTES de prosseguir — não insista em registrar de novo sem ele confirmar que quer mesmo assim.
 Se o usuário pedir o detalhamento/extrato dos serviços de UM funcionário na folha de pagamento (ex: "manda a folha do Geryson", "quanto foi pago pro Paulo nessa última folha, em imagem"), use extrato_folha_funcionario_imagem em vez de tentar montar a tabela de memória. Se a ferramenta retornar erro "nome_ambiguo" (nome bate com mais de um funcionário, ex: "Paulo" -> "Paulo Ricardo" e "Gustavo Paulo"), NUNCA escolha um dos dois sozinho — mostre a lista de nomes encontrados e pergunte qual o usuário quis dizer antes de chamar de novo com o nome completo.
-Se o usuário pedir os adiantamentos/vales/dívida de UM funcionário (ex: "manda os adiantamentos do Leonardo", "quanto o Marcos ainda deve de adiantamento"), use extrato_adiantamentos_funcionario_imagem — ela já junta os dois tipos de adiantamento (lançado direto no caixa e solicitado em Funcionários/pago via Contas a Pagar) e mostra o status de cada um (aguardando pagamento, em aberto ou já descontado da folha), com o total ainda em aberto no final. Mesmo tratamento de "nome_ambiguo" do item acima se aplica aqui.
+Se o usuário pedir os adiantamentos/vales/dívida de UM funcionário (ex: "manda os adiantamentos do Leonardo", "quanto o Marcos ainda deve de adiantamento"), use extrato_adiantamentos_funcionario_imagem — ela já junta os dois tipos de adiantamento (lançado direto no caixa e solicitado em Funcionários/pago via Contas a Pagar). Por padrão (não informe apenasPagos) ela manda só os AINDA EM ABERTO, que é o que o usuário quer na grande maioria dos casos. Só chame com apenasPagos:true se o usuário pedir explicitamente os já pagos/quitados/descontados (ex: "manda os que já foram pagos", "os adiantamentos já descontados do Leonardo"). Mesmo tratamento de "nome_ambiguo" do item acima se aplica aqui.
 Para editar ou excluir um lançamento do caixa, use consultar_caixa primeiro para encontrar o id correto e confirme com o usuário qual lançamento é (data, descrição e valor) antes de aplicar a alteração.
 Para editar ou dar baixa num lançamento do Contas a Pagar, use consultar_contas_pagar primeiro para encontrar o id correto — NUNCA invente um id (ex: "1", "2", "3" não são ids válidos, só o id exato que consultar_contas_pagar retornou) — e confirme com o usuário qual lançamento é (descrição e valor atuais) antes de aplicar. Pra "dar baixa"/"marcar como pago"/"quitar", use dar_baixa_conta_pagar. Pra mudar descrição, valor ou data, use editar_conta_pagar.
 Contas a Receber funciona do mesmo jeito que Contas a Pagar, com o mesmo requisito de senha: use consultar_contas_receber primeiro pra encontrar o id correto antes de editar_conta_receber, dar_baixa_conta_receber ou excluir_conta_receber — NUNCA invente um id, só o id exato retornado por consultar_contas_receber é válido — e confirme com o usuário qual lançamento é (descrição e valor) antes de aplicar qualquer alteração. Pra criar um lançamento novo, use criar_conta_receber. Pra "dar baixa"/"marcar como recebido"/"quitar", use dar_baixa_conta_receber. Pra mudar descrição, valor ou data, use editar_conta_receber. Pra excluir, use excluir_conta_receber e confirme claramente com o usuário antes, já que é uma ação destrutiva.
