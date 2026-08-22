@@ -203,6 +203,19 @@ const TOOLS_GW = [
     }
   },
   {
+    name: "enviar_extrato_adiantamentos_whatsapp",
+    description: "Gera a mesma imagem de extrato de adiantamentos de UM funcionário (mesmos dados e regras de extrato_adiantamentos_funcionario_imagem — por padrão só os em aberto, ou só os pagos se apenasPagos:true) mas envia por WHATSAPP em vez de Telegram, para OUTRO funcionário/pessoa informado em destinatarioNome — o telefone é buscado automaticamente no cadastro de Funcionários, nunca peça o número ao usuário. Sempre manda também uma cópia pro número fixo do responsável pelo sistema, automaticamente. Use quando o usuário pedir explicitamente pra ENVIAR/MANDAR os adiantamentos de alguém PARA outra pessoa por WhatsApp (ex: 'envia pro Lucas os adiantamentos do Leonardo', 'manda por whatsapp pro Marcos os adiantamentos em aberto do Paulo') — se o usuário só pedir a imagem sem dizer pra quem enviar por whatsapp, use extrato_adiantamentos_funcionario_imagem (Telegram) em vez desta. Se funcionarioNome ou destinatarioNome baterem com mais de um funcionário, retorna erro 'nome_ambiguo' com a lista de nomes encontrados — NUNCA escolha um por conta própria, pergunte ao usuário qual e chame de novo com o nome completo.",
+    input_schema: {
+      type: "object",
+      properties: {
+        funcionarioNome: { type: "string", description: "Nome (parcial ou completo) do funcionário cujos adiantamentos serão mostrados" },
+        destinatarioNome: { type: "string", description: "Nome (parcial ou completo) do funcionário que vai RECEBER a mensagem no WhatsApp — o telefone é buscado automaticamente" },
+        apenasPagos: { type: "boolean", description: "Se true, mostra só os adiantamentos já descontados da folha (quitados). Se omitido ou false (padrão), mostra só os ainda em aberto." }
+      },
+      required: ["funcionarioNome", "destinatarioNome"]
+    }
+  },
+  {
     name: "registrar_pagamento_refeicoes",
     description: "Cria um lançamento no Contas a Pagar com o valor total do extrato de refeições de um período, e marca esse período como pago (fica registrado pra qualquer consulta futura que envolva esse período, ou parte dele, avisar que já foi pago — evita pagar em dobro). Recalcula o extrato do zero a partir do período informado, não confia em números ditos antes na conversa. ALTERA O BANCO DE DADOS: exige senha de autorização, peça ao usuário antes de chamar. Só chame depois que o usuário confirmar explicitamente que quer registrar (normalmente depois de extrato_refeicoes_imagem).",
     input_schema: {
@@ -1380,6 +1393,28 @@ async function buscarExtratoAdiantamentosFuncionario(nomeFuncionario, apenasPago
   return { funcionarioNome: nomeReal, itens: itensFiltrados, total, apenasPagos: !!apenasPagos };
 }
 
+// Converte o campo livre "telefone" de um funcionário (ex: "(81) 99211-4764")
+// pro formato que a Evolution API espera: só dígitos, com DDI 55 na frente.
+function formatarNumeroWhatsApp(telefone) {
+  let digitos = String(telefone || "").replace(/\D/g, "");
+  if (!digitos) return null;
+  if (!digitos.startsWith("55")) digitos = "55" + digitos;
+  return digitos;
+}
+
+async function buscarTelefoneFuncionario(nomeFuncionario) {
+  const snap = await db.collection("funcionarios").get();
+  const alvo = normTexto(nomeFuncionario);
+  const candidatos = snap.docs.filter(d => normTexto(d.data().nome).includes(alvo));
+  if (candidatos.length === 0) return { erro: "funcionario_nao_encontrado" };
+  if (candidatos.length > 1) return { erro: "nome_ambiguo", nomesEncontrados: candidatos.map(d => d.data().nome) };
+
+  const f = candidatos[0].data();
+  const numero = formatarNumeroWhatsApp(f.telefone);
+  if (!numero) return { erro: "sem_telefone", nome: f.nome };
+  return { nome: f.nome, telefone: numero };
+}
+
 function construirSVGExtratoAdiantamentos(dados, logoBase64) {
   const LARGURA = 800;
   const PAD = 44;
@@ -1477,7 +1512,7 @@ async function gerarImagemExtratoAdiantamentos(dados) {
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
-async function executarFerramenta(nome, input) {
+async function executarFerramenta(nome, input, apiKeyValue) {
   if (nome === "listar_funcionarios") {
     const snap = await db.collection("funcionarios").orderBy("nome").get();
     return snap.docs.map(d => ({ id: d.id, nome: d.data().nome }));
@@ -1770,6 +1805,72 @@ async function executarFerramenta(nome, input) {
       sucesso: true,
       mensagem: "Imagem do extrato de adiantamentos gerada e enviada pelo Telegram com sucesso.",
       funcionarioNome: dados.funcionarioNome,
+      apenasPagos: !!apenasPagos,
+      total: dados.total
+    };
+  }
+
+  if (nome === "enviar_extrato_adiantamentos_whatsapp") {
+    const { funcionarioNome, destinatarioNome, apenasPagos } = input;
+    const dados = await buscarExtratoAdiantamentosFuncionario(funcionarioNome, !!apenasPagos);
+
+    if (dados.erro === "funcionario_nao_encontrado") {
+      return { sucesso: false, erro: "funcionario_nao_encontrado", mensagem: `Nenhum funcionário chamado "${funcionarioNome}" encontrado.` };
+    }
+    if (dados.erro === "nome_ambiguo") {
+      return {
+        sucesso: false,
+        erro: "nome_ambiguo",
+        mensagem: `Mais de um funcionário bate com "${funcionarioNome}" — pergunte ao usuário qual dos dois e chame de novo com o nome completo.`,
+        nomesEncontrados: dados.nomesEncontrados
+      };
+    }
+    if (!dados.itens.length) {
+      return {
+        sucesso: false,
+        erro: "sem_dados",
+        mensagem: apenasPagos
+          ? `Nenhum adiantamento já pago/descontado encontrado para ${dados.funcionarioNome}.`
+          : `Nenhum adiantamento em aberto encontrado para ${dados.funcionarioNome}.`
+      };
+    }
+
+    const dest = await buscarTelefoneFuncionario(destinatarioNome);
+    if (dest.erro === "funcionario_nao_encontrado") {
+      return { sucesso: false, erro: "destinatario_nao_encontrado", mensagem: `Nenhum funcionário chamado "${destinatarioNome}" encontrado pra enviar.` };
+    }
+    if (dest.erro === "nome_ambiguo") {
+      return {
+        sucesso: false,
+        erro: "nome_ambiguo",
+        mensagem: `Mais de um funcionário bate com "${destinatarioNome}" — pergunte ao usuário qual dos dois e chame de novo com o nome completo.`,
+        nomesEncontrados: dest.nomesEncontrados
+      };
+    }
+    if (dest.erro === "sem_telefone") {
+      return { sucesso: false, erro: "sem_telefone", mensagem: `${dest.nome} não tem telefone cadastrado em Funcionários.` };
+    }
+
+    try {
+      const buffer = await gerarImagemExtratoAdiantamentos(dados);
+      const destinatarios = [...new Set([dest.telefone, WHATSAPP_DESTINO])];
+      await enviarImagemEvolution(
+        buffer,
+        `adiantamentos-${dados.funcionarioNome.replace(/\s+/g, "-")}.png`,
+        `Adiantamentos ${apenasPagos ? "pagos" : "em aberto"} — ${dados.funcionarioNome}`,
+        apiKeyValue,
+        destinatarios
+      );
+    } catch (err) {
+      console.error(err);
+      return { sucesso: false, erro: "falha_geracao_ou_envio", mensagem: err.message };
+    }
+
+    return {
+      sucesso: true,
+      mensagem: `Imagem enviada por WhatsApp para ${dest.nome} e em cópia para o número fixo do responsável.`,
+      funcionarioNome: dados.funcionarioNome,
+      destinatarioNome: dest.nome,
       apenasPagos: !!apenasPagos,
       total: dados.total
     };
@@ -2767,7 +2868,7 @@ boletoNomeArquivo: "${nomeArquivo}"`;
 // Claude) — usado tanto pelo chat do app (agenteGW, onCall) quanto pelo
 // webhook do WhatsApp (webhookEvolutionGW). Extraído pra um só lugar pra não
 // duplicar o prompt e a lógica de execução de ferramentas entre os dois.
-async function processarMensagemAgenteGW(mensagem, historico) {
+async function processarMensagemAgenteGW(mensagem, historico, apiKeyValue) {
     const hoje = new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
     const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
 
@@ -2784,6 +2885,7 @@ VERIFICAÇÃO OBRIGATÓRIA antes de qualquer resposta que confirme uma ação (r
 Depois que extrato_refeicoes_imagem enviar a imagem com sucesso, pergunte ao usuário se ele quer registrar esse valor total no Contas a Pagar. Se ele confirmar, peça a senha de autorização e chame registrar_pagamento_refeicoes com o mesmo período. Se o resultado de qualquer ferramenta de refeições trouxer "periodosJaPagos" preenchido, avise o usuário que esse período (ou parte dele) já foi registrado como pago antes, ANTES de prosseguir — não insista em registrar de novo sem ele confirmar que quer mesmo assim.
 Se o usuário pedir o detalhamento/extrato dos serviços de UM funcionário na folha de pagamento (ex: "manda a folha do Geryson", "quanto foi pago pro Paulo nessa última folha, em imagem"), use extrato_folha_funcionario_imagem em vez de tentar montar a tabela de memória. Se a ferramenta retornar erro "nome_ambiguo" (nome bate com mais de um funcionário, ex: "Paulo" -> "Paulo Ricardo" e "Gustavo Paulo"), NUNCA escolha um dos dois sozinho — mostre a lista de nomes encontrados e pergunte qual o usuário quis dizer antes de chamar de novo com o nome completo.
 Se o usuário pedir os adiantamentos/vales/dívida de UM funcionário (ex: "manda os adiantamentos do Leonardo", "quanto o Marcos ainda deve de adiantamento"), use extrato_adiantamentos_funcionario_imagem — ela já junta os dois tipos de adiantamento (lançado direto no caixa e solicitado em Funcionários/pago via Contas a Pagar). Por padrão (não informe apenasPagos) ela manda só os AINDA EM ABERTO, que é o que o usuário quer na grande maioria dos casos. Só chame com apenasPagos:true se o usuário pedir explicitamente os já pagos/quitados/descontados (ex: "manda os que já foram pagos", "os adiantamentos já descontados do Leonardo"). Mesmo tratamento de "nome_ambiguo" do item acima se aplica aqui.
+Se o usuário pedir pra ENVIAR/MANDAR os adiantamentos de alguém PARA OUTRA PESSOA por WhatsApp (ex: "envia pro Lucas os adiantamentos do Leonardo André", "manda por whatsapp pro Marcos os adiantamentos em aberto do Paulo"), use enviar_extrato_adiantamentos_whatsapp em vez de extrato_adiantamentos_funcionario_imagem — funcionarioNome é de quem são os adiantamentos, destinatarioNome é quem vai receber a mensagem; NUNCA peça o número de telefone ao usuário, a ferramenta busca sozinha em Funcionários, e ela já manda automaticamente uma cópia pro número fixo do responsável, não precisa pedir nem avisar isso.
 Para editar ou excluir um lançamento do caixa, use consultar_caixa primeiro para encontrar o id correto e confirme com o usuário qual lançamento é (data, descrição e valor) antes de aplicar a alteração.
 Para editar ou dar baixa num lançamento do Contas a Pagar, use consultar_contas_pagar primeiro para encontrar o id correto — NUNCA invente um id (ex: "1", "2", "3" não são ids válidos, só o id exato que consultar_contas_pagar retornou) — e confirme com o usuário qual lançamento é (descrição e valor atuais) antes de aplicar. Pra "dar baixa"/"marcar como pago"/"quitar", use dar_baixa_conta_pagar. Pra mudar descrição, valor ou data, use editar_conta_pagar.
 Contas a Receber funciona do mesmo jeito que Contas a Pagar, com o mesmo requisito de senha: use consultar_contas_receber primeiro pra encontrar o id correto antes de editar_conta_receber, dar_baixa_conta_receber ou excluir_conta_receber — NUNCA invente um id, só o id exato retornado por consultar_contas_receber é válido — e confirme com o usuário qual lançamento é (descrição e valor) antes de aplicar qualquer alteração. Pra criar um lançamento novo, use criar_conta_receber. Pra "dar baixa"/"marcar como recebido"/"quitar", use dar_baixa_conta_receber. Pra mudar descrição, valor ou data, use editar_conta_receber. Pra excluir, use excluir_conta_receber e confirme claramente com o usuário antes, já que é uma ação destrutiva.
@@ -2840,7 +2942,7 @@ CRÍTICO: consultar_ponto só serve para UM dia. Quando o usuário pedir ponto d
             || b.name.startsWith("cancelar_") || b.name.startsWith("editar_") || b.name.startsWith("criar_");
           let resultado;
           try {
-            resultado = await executarFerramenta(b.name, b.input);
+            resultado = await executarFerramenta(b.name, b.input, apiKeyValue);
             if (alteraBanco) {
               logger.info(`[ferramenta] ${b.name} concluída`, { input: b.input, resultado });
             }
@@ -2864,11 +2966,11 @@ CRÍTICO: consultar_ponto só serve para UM dia. Quando o usuário pedir ponto d
 }
 
 exports.agenteGW = onCall(
-  { secrets: [anthropicApiKey], timeoutSeconds: 120, memory: "512MiB", cors: true, invoker: "public" },
+  { secrets: [anthropicApiKey, evolutionApiKey], timeoutSeconds: 120, memory: "512MiB", cors: true, invoker: "public" },
   async (request) => {
     const { mensagem, historico = [] } = request.data || {};
     if (!mensagem) throw new HttpsError("invalid-argument", "mensagem é obrigatória.");
-    return processarMensagemAgenteGW(mensagem, historico);
+    return processarMensagemAgenteGW(mensagem, historico, evolutionApiKey.value());
   }
 );
 
@@ -2979,7 +3081,7 @@ Houve uma falha técnica ao processar a imagem (${e.message}). Avise o usuário 
       const histSnap = await histRef.get();
       const historico = histSnap.exists ? (histSnap.data().historico || []) : [];
 
-      const { resposta, historico: novoHistorico } = await processarMensagemAgenteGW(texto, historico);
+      const { resposta, historico: novoHistorico } = await processarMensagemAgenteGW(texto, historico, apiKeyValue);
 
       await histRef.set({
         historico: novoHistorico.slice(-12),
