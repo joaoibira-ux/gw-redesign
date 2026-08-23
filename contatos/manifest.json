@@ -1,0 +1,8 @@
+{
+  "name": "Contatos - GW",
+  "short_name": "Contatos",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#1a3322",
+  "theme_color": "#1a3322"
+}
