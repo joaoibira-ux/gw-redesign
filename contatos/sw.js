@@ -1,4 +1,4 @@
-const VERSION = "contatos-v1";
+const VERSION = "contatos-v2";
 const ASSETS = [
   "./index.html",
   "./style.css?v=1",
