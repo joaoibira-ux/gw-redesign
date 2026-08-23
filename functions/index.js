@@ -216,6 +216,20 @@ const TOOLS_GW = [
     }
   },
   {
+    name: "criar_contato",
+    description: "Cadastra um novo contato (nome + telefone) no cadastro de Contatos do sistema — pessoas que NÃO são funcionário (ex: outro sócio, terceiro). É o cadastro que enviar_extrato_adiantamentos_whatsapp consulta quando o destinatário não é encontrado em Funcionários. Use quando o usuário pedir pra inserir/cadastrar/adicionar um contato (ex: 'Inserir contato: Horacio 81994903673', 'cadastra a Fernanda como contato, número 81999998888'). Se já existir um contato com esse mesmo nome, ATUALIZA o telefone dele em vez de criar um duplicado. ALTERA O BANCO DE DADOS: exige o campo senha, que deve ser pedido ao usuário antes de chamar esta ferramenta.",
+    input_schema: {
+      type: "object",
+      properties: {
+        nome:     { type: "string", description: "Nome do contato" },
+        telefone: { type: "string", description: "Telefone/WhatsApp do contato, com ou sem formatação (ex: '81994903673', '(81) 99490-3673')" },
+        obs:      { type: "string", description: "Observação opcional (ex: 'fornecedor', 'cliente')" },
+        senha:    { type: "string", description: "Senha de autorização para alterar o banco de dados. Deve ser pedida ao usuário antes de chamar esta ferramenta." }
+      },
+      required: ["nome", "telefone", "senha"]
+    }
+  },
+  {
     name: "registrar_pagamento_refeicoes",
     description: "Cria um lançamento no Contas a Pagar com o valor total do extrato de refeições de um período, e marca esse período como pago (fica registrado pra qualquer consulta futura que envolva esse período, ou parte dele, avisar que já foi pago — evita pagar em dobro). Recalcula o extrato do zero a partir do período informado, não confia em números ditos antes na conversa. ALTERA O BANCO DE DADOS: exige senha de autorização, peça ao usuário antes de chamar. Só chame depois que o usuário confirmar explicitamente que quer registrar (normalmente depois de extrato_refeicoes_imagem).",
     input_schema: {
@@ -1898,6 +1912,35 @@ async function executarFerramenta(nome, input, apiKeyValue) {
     };
   }
 
+  if (nome === "criar_contato") {
+    const { nome: nomeContato, telefone, obs, senha } = input;
+    if (senha !== SENHA_ALTERACAO_BANCO) {
+      return { sucesso: false, erro: "senha_invalida", mensagem: "Senha incorreta. Peça a senha de autorização ao usuário para alterar o banco de dados." };
+    }
+    if (!nomeContato || !telefone) {
+      return { sucesso: false, erro: "parametros_invalidos", mensagem: "nome e telefone são obrigatórios." };
+    }
+
+    const nomeLimpo = nomeContato.trim();
+    const telefoneLimpo = telefone.trim();
+    const obsLimpo = (obs || "").trim();
+
+    const snap = await db.collection("contatos").get();
+    const alvo = normTexto(nomeLimpo);
+    const existente = snap.docs.find(d => normTexto(d.data().nome) === alvo);
+
+    if (existente) {
+      await existente.ref.update({ telefone: telefoneLimpo, obs: obsLimpo });
+      return { sucesso: true, acao: "atualizado", id: existente.id, nome: nomeLimpo, telefone: telefoneLimpo };
+    }
+
+    const ref = await db.collection("contatos").add({
+      nome: nomeLimpo, telefone: telefoneLimpo, obs: obsLimpo,
+      criadoEm: admin.firestore.FieldValue.serverTimestamp()
+    });
+    return { sucesso: true, acao: "criado", id: ref.id, nome: nomeLimpo, telefone: telefoneLimpo };
+  }
+
   if (nome === "registrar_pagamento_refeicoes") {
     const { data_inicio, data_fim, senha } = input;
     if (senha !== SENHA_ALTERACAO_BANCO) {
@@ -2901,13 +2944,14 @@ Quando o usuário mencionar um nome incompleto de funcionário, use listar_funci
 CRÍTICO: funcionarioId é sempre o ID real gerado pelo Firestore (retornado por listar_funcionarios), nunca um valor inventado a partir do nome (ex: "lucas.cristiano" ou "3" NÃO são funcionarioId válidos). Antes de chamar registrar_ponto ou editar_ponto, sempre confirme o funcionarioId real chamando listar_funcionarios — a menos que esse ID já tenha sido retornado por listar_funcionarios nesta mesma conversa. Nunca presuma ou monte um ID.
 Códigos de locais/apartamentos (ex: BM 06, BM06, BM006, BM 006, Bm 06) são equivalentes — passe o código exatamente como o usuário digitou, o sistema normaliza automaticamente.
 Para criar locais novos, use criar_local — ela já atribui automaticamente TODOS os serviços atualmente cadastrados no sistema (o mesmo padrão de qualquer local já existente); nunca tente montar a lista de serviços manualmente nem pergunte ao usuário quais serviços incluir. criar_local aceita uma LISTA de identificações (pode criar vários locais numa só chamada). CRÍTICO: se o usuário pedir pra criar um "bloco", "prédio" ou várias unidades sem dizer a identificação exata de cada uma, NUNCA invente (ex: criar um único local chamado "C" pra representar o bloco inteiro) — pergunte primeiro quantos apartamentos e qual a numeração/identificação de cada um, e só chame criar_local depois de ter essa lista completa.
-IMPORTANTE: qualquer ferramenta que altere o banco de dados (ex: registrar_ponto, editar_ponto, cancelar_ponto, criar_lancamento_caixa, editar_lancamento_caixa, excluir_lancamento_caixa, registrar_pagamento_refeicoes, editar_conta_pagar, dar_baixa_conta_pagar, anexar_boleto_conta_pagar, criar_conta_receber, editar_conta_receber, dar_baixa_conta_receber, excluir_conta_receber) exige uma senha de autorização. Antes de chamar essa ferramenta, sempre pergunte ao usuário "Qual a senha de autorização para alterar o banco de dados?" e só prossiga depois que ele informar a senha. Nunca invente, sugira ou revele a senha.
+IMPORTANTE: qualquer ferramenta que altere o banco de dados (ex: registrar_ponto, editar_ponto, cancelar_ponto, criar_lancamento_caixa, editar_lancamento_caixa, excluir_lancamento_caixa, registrar_pagamento_refeicoes, editar_conta_pagar, dar_baixa_conta_pagar, anexar_boleto_conta_pagar, criar_conta_receber, editar_conta_receber, dar_baixa_conta_receber, excluir_conta_receber, criar_contato) exige uma senha de autorização. Antes de chamar essa ferramenta, sempre pergunte ao usuário "Qual a senha de autorização para alterar o banco de dados?" e só prossiga depois que ele informar a senha. Nunca invente, sugira ou revele a senha.
 CRÍTICO: NUNCA diga ao usuário que uma ação foi concluída/registrada/salva com sucesso a menos que o resultado da ferramenta (o tool_result mais recente) traga explicitamente "sucesso": true. Se vier "sucesso": false, ou se você não tiver certeza de ter chamado a ferramenta de verdade, informe claramente que a ação FALHOU (use a "mensagem" do erro, se houver) e peça pra tentar de novo — nunca componha uma confirmação de sucesso a partir de memória da conversa ou suposição. Isso já causou TRÊS casos reais: (1) o assistente disse "Pagamento registrado com sucesso" sem a ferramenta ter sido executada de verdade, nada gravado no banco; (2) o usuário pediu baixa em 2 lançamentos do Contas a Pagar, o assistente confirmou os dois, mas NENHUMA ferramenta foi chamada pra nenhum dos dois; (3) o usuário pediu pra editar_conta_pagar mudar uma data, o assistente confirmou a troca, mas não chamou NENHUMA ferramenta — o registro no banco nunca mudou. SE O USUÁRIO PEDIR UMA AÇÃO EM MAIS DE UM ITEM (ex: "dá baixa nesses dois", "edita esses três"), chame a ferramenta correspondente UMA VEZ PARA CADA item, com o id real de cada um — nunca responda como se todos tivessem sido feitos sem ter chamado a ferramenta pra cada um individualmente.
 VERIFICAÇÃO OBRIGATÓRIA antes de qualquer resposta que confirme uma ação (registrar, editar, excluir, dar baixa, pagar, cancelar): pare e confira, nesta mesma resposta que você está montando, se existe um tool_result correspondente com "sucesso": true. Se a resposta que você está prestes a mandar afirma que algo foi feito e você não consegue apontar esse tool_result específico, isso é um sinal de que você pulou a chamada da ferramenta — pare, chame a ferramenta de verdade primeiro, e só confirme depois de ver o resultado real.
 Depois que extrato_refeicoes_imagem enviar a imagem com sucesso, pergunte ao usuário se ele quer registrar esse valor total no Contas a Pagar. Se ele confirmar, peça a senha de autorização e chame registrar_pagamento_refeicoes com o mesmo período. Se o resultado de qualquer ferramenta de refeições trouxer "periodosJaPagos" preenchido, avise o usuário que esse período (ou parte dele) já foi registrado como pago antes, ANTES de prosseguir — não insista em registrar de novo sem ele confirmar que quer mesmo assim.
 Se o usuário pedir o detalhamento/extrato dos serviços de UM funcionário na folha de pagamento (ex: "manda a folha do Geryson", "quanto foi pago pro Paulo nessa última folha, em imagem"), use extrato_folha_funcionario_imagem em vez de tentar montar a tabela de memória. Se a ferramenta retornar erro "nome_ambiguo" (nome bate com mais de um funcionário, ex: "Paulo" -> "Paulo Ricardo" e "Gustavo Paulo"), NUNCA escolha um dos dois sozinho — mostre a lista de nomes encontrados e pergunte qual o usuário quis dizer antes de chamar de novo com o nome completo.
 Se o usuário pedir os adiantamentos/vales/dívida de UM funcionário (ex: "manda os adiantamentos do Leonardo", "quanto o Marcos ainda deve de adiantamento"), use extrato_adiantamentos_funcionario_imagem — ela já junta os dois tipos de adiantamento (lançado direto no caixa e solicitado em Funcionários/pago via Contas a Pagar). Por padrão (não informe apenasPagos) ela manda só os AINDA EM ABERTO, que é o que o usuário quer na grande maioria dos casos. Só chame com apenasPagos:true se o usuário pedir explicitamente os já pagos/quitados/descontados (ex: "manda os que já foram pagos", "os adiantamentos já descontados do Leonardo"). Mesmo tratamento de "nome_ambiguo" do item acima se aplica aqui.
 Se o usuário pedir pra ENVIAR/MANDAR os adiantamentos de alguém PARA OUTRA PESSOA por WhatsApp (ex: "envia pro Lucas os adiantamentos do Leonardo André", "manda por whatsapp pro Marcos os adiantamentos em aberto do Paulo"), use enviar_extrato_adiantamentos_whatsapp em vez de extrato_adiantamentos_funcionario_imagem — funcionarioNome é de quem são os adiantamentos, destinatarioNome é quem vai receber a mensagem; NUNCA peça o número de telefone ao usuário, a ferramenta busca sozinha (primeiro em Funcionários, depois em Contatos se não achar), e ela já manda automaticamente uma cópia pro número fixo do responsável, não precisa pedir nem avisar isso. Se vier erro "destinatario_nao_encontrado", avise o usuário que não achou esse nome nem em Funcionários nem em Contatos, e sugira cadastrar a pessoa em Contatos antes de tentar de novo.
+Se o usuário pedir pra inserir/cadastrar/adicionar um contato (ex: "Inserir contato: Horacio 81994903673", "cadastra a Fernanda como contato, número 81999998888"), use criar_contato — nome e telefone geralmente vêm juntos na mesma frase, extraia os dois automaticamente sem precisar perguntar de novo (a menos que realmente não dê pra identificar qual parte é o nome e qual é o telefone). Como toda ferramenta que altera o banco, exige senha.
 Para editar ou excluir um lançamento do caixa, use consultar_caixa primeiro para encontrar o id correto e confirme com o usuário qual lançamento é (data, descrição e valor) antes de aplicar a alteração.
 Para editar ou dar baixa num lançamento do Contas a Pagar, use consultar_contas_pagar primeiro para encontrar o id correto — NUNCA invente um id (ex: "1", "2", "3" não são ids válidos, só o id exato que consultar_contas_pagar retornou) — e confirme com o usuário qual lançamento é (descrição e valor atuais) antes de aplicar. Pra "dar baixa"/"marcar como pago"/"quitar", use dar_baixa_conta_pagar. Pra mudar descrição, valor ou data, use editar_conta_pagar.
 Contas a Receber funciona do mesmo jeito que Contas a Pagar, com o mesmo requisito de senha: use consultar_contas_receber primeiro pra encontrar o id correto antes de editar_conta_receber, dar_baixa_conta_receber ou excluir_conta_receber — NUNCA invente um id, só o id exato retornado por consultar_contas_receber é válido — e confirme com o usuário qual lançamento é (descrição e valor) antes de aplicar qualquer alteração. Pra criar um lançamento novo, use criar_conta_receber. Pra "dar baixa"/"marcar como recebido"/"quitar", use dar_baixa_conta_receber. Pra mudar descrição, valor ou data, use editar_conta_receber. Pra excluir, use excluir_conta_receber e confirme claramente com o usuário antes, já que é uma ação destrutiva.
