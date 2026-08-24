@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "1.5";
+const VERSAO = "1.6";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 if ("serviceWorker" in navigator) {
@@ -43,6 +43,18 @@ let tipoMovAtual = "entrada";
 // ── Utilitários ──────────────────────────────────────────────
 function hoje() {
   const d = new Date();
+  return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+}
+
+function parseDataBR(s) {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(String(s || "").trim());
+  if (!m) return null;
+  const [, d, mo, a] = m;
+  const ano = a.length === 2 ? "20" + a : a;
+  return new Date(Number(ano), Number(mo) - 1, Number(d));
+}
+
+function fmtDataBR(d) {
   return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
 }
 
@@ -298,10 +310,25 @@ function abrirMovimentacao() {
   document.getElementById("f-mov-motivo").value = "";
   document.getElementById("f-mov-fornecedor").value = "";
   document.getElementById("f-mov-valor").value = "";
+  document.getElementById("f-mov-prazo").value = "";
   document.getElementById("f-mov-vencimento").value = hoje();
   document.getElementById("mov-item-info").textContent = itemAtual.nome;
   document.getElementById("overlay-movimentacao").style.display = "flex";
 }
+
+// Prazo é só um atalho pra preencher o Vencimento (data da movimentação +
+// N dias) — não é salvo, o vencimento continua editável na mão depois.
+function calcularVencimentoPorPrazo() {
+  const prazo = document.getElementById("f-mov-prazo").value.trim();
+  if (!prazo) return;
+  const dias = parseInt(prazo, 10);
+  if (isNaN(dias)) return;
+  const base = parseDataBR(document.getElementById("f-mov-data").value) || new Date();
+  base.setDate(base.getDate() + dias);
+  document.getElementById("f-mov-vencimento").value = fmtDataBR(base);
+}
+document.getElementById("f-mov-prazo").addEventListener("input", calcularVencimentoPorPrazo);
+document.getElementById("f-mov-data").addEventListener("input", calcularVencimentoPorPrazo);
 
 function fecharMovimentacao() {
   document.getElementById("overlay-movimentacao").style.display = "none";
