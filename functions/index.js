@@ -1601,8 +1601,13 @@ async function executarFerramenta(nome, input, apiKeyValue) {
 
   if (nome === "consultar_ponto") {
     const { funcionarioId, data } = input;
-    const dataRef = data ? new Date(data + "T00:00:00-03:00") : new Date(new Date().toLocaleDateString("en-CA") + "T00:00:00-03:00");
-    const dataFim = new Date(dataRef); dataFim.setHours(23, 59, 59, 999);
+    // Mesmo cuidado de funcionarioRegistrouEntradaAte: construir o fim do dia
+    // direto com o offset -03:00 em vez de .setHours(), que opera no fuso
+    // LOCAL do processo (UTC) e faria o "fim do dia" cair às 20:59 em
+    // Brasília em vez de 23:59, excluindo pontos batidos à noite.
+    const dataStr = data || new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const dataRef = new Date(dataStr + "T00:00:00-03:00");
+    const dataFim = new Date(dataStr + "T23:59:59.999-03:00");
 
     if (!funcionarioId) {
       const snapTodos = await db.collection("pontos")
@@ -3445,8 +3450,13 @@ async function funcionarioTeveFaltaSemanaAnterior(funcionarioId, segundaStr) {
 async function funcionarioRegistrouEntradaAte(funcionarioId, hojeStr, horarioLimite) {
   const [h, m] = (horarioLimite || "23:59").split(":").map(Number);
   const inicioDia = new Date(hojeStr + "T00:00:00-03:00");
-  const limite = new Date(hojeStr + "T00:00:00-03:00");
-  limite.setHours(h, m, 59, 999);
+  // NUNCA usar .setHours() aqui: ela opera no fuso LOCAL do processo (UTC no
+  // Cloud Functions), não em America/Sao_Paulo — um bug real já causou isso:
+  // com condicaoHorarioLimite "11:59", o limite virava 11:59:59.999 UTC (=
+  // 08:59 em Brasília, 3h mais cedo que o configurado), fazendo a condição
+  // falhar mesmo com o funcionário batendo ponto bem antes das 11:59 de
+  // verdade. Construir a instância direto com o offset -03:00 evita isso.
+  const limite = new Date(`${hojeStr}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:59.999-03:00`);
 
   const snap = await db.collection("pontos")
     .where("funcionarioId", "==", funcionarioId)
