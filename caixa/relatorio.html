@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.93";
+  const VERSAO = "1.94";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1547,14 +1547,33 @@
     const dataFolha = _ultimaFolha.criadoEm && _ultimaFolha.criadoEm.toDate ? _ultimaFolha.criadoEm.toDate() : null;
     const descontaInssPassagens = !dataFolha || dataFolha.getDate() >= 16;
     const CARGOS_POR_PRODUCAO_REL = ['PINTOR', 'RASPADOR'];
+
+    // Quem foi admitido DENTRO da quinzena 16-fim do mês não trabalhou o
+    // período inteiro sobre o qual o INSS/Passagens fixo é calculado — sem
+    // isso, um funcionário admitido no meio do mês levava o desconto cheio
+    // como se tivesse trabalhado a quinzena toda. Proporcional aos dias
+    // efetivamente admitido dentro do período.
+    const refDataProrata = dataFolha || new Date();
+    const periodoIni = new Date(refDataProrata.getFullYear(), refDataProrata.getMonth(), 16);
+    const periodoFim = new Date(refDataProrata.getFullYear(), refDataProrata.getMonth() + 1, 0);
+    const diasPeriodo = Math.round((periodoFim - periodoIni) / 86400000) + 1;
+    function fatorProrata(admissaoStr) {
+      const admissao = parseDataBRparaDate(admissaoStr);
+      if (!admissao || admissao <= periodoIni) return 1;
+      if (admissao > periodoFim) return 0;
+      const diasTrabalhados = Math.round((periodoFim - admissao) / 86400000) + 1;
+      return Math.max(0, Math.min(1, diasTrabalhados / diasPeriodo));
+    }
+
     const descontosMap = new Map();
     if (_funcionariosSnap) _funcionariosSnap.docs.forEach(d => {
       const f = d.data();
       const porProd = CARGOS_POR_PRODUCAO_REL.includes((f.cargo || '').toUpperCase());
       const base = porProd ? Number(f.salarioReferencia || 0) : Number(f.salario || 0);
       const pct = Number(f.descontos || 0);
+      const fator = descontaInssPassagens ? fatorProrata(f.admissao) : 0;
       const valores = descontaInssPassagens
-        ? { inss: base * pct / 100, passagens: base * 0.06 }
+        ? { inss: base * pct / 100 * fator, passagens: base * 0.06 * fator }
         : { inss: 0, passagens: 0 };
       descontosMap.set(d.id, valores);
       descontosMap.set(normNome(f.nome), valores);
