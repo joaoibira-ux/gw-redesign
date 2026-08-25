@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.29";
+const VERSAO = "3.30";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -200,7 +200,12 @@ async function abrirAdiantamento(id) {
     });
     apagarSnap.docs.forEach(d => {
       const r = d.data();
-      usado += _somaSeAdiantamentoDoFuncionario(r.descricao, r.criadoEm, r.valor, nomeAlvo, segunda);
+      // Quando a conta é baixada (paga), "valor" vira 0 e o valor real fica
+      // preservado em "valorOriginal" (ver caixa/app.js) — sem isso, um
+      // adiantamento pago via Contas a Pagar some do "já usado essa semana"
+      // assim que a empresa paga, deixando passar solicitações acima do limite.
+      const valorReal = r.status === "baixado" ? (r.valorOriginal !== undefined ? r.valorOriginal : r.valor) : r.valor;
+      usado += _somaSeAdiantamentoDoFuncionario(r.descricao, r.criadoEm, valorReal, nomeAlvo, segunda);
     });
   } catch (e) {
     document.getElementById("adiant-corpo").innerHTML = '<p class="empty">Erro ao consultar. Tente novamente.</p>';
