@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "1.11";
+const VERSAO = "1.12";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -22,6 +22,24 @@ function escHtml(s) {
 
 function fmtMoeda(v) {
   return "R$ " + (v || 0).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+// O campo de data usa <input type="date"> (calendário nativo), que trabalha
+// em ISO (AAAA-MM-DD) — mas o resto do sistema guarda e exibe DD/MM/AAAA,
+// então converte nas duas pontas.
+function brParaISO(s) {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(String(s || "").trim());
+  if (!m) return "";
+  const [, d, mo, a] = m;
+  const ano = a.length === 2 ? "20" + a : a;
+  return `${ano}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
+}
+
+function isoParaBR(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || "").trim());
+  if (!m) return "";
+  const [, a, mo, d] = m;
+  return `${d}/${mo}/${a}`;
 }
 
 function parseMoeda(s) {
@@ -224,7 +242,7 @@ function editarDaTelaDetalhe() {
 
 document.getElementById("form").addEventListener("submit", function(e) {
   e.preventDefault();
-  const data      = document.getElementById("f-data").value.trim();
+  const data      = isoParaBR(document.getElementById("f-data").value);
   const descricao = document.getElementById("f-desc").value.trim();
   const valor     = parseMoeda(document.getElementById("f-valor").value);
 
@@ -255,7 +273,7 @@ document.getElementById("f-valor").addEventListener("blur", function() {
   if (v > 0) this.value = v.toFixed(2).replace(".", ",");
 });
 
-document.getElementById("f-data").value = hoje();
+document.getElementById("f-data").value = brParaISO(hoje());
 
 function excluir(id) {
   const c = docsCache[id];
@@ -270,7 +288,7 @@ function editar(id) {
   const c = docsCache[id];
   if (!c) return;
   editandoId = id;
-  document.getElementById("f-data").value = c.data || "";
+  document.getElementById("f-data").value = brParaISO(c.data || "");
   document.getElementById("f-desc").value = c.descricao || "";
   document.getElementById("f-valor").value = c.valor ? c.valor.toFixed(2).replace(".", ",") : "";
   document.getElementById("form-titulo").textContent = "Editar Conta a Pagar";
@@ -287,7 +305,7 @@ function toggleForm() {
   form.style.display = open ? "block" : "none";
   fab.classList.toggle("open", open);
   if (open) {
-    document.getElementById("f-data").value = hoje();
+    document.getElementById("f-data").value = brParaISO(hoje());
     document.getElementById("f-desc").focus();
   } else {
     document.getElementById("form").reset();
