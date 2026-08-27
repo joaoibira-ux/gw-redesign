@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Desenvolvimento" />
+  <title>Desenvolvimento</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="./style.css?v=1" />
+  <link rel="apple-touch-icon" href="../Logo-gw.png" />
+</head>
+<body>
+
+<header>
+  <a href="https://sistema.gwrevestimentos.com.br/index.html" style="display:flex;align-items:center;line-height:0;">
+    <img src="../Logo-gw.png" alt="GW" style="height:34px;width:34px;object-fit:contain;border-radius:6px;" />
+  </a>
+  <span>🛠️ Desenvolvimento</span>
+  <button class="btn-somar" id="btn-concluidas" onclick="abrirConcluidas()">Concluídas</button>
+  <span id="versao-app" class="header-versao"></span>
+</header>
+
+<div id="lista" class="lista"></div>
+
+<div class="concluidas-overlay" id="concluidas-overlay" style="display:none">
+  <div class="concluidas-header">
+    <span>Concluídas</span>
+    <button class="concluidas-fechar" onclick="fecharConcluidas()">✕</button>
+  </div>
+  <div id="lista-concluidas" class="lista"></div>
+</div>
+
+<button class="fab" id="fab" onclick="toggleForm()">+</button>
+
+<form class="form-card" id="form" novalidate style="display:none">
+  <h3 id="form-titulo">Nova Pendência</h3>
+  <div class="form-grid">
+    <div class="full">
+      <label for="f-texto">O que precisa ser feito</label>
+      <textarea id="f-texto" rows="3" placeholder="Ex: Contas a Pagar: abrir o calendário no campo data"></textarea>
+    </div>
+    <button type="submit" class="btn-add" id="btn-add">+ Adicionar</button>
+  </div>
+</form>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="./app.js?v=1"></script>
+<script src="../agente.js"></script>
+<script src="../bfcache-fix.js"></script>
+</body>
+</html>
