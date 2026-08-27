@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.90";
+const VERSAO = "4.91";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1210,6 +1210,42 @@ async function salvarFolha(silencioso = false, completarAjudantes = true) {
   }
 }
 
+// Soma os adiantamentos ainda em aberto de cada funcionário — tanto os
+// lançados direto no caixa (origem 'Adiantamento', ainda não renomeado pra
+// 'Antecipacao' quando uma folha desconta) quanto os solicitados em
+// Funcionários e pagos via Contas a Pagar (baixados, ainda sem
+// descontadoDaFolha). Mesmo critério usado em caixa/relatorio.html — sem a
+// segunda parte, um adiantamento pago via Contas a Pagar nunca aparecia
+// aqui, mesmo já tendo sido desembolsado pro funcionário.
+async function buscarAdiantamentosMap() {
+  const adiantamentosMap = new Map();
+  try {
+    const [lancSnap, cpSnap] = await Promise.all([
+      db.collection('lancamentos').where('origem', 'in', ['ANE->ADIANTAMENTO', 'JOAO->ADIANTAMENTO']).get(),
+      db.collection('contasPagar').get()
+    ]);
+    lancSnap.docs.forEach(d => {
+      const r = d.data();
+      const desc = r.descricao || '';
+      if (!desc.startsWith('Adiantamento: ')) return;
+      const nome = desc.slice('Adiantamento: '.length).split(/\s*[—–\-]/)[0].trim().normalize('NFC');
+      if (!nome) return;
+      adiantamentosMap.set(nome, (adiantamentosMap.get(nome) || 0) + (r.saida || 0));
+    });
+    cpSnap.docs.forEach(d => {
+      const r = d.data();
+      if (r.status !== 'baixado' || r.descontadoDaFolha) return;
+      const desc = r.descricao || '';
+      if (!desc.startsWith('Adiantamento: ')) return;
+      const nome = desc.slice('Adiantamento: '.length).split(/\s*[—–\-]/)[0].trim().normalize('NFC');
+      if (!nome) return;
+      const valor = r.valorOriginal !== undefined ? r.valorOriginal : r.valor;
+      adiantamentosMap.set(nome, (adiantamentosMap.get(nome) || 0) + (valor || 0));
+    });
+  } catch (e) {}
+  return adiantamentosMap;
+}
+
 // ── Botão Relatório/Resumo → salva + mostra comprovante ───────────────────
 async function fecharFolha() {
   if (!entradas.length) return;
@@ -1230,19 +1266,7 @@ async function fecharFolha() {
     gruposData.push({ funcionario: g.funcionario, itens: g.itens });
   });
 
-  const adiantamentosMap = new Map();
-  try {
-    const adSnap = await db.collection('lancamentos').get();
-    adSnap.docs.forEach(d => {
-      const r = d.data();
-      if (r.origem !== 'ANE->ADIANTAMENTO' && r.origem !== 'JOAO->ADIANTAMENTO') return;
-      const desc = r.descricao || '';
-      if (!desc.startsWith('Adiantamento: ')) return;
-      const nome = desc.slice('Adiantamento: '.length).split(/\s*[—–\-]/)[0].trim().normalize('NFC');
-      if (!nome) return;
-      adiantamentosMap.set(nome, (adiantamentosMap.get(nome) || 0) + (r.saida || 0));
-    });
-  } catch(e) {}
+  const adiantamentosMap = await buscarAdiantamentosMap();
 
   entradas = [];
   atualizarHeader();
@@ -1436,19 +1460,7 @@ function mostrarSucesso(pagamentos, totalGeral) {
 async function verRelatorio() {
   let gruposData, nServMapa, totalGeral, valorEncarregado;
 
-  const adiantamentosMap = new Map();
-  try {
-    const adSnap = await db.collection('lancamentos').get();
-    adSnap.docs.forEach(d => {
-      const r = d.data();
-      if (r.origem !== 'ANE->ADIANTAMENTO' && r.origem !== 'JOAO->ADIANTAMENTO') return;
-      const desc = r.descricao || '';
-      if (!desc.startsWith('Adiantamento: ')) return;
-      const nome = desc.slice('Adiantamento: '.length).split(/\s*[—–\-]/)[0].trim().normalize('NFC');
-      if (!nome) return;
-      adiantamentosMap.set(nome, (adiantamentosMap.get(nome) || 0) + (r.saida || 0));
-    });
-  } catch(e) {}
+  const adiantamentosMap = await buscarAdiantamentosMap();
 
   const temProducao  = entradas.some(e => e.firestoreLocalId);
   const temDiaristas = _diariasCache.length > 0;
