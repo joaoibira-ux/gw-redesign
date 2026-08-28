@@ -10,7 +10,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <link rel="manifest" href="./manifest.json" />
   <link rel="apple-touch-icon" href="./logo-gw.png.jpeg" />
-  <link rel="stylesheet" href="./style.css?v=32" />
+  <link rel="stylesheet" href="./style.css?v=33" />
   <style>
     html.gw-blocked body > *:not(#aviso-instalacao) { display: none !important; }
     #aviso-instalacao {
@@ -144,6 +144,7 @@
 
 <p class="section-title">Lançamentos</p>
 <div class="lancamentos" id="lista" style="padding-bottom: env(safe-area-inset-bottom)"></div>
+<input type="file" id="f-comprovante-existente" accept="image/*,application/pdf" style="display:none" />
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -170,7 +171,7 @@
   </div>
 </div>
 
-<script src="./app.js?v=83"></script>
+<script src="./app.js?v=84"></script>
 <script>
   if (document.documentElement.classList.contains('gw-blocked')) {
     (function() {

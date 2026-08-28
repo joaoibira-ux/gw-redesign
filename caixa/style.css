@@ -180,6 +180,19 @@ input:focus, select:focus {
   padding: 2px 4px;
 }
 .card-comprovante-clip:active { opacity: 0.6; }
+.card-comprovante-add {
+  margin-left: auto;
+  background: #f0f4f0;
+  color: #4a7a54;
+  border: none;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.card-comprovante-add:active { background: #dce8dd; }
 .card-meta .numero {
   font-weight: 600;
   color: #aaa;

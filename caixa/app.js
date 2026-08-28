@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.56";
+const VERSAO_CAIXA = "3.57";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -38,6 +38,34 @@ async function uploadComprovante(file) {
   });
   return { url: result.data.url, nomeArquivo: file.name };
 }
+
+// Anexa um comprovante a um lançamento JÁ EXISTENTE (que ainda não tinha
+// nenhum) — abre o seletor de arquivo e, ao escolher, sobe e grava direto
+// no documento, sem precisar editar mais nada.
+let _anexarComprovanteAlvoId = null;
+function anexarComprovanteExistente(id) {
+  _anexarComprovanteAlvoId = id;
+  document.getElementById("f-comprovante-existente").click();
+}
+
+document.getElementById("f-comprovante-existente").addEventListener("change", async function() {
+  const file = this.files[0];
+  this.value = "";
+  const id = _anexarComprovanteAlvoId;
+  _anexarComprovanteAlvoId = null;
+  if (!file || !id) return;
+
+  try {
+    const comprovante = await uploadComprovante(file);
+    await col.doc(id).update({
+      comprovanteUrl: comprovante.url,
+      comprovanteNomeArquivo: comprovante.nomeArquivo
+    });
+  } catch (err) {
+    console.error("Erro ao anexar comprovante:", err);
+    alert("Erro ao anexar comprovante: " + (err.code || err.message || "falha desconhecida") + "\n\nTente novamente.");
+  }
+});
 
 function fmtMoeda(v) {
   return "R$ " + v.toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
@@ -216,7 +244,9 @@ function render(docs) {
           <span class="numero">Nº ${numero}</span>
           <span>${escHtml(r.data)}</span>
           <span class="badge${isCredito ? ' credito-prolabore' : ''}">${escHtml(r.origem)}</span>
-          ${r.comprovanteUrl ? `<a href="${escHtml(r.comprovanteUrl)}" target="_blank" rel="noopener" class="card-comprovante-clip" onclick="event.stopPropagation()" title="Ver comprovante anexado">📎</a>` : ""}
+          ${r.comprovanteUrl
+            ? `<a href="${escHtml(r.comprovanteUrl)}" target="_blank" rel="noopener" class="card-comprovante-clip" onclick="event.stopPropagation()" title="Ver comprovante anexado">📎</a>`
+            : `<button type="button" class="card-comprovante-add" onclick="event.stopPropagation();anexarComprovanteExistente('${doc.id}')" title="Anexar comprovante">📎 Anexar</button>`}
         </div>
       </div>`;
   }).join("");
