@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.92";
+const VERSAO = "4.93";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1306,7 +1306,11 @@ function calcularDescontosFixos(nome) {
     fator = Math.max(0, Math.min(1, diasTrabalhados / diasPeriodo));
   }
 
-  const porProd = CARGOS_POR_PRODUCAO_REL.includes((f.cargo || '').toUpperCase());
+  // Cargos que já são "por produção" por natureza (Pintor/Raspador) OU quem
+  // tem o checkbox "Remunerar por produção" marcado (ex: Leonardo Ferreira,
+  // Ajudante) usa o Salário de Referência como base — mesma regra de
+  // caixa/relatorio.html.
+  const porProd = CARGOS_POR_PRODUCAO_REL.includes((f.cargo || '').toUpperCase()) || f.porProducao === true;
   const base = porProd ? Number(f.salarioReferencia || 0) : Number(f.salario || 0);
   const pct  = Number(f.descontos || 0);
   return { inss: base * pct / 100 * fator, passagens: base * 0.06 * fator };

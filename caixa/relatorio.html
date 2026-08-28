@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.96";
+  const VERSAO = "1.97";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1616,7 +1616,12 @@
     const descontosMap = new Map();
     if (_funcionariosSnap) _funcionariosSnap.docs.forEach(d => {
       const f = d.data();
-      const porProd = CARGOS_POR_PRODUCAO_REL.includes((f.cargo || '').toUpperCase());
+      // Cargos que já são "por produção" por natureza (Pintor/Raspador) OU
+      // quem tem o checkbox "Remunerar por produção" marcado (ex: Leonardo
+      // Ferreira, Ajudante) usa o Salário de Referência como base — sem
+      // isso, esse segundo caso caía no Salário Bruto normal, que fica 0
+      // pra quem é pago só por produção, zerando o desconto dele.
+      const porProd = CARGOS_POR_PRODUCAO_REL.includes((f.cargo || '').toUpperCase()) || f.porProducao === true;
       const base = porProd ? Number(f.salarioReferencia || 0) : Number(f.salario || 0);
       const pct = Number(f.descontos || 0);
       const fator = descontaInssPassagens ? fatorProrata(f.admissao) : 0;
