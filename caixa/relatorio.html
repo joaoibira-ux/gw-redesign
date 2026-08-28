@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.94";
+  const VERSAO = "1.95";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1226,11 +1226,20 @@
           sumsByCat[cat].custo    += custoApto;
         }
 
-        // Bruto real (atual) por funcionário, p/ Previsão da Folha
+        // Bruto real (atual) por funcionário, p/ Previsão da Folha — guarda
+        // nome/cargo junto (não só o total), pra dar pra criar uma linha nova
+        // pra quem tem produção mas ainda não está no retrato salvo da
+        // folha (ver merge em renderPrevisaoFolha/calcularTotalFolhaAberta).
+        // Registra sob id, nome cru e nome normalizado, todos apontando pro
+        // mesmo objeto — cobre tanto o lookup antigo (id||nome) quanto o
+        // novo merge por normNome.
         const func = s.funcionario;
         if (func && !(func.cargo || '').toLowerCase().includes('ajudante')) {
-          const key = func.id || func.nome;
-          porFunc.set(key, (porFunc.get(key) || 0) + custoApto);
+          const chaves = [func.id, func.nome, normNome(func.nome)].filter(Boolean);
+          const existente = chaves.map(k => porFunc.get(k)).find(Boolean);
+          const info = existente || { total: 0, nome: func.nome, cargo: func.cargo || '', id: func.id || '' };
+          info.total += custoApto;
+          chaves.forEach(k => porFunc.set(k, info));
         }
       });
     });
@@ -1532,6 +1541,25 @@
       }];
     });
 
+    // Quem tem produção viva (serviço em_pagamento em Locais) mas ainda não
+    // tem nenhuma linha — o retrato salvo na folha só é atualizado quando
+    // alguém abre o módulo Folha; produção registrada depois disso ficava
+    // invisível aqui (e de fora do total) até isso acontecer de novo.
+    if (_porFuncProducao) {
+      const jaTem = new Set(grupos.map(g => normNome(g.funcionario?.nome)));
+      const vistos = new Set();
+      _porFuncProducao.forEach(info => {
+        const key = normNome(info.nome);
+        if (jaTem.has(key) || vistos.has(key)) return;
+        vistos.add(key);
+        grupos = [...grupos, {
+          isEncarregado: false,
+          funcionario: { id: info.id || '', nome: info.nome, cargo: info.cargo || '' },
+          subtotal: 0
+        }];
+      });
+    }
+
     if (!grupos.length) { el.innerHTML = ''; renderPrevisaoQuinzena(); return; }
 
     const adiantMap = new Map();
@@ -1591,7 +1619,8 @@
         }
       } else if (_porFuncProducao && !isAjud) {
         const key = g.funcionario.id || g.funcionario.nome;
-        bruto = _porFuncProducao.get(key) || 0;
+        const info = _porFuncProducao.get(key) || _porFuncProducao.get(normNome(g.funcionario.nome));
+        bruto = info ? info.total : 0;
       }
       const diaria = diariaPorFunc.get(normNome(g.funcionario.nome));
       if (diaria) bruto += diaria.total;
@@ -1779,6 +1808,21 @@
       }];
     });
 
+    if (_porFuncProducao) {
+      const jaTem = new Set(grupos.map(g => normNome(g.funcionario?.nome)));
+      const vistos = new Set();
+      _porFuncProducao.forEach(info => {
+        const key = normNome(info.nome);
+        if (jaTem.has(key) || vistos.has(key)) return;
+        vistos.add(key);
+        grupos = [...grupos, {
+          isEncarregado: false,
+          funcionario: { id: info.id || '', nome: info.nome, cargo: info.cargo || '' },
+          subtotal: 0
+        }];
+      });
+    }
+
     const adiantMap = new Map();
     if (_adiantSnap) somarAdiantamentosCaixa(_adiantSnap.docs, adiantMap);
     if (_contasPagarSnap) somarAdiantamentosContasPagar(_contasPagarSnap.docs, adiantMap);
@@ -1793,7 +1837,8 @@
         }
       } else if (_porFuncProducao) {
         const key = g.funcionario.id || g.funcionario.nome;
-        if (_porFuncProducao.has(key)) bruto = _porFuncProducao.get(key);
+        const info = _porFuncProducao.get(key) || _porFuncProducao.get(normNome(g.funcionario?.nome));
+        if (info) bruto = info.total;
       }
       const diaria = diariaPorFunc.get(normNome(g.funcionario?.nome));
       if (diaria) bruto += diaria.total;
@@ -1951,6 +1996,7 @@
       });
 
       const porFuncProducao = new Map();
+      const custoPorServico = new Map(); // "localId:nomeServico" -> { valor, funcionario } — fallback do valorPago pra quem entrou só pelo merge de produção viva, sem item salvo em folha.grupos
       let nServTotal = 0;
       locaisSnap.docs.forEach(d => {
         (d.data().servicos || []).forEach(s => {
@@ -1960,10 +2006,14 @@
           const valores = servByName[s.nome] || catFallback[cat] || { medicao: 0, mdo: 0 };
           let custoApto = valores.mdo;
           if (cat === 0 && s.funcionario && (s.funcionario.cargo || '').toLowerCase().includes('pintor')) custoApto += 10;
+          custoPorServico.set(`${d.id}:${s.nome}`, { valor: custoApto, funcionario: s.funcionario || null });
           const func = s.funcionario;
           if (func && !(func.cargo || '').toLowerCase().includes('ajudante')) {
-            const key = func.id || func.nome;
-            porFuncProducao.set(key, (porFuncProducao.get(key) || 0) + custoApto);
+            const chaves = [func.id, func.nome, normNome(func.nome)].filter(Boolean);
+            const existente = chaves.map(k => porFuncProducao.get(k)).find(Boolean);
+            const info = existente || { total: 0, nome: func.nome, cargo: func.cargo || '', id: func.id || '' };
+            info.total += custoApto;
+            chaves.forEach(k => porFuncProducao.set(k, info));
           }
         });
       });
@@ -1992,6 +2042,25 @@
         }];
       });
 
+      // Mesmo merge da prévia: quem tem produção viva mas ainda não tinha
+      // linha nenhuma no retrato salvo entra aqui — sem isso, o fechamento
+      // real deixava de pagar (e de descontar adiantamento) quem tivesse
+      // produção registrada depois da última vez que a folha foi salva.
+      {
+        const jaTem = new Set(grupos.map(g => normNome(g.funcionario?.nome)));
+        const vistos = new Set();
+        porFuncProducao.forEach(info => {
+          const key = normNome(info.nome);
+          if (jaTem.has(key) || vistos.has(key)) return;
+          vistos.add(key);
+          grupos = [...grupos, {
+            isEncarregado: false,
+            funcionario: { id: info.id || '', nome: info.nome, cargo: info.cargo || '' },
+            subtotal: 0
+          }];
+        });
+      }
+
       const adiantMap = new Map();
       somarAdiantamentosCaixa(adSnap.docs, adiantMap);
       somarAdiantamentosContasPagar(cpAdSnap.docs, adiantMap);
@@ -2004,7 +2073,8 @@
           if (quinzena) bruto = Number(quinzena.valor || 0) + 5 * nServTotal;
         } else {
           const key = g.funcionario.id || g.funcionario.nome;
-          if (porFuncProducao.has(key)) bruto = porFuncProducao.get(key);
+          const info = porFuncProducao.get(key) || porFuncProducao.get(normNome(g.funcionario.nome));
+          if (info) bruto = info.total;
         }
         const diaria = diariaPorFunc.get(normNome(g.funcionario.nome));
         if (diaria) bruto += diaria.total;
@@ -2082,10 +2152,13 @@
           if (s.status !== 'em_pagamento') return s;
           const found    = lookup.get(`${doc.id}:${s.nome}`) || lookup.get(`${doc.id}:${nomeAbrev(s.nome)}`) || {};
           const executor = s.funcionario || found.funcionario || null;
+          // Sem item salvo em folha.grupos (entrou pelo merge de produção
+          // viva) — usa o custo recalculado ao vivo em vez de 0.
+          const valorPago = found.valor || (custoPorServico.get(`${doc.id}:${s.nome}`) || {}).valor || 0;
           return {
             id: s.id, nome: s.nome, status: 'concluido',
             executor: executor ? { nome: executor.nome, id: executor.id || '', cargo: executor.cargo || '' } : null,
-            valorPago: found.valor || 0, dataPagamento: dataSexta
+            valorPago, dataPagamento: dataSexta
           };
         });
 
