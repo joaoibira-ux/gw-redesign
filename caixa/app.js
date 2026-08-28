@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.53";
+const VERSAO_CAIXA = "3.54";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -818,6 +818,19 @@ function toggleForm() {
   form.style.display = open ? "block" : "none";
   fab.classList.toggle("open", open);
   if (open) {
+    // Sugere a origem pelo PIN usado pra entrar no sistema (gw_auth, setado
+    // pela tela de login em index.html): 4512 = Ane (parcial), 2248 = João
+    // (completo). Só preenche se o campo ainda estiver vazio — nunca troca
+    // uma escolha que o usuário já tenha feito, e ele pode mudar à vontade.
+    const grupoSel = document.getElementById("f-origem-grupo");
+    if (!grupoSel.value) {
+      const MODO_PARA_GRUPO = { completo: "JOAO", parcial: "ANE" };
+      const sugestao = MODO_PARA_GRUPO[sessionStorage.getItem("gw_auth")];
+      if (sugestao) {
+        grupoSel.value = sugestao;
+        grupoSel.dispatchEvent(new Event("change"));
+      }
+    }
     document.getElementById("f-desc").focus();
   } else {
     descPrefix = null;
