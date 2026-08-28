@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.30";
+const VERSAO = "3.31";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -496,6 +496,7 @@ function lerCampos() {
     descontos:    parseFloat((v("f-descontos")||"0").replace(",",".")) || 0,
     salarioReferencia: remPorProd ? parseMoeda(v("f-salario-ref")) : 0,
     passagens:    parseMoeda(v("f-passagens")),
+    isentoPassagens: document.getElementById("f-isento-passagens").checked,
     telefone:     v("f-telefone").trim(),
     obs:          v("f-obs").trim(),
     // Pessoais
@@ -556,6 +557,7 @@ function editarFuncionario(id) {
   if (f.instrucaoStatus) { const r = document.querySelector(`input[name="instrucao_status"][value="${f.instrucaoStatus}"]`); if (r) r.checked = true; }
 
   document.getElementById("f-por-producao").checked = !!f.porProducao;
+  document.getElementById("f-isento-passagens").checked = !!f.isentoPassagens;
   atualizarCamposRemuneracao();
   if (temDescontoInssPadrao(f.cargo) && !(f.descontos > 0)) {
     document.getElementById("f-descontos").value = DESCONTO_INSS_PADRAO_PRODUCAO.toFixed(2).replace(".",",");

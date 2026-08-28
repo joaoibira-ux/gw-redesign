@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.93";
+const VERSAO = "4.94";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1313,7 +1313,7 @@ function calcularDescontosFixos(nome) {
   const porProd = CARGOS_POR_PRODUCAO_REL.includes((f.cargo || '').toUpperCase()) || f.porProducao === true;
   const base = porProd ? Number(f.salarioReferencia || 0) : Number(f.salario || 0);
   const pct  = Number(f.descontos || 0);
-  return { inss: base * pct / 100 * fator, passagens: base * 0.06 * fator };
+  return { inss: base * pct / 100 * fator, passagens: f.isentoPassagens ? 0 : base * 0.06 * fator };
 }
 
 function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pagamentos, adiantamentosMap = new Map()) {
