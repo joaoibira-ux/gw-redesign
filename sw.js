@@ -1,4 +1,4 @@
-const VERSION = "gw-redesign-v5.89";
+const VERSION = "gw-redesign-v5.90";
 const ASSETS = ["./index.html", "./instalar.html", "./Logo-gw.png", "./icon-192.png", "./icon-512.png", "./manifest.json", "./instrucoes_sistema_gw.png", "./Aviso iPhone.png", "./Aviso Adroide.png", "./bg-pin.jpg", "./bg-instalar.jpg"];
 
 self.addEventListener("install", e => {

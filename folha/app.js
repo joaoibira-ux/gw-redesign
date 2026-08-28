@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.91";
+const VERSAO = "4.92";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1273,6 +1273,45 @@ async function fecharFolha() {
   mostrarComprovante(gruposData, encarregadoCache, valorEncarregado, nServMapa, totalGeral, pagamentos, adiantamentosMap);
 }
 
+// Converte "DD/MM/AAAA" num Date local (meia-noite) — mesma convenção usada
+// em caixa/relatorio.html.
+function parseDataBRparaDate(s) {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec((s || '').trim());
+  if (!m) return null;
+  const [, d, mo, a] = m;
+  const ano = a.length === 2 ? '20' + a : a;
+  return new Date(Number(ano), Number(mo) - 1, Number(d));
+}
+
+// INSS e Passagens fixos, calculados sobre o salário cadastrado (Salário
+// Bruto ou Salário de Referência, conforme o cargo) — mesmo cálculo e mesma
+// regra de caixa/relatorio.html: só na quinzena 16-fim do mês, proporcional
+// aos dias efetivamente admitido dentro do período pra quem entrou no meio.
+function calcularDescontosFixos(nome) {
+  const CARGOS_POR_PRODUCAO_REL = ['PINTOR', 'RASPADOR'];
+  const hoje = new Date();
+  if (hoje.getDate() < 16) return { inss: 0, passagens: 0 };
+
+  const f = (_todosFunc || []).find(x => (x.nome || '').normalize('NFC') === (nome || '').normalize('NFC'));
+  if (!f) return { inss: 0, passagens: 0 };
+
+  const periodoIni = new Date(hoje.getFullYear(), hoje.getMonth(), 16);
+  const periodoFim = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+  const diasPeriodo = Math.round((periodoFim - periodoIni) / 86400000) + 1;
+  const admissao = parseDataBRparaDate(f.admissao);
+  let fator = 1;
+  if (admissao && admissao > periodoFim) fator = 0;
+  else if (admissao && admissao > periodoIni) {
+    const diasTrabalhados = Math.round((periodoFim - admissao) / 86400000) + 1;
+    fator = Math.max(0, Math.min(1, diasTrabalhados / diasPeriodo));
+  }
+
+  const porProd = CARGOS_POR_PRODUCAO_REL.includes((f.cargo || '').toUpperCase());
+  const base = porProd ? Number(f.salarioReferencia || 0) : Number(f.salario || 0);
+  const pct  = Number(f.descontos || 0);
+  return { inss: base * pct / 100 * fator, passagens: base * 0.06 * fator };
+}
+
 function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pagamentos, adiantamentosMap = new Map()) {
 
   const hoje = new Date().toLocaleDateString('pt-BR');
@@ -1284,27 +1323,33 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
     const quinzena  = (encData.salario || 0) / 2;
     const bonus     = 5 * nServ;
     const adiantEnc = adiantamentosMap.get((encData.nome || '').normalize('NFC')) || 0;
-    const liquidoEnc = valorEnc - adiantEnc;
-    if (adiantEnc > 0) totalDeducoes += adiantEnc;
-    const adiantEncHtml = adiantEnc > 0 ? `
+    const { inss: inssEnc, passagens: passagensEnc } = calcularDescontosFixos(encData.nome);
+    const totalDeducEnc = adiantEnc + inssEnc + passagensEnc;
+    const liquidoEnc = valorEnc - totalDeducEnc;
+    totalDeducoes += totalDeducEnc;
+    const linhaDeduc = (label, v) => v > 0 ? `
       <div class="cp-item" style="color:#c62828">
-        <span>(-) Adiantamento</span>
-        <span>- ${fmtMoeda(adiantEnc)}</span>
+        <span>(-) ${label}</span>
+        <span>- ${fmtMoeda(v)}</span>
       </div>` : '';
     encHtml = `
       <div class="cp-grupo cp-enc">
         <div class="cp-func">${escHtml(encData.nome)} <span class="cp-cargo">encarregado</span></div>
         <div class="cp-item"><span>Quinzena 50%</span><span>${fmtMoeda(quinzena)}</span></div>
         <div class="cp-item"><span>${nServ} serv × R$5</span><span>${fmtMoeda(bonus)}</span></div>
-        ${adiantEncHtml}
-        <div class="cp-sub"><span>Subtotal</span><span>${fmtMoeda(adiantEnc > 0 ? liquidoEnc : valorEnc)}</span></div>
+        ${linhaDeduc('INSS', inssEnc)}
+        ${linhaDeduc('Passagens', passagensEnc)}
+        ${linhaDeduc('Adiantamento', adiantEnc)}
+        <div class="cp-sub"><span>Subtotal</span><span>${fmtMoeda(totalDeducEnc > 0 ? liquidoEnc : valorEnc)}</span></div>
       </div>`;
   }
   const gruposHtml = gruposData.map(g => {
     const sub    = g.itens.reduce((a, e) => a + Number(e.valor), 0);
     const adiant = adiantamentosMap.get((g.funcionario.nome || '').normalize('NFC')) || 0;
-    const liquido = sub - adiant;
-    if (adiant > 0) totalDeducoes += adiant;
+    const { inss, passagens } = calcularDescontosFixos(g.funcionario.nome);
+    const totalDeduc = adiant + inss + passagens;
+    const liquido = sub - totalDeduc;
+    totalDeducoes += totalDeduc;
     const itens  = g.itens.map(e => {
       const isProd = !!e.firestoreLocalId;
       return `
@@ -1313,27 +1358,32 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
         <span>${fmtMoeda(e.valor)}</span>
       </div>`;
     }).join('');
-    const adiantHtml = adiant > 0 ? `
+    const linhaDeduc = (label, v) => v > 0 ? `
       <div class="cp-item" style="color:#c62828">
-        <span>(-) Adiantamento</span>
-        <span>- ${fmtMoeda(adiant)}</span>
+        <span>(-) ${label}</span>
+        <span>- ${fmtMoeda(v)}</span>
       </div>` : '';
     return `
       <div class="cp-grupo">
         <div class="cp-func">${escHtml(g.funcionario.nome)} <span class="cp-cargo">${escHtml(g.funcionario.cargo||'')}</span></div>
         ${itens}
-        ${adiantHtml}
-        <div class="cp-sub"><span>Subtotal</span><span>${fmtMoeda(adiant > 0 ? liquido : sub)}</span></div>
+        ${linhaDeduc('INSS', inss)}
+        ${linhaDeduc('Passagens', passagens)}
+        ${linhaDeduc('Adiantamento', adiant)}
+        <div class="cp-sub"><span>Subtotal</span><span>${fmtMoeda(totalDeduc > 0 ? liquido : sub)}</span></div>
       </div>`;
   }).join('');
 
   const totalLiquido = totalGeral - totalDeducoes;
 
-  // Ajusta pagamentos para tela de sucesso (desconta adiantamentos por funcionário)
-  const pagamentosAjustados = pagamentos.map(p => ({
-    ...p,
-    valor: p.valor - (adiantamentosMap.get((p.nome || '').normalize('NFC')) || 0)
-  }));
+  // Ajusta pagamentos para tela de sucesso (desconta adiantamento + INSS + passagens por funcionário)
+  const pagamentosAjustados = pagamentos.map(p => {
+    const { inss, passagens } = calcularDescontosFixos(p.nome);
+    return {
+      ...p,
+      valor: p.valor - (adiantamentosMap.get((p.nome || '').normalize('NFC')) || 0) - inss - passagens
+    };
+  });
 
   window._sucPag   = pagamentosAjustados;
   window._sucTotal = totalLiquido;
