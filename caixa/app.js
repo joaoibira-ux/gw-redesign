@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.55";
+const VERSAO_CAIXA = "3.56";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -15,14 +15,28 @@ document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA
 firebase.initializeApp(firebaseConfig);
 const db  = firebase.firestore();
 const col = db.collection("lancamentos");
-const storage = firebase.storage();
+const uploadComprovanteCaixaFn = firebase.functions().httpsCallable("uploadComprovanteCaixa");
 
+function fileParaBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(reader.result.split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// Upload via Cloud Function (Admin SDK no servidor) em vez de direto do
+// navegador — o upload client-side (Storage SDK) falhava com "storage/unknown"
+// no Safari iOS mesmo com Storage Rules e CORS do bucket corretos. Passando
+// pelo servidor evita qualquer questão de CORS/protocolo resumable no
+// navegador, mesmo padrão já usado (e estável) pros boletos do WhatsApp.
 async function uploadComprovante(file) {
-  const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
-  const ref = storage.ref(`comprovantes/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`);
-  await ref.put(file, { contentType: file.type || "application/octet-stream" });
-  const url = await ref.getDownloadURL();
-  return { url, nomeArquivo: file.name };
+  const base64 = await fileParaBase64(file);
+  const result = await uploadComprovanteCaixaFn({
+    base64, nomeArquivo: file.name, contentType: file.type || "application/octet-stream"
+  });
+  return { url: result.data.url, nomeArquivo: file.name };
 }
 
 function fmtMoeda(v) {

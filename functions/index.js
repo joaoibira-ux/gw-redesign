@@ -2725,6 +2725,38 @@ async function uploadBoletoStorage(buffer, nomeArquivo, contentType = "applicati
   return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(caminho)}?alt=media&token=${token}`;
 }
 
+async function uploadComprovanteStorage(buffer, nomeArquivo, contentType) {
+  const bucket = admin.storage().bucket();
+  const token = crypto.randomUUID();
+  const nomeSanitizado = String(nomeArquivo || "comprovante").replace(/[^\w.\-]/g, "_");
+  const caminho = `comprovantes/${token}-${nomeSanitizado}`;
+
+  const file = bucket.file(caminho);
+  await file.save(buffer, {
+    metadata: { contentType: contentType || "application/octet-stream", metadata: { firebaseStorageDownloadTokens: token } }
+  });
+
+  return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(caminho)}?alt=media&token=${token}`;
+}
+
+// Upload de comprovante de pagamento do Caixa via Cloud Function em vez de
+// direto do navegador — o upload client-side (Storage SDK) estava falhando
+// com "storage/unknown" no Safari iOS mesmo com Storage Rules e CORS do
+// bucket corretos (testado via REST direto, funcionou); rotear pelo Admin
+// SDK no servidor evita de vez qualquer questão de CORS/protocolo resumable
+// no navegador, mesmo padrão já usado (e comprovadamente estável) pros
+// boletos recebidos por WhatsApp.
+exports.uploadComprovanteCaixa = onCall(
+  { timeoutSeconds: 60, memory: "256MiB", cors: true, invoker: "public" },
+  async (request) => {
+    const { base64, nomeArquivo, contentType } = request.data || {};
+    if (!base64) throw new HttpsError("invalid-argument", "base64 é obrigatório.");
+    const buffer = Buffer.from(base64, "base64");
+    const url = await uploadComprovanteStorage(buffer, nomeArquivo, contentType);
+    return { url };
+  }
+);
+
 // Prompt de extração de dados de boleto (texto → JSON). Mandado como texto
 // puro pro Claude (não imagem) — a maioria dos boletos gerados por banco tem
 // texto embutido no PDF, não são digitalizados/escaneados.
