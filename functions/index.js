@@ -3786,6 +3786,47 @@ exports.avisoJurosBbsFomento = onDocumentCreated(
   }
 );
 
+// Dispara em TODO registro novo de ponto tipo "entrada" (kiosk do Ponto,
+// assistente etc. — Firestore trigger não distingue origem) e manda uma
+// confirmação por WhatsApp pro próprio funcionário, no telefone cadastrado
+// em Funcionários. Só dispara na criação (onDocumentCreated), não em
+// edições (editar_ponto atualiza o mesmo doc em vez de criar outro) — pra
+// não reenviar confirmação toda vez que um horário é corrigido. Se o
+// funcionário não tiver telefone cadastrado, fica em silêncio.
+exports.avisoRegistroEntrada = onDocumentCreated(
+  { document: "pontos/{pontoId}", secrets: [evolutionApiKey] },
+  async (event) => {
+    const p = event.data?.data();
+    if (!p || p.tipo !== "entrada" || !p.funcionarioId) return;
+
+    const funcDoc = await db.collection("funcionarios").doc(p.funcionarioId).get();
+    if (!funcDoc.exists) return;
+    const f = funcDoc.data();
+    const numero = formatarNumeroWhatsApp(f.telefone);
+    if (!numero) return;
+
+    const ts = p.timestamp && p.timestamp.toDate ? p.timestamp.toDate() : new Date();
+    const hora = ts.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+    const dataStr = ts.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+
+    const texto = [
+      "✅ Ponto registrado",
+      "",
+      f.nome || p.funcionarioNome || "",
+      `Entrada: ${hora} — ${dataStr}`
+    ].join("\n");
+
+    try {
+      await enviarWhatsAppEvolution(texto, evolutionApiKey.value(), [numero]);
+    } catch (e) {
+      logger.error("[avisoRegistroEntrada] erro ao enviar confirmação de entrada:", e.message);
+      throw e;
+    }
+
+    logger.info("[avisoRegistroEntrada] confirmação enviada", { funcionario: f.nome, numero });
+  }
+);
+
 // Roda toda manhã e avisa no WhatsApp quais contas em "contasPagar" vencem
 // hoje ou já passaram da data e ainda não foram baixadas. Contas que já
 // levaram o aviso imediato (avisoContaVencendoHoje, acima) no mesmo dia da
