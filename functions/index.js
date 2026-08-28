@@ -781,7 +781,7 @@ async function gerarImagemExtrato(dados) {
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
-// ── Refeições de hoje, com nomes (relatório diário 10:35) ────────────────
+// ── Refeições de hoje, com nomes (relatório diário 10:15, seg-sáb) ───────
 // Diferente de calcularExtratoRefeicoes (que só soma quantidades, pra caber
 // períodos longos sem poluir a imagem), esta função é sempre de 1 dia só e
 // traz os nomes de quem tomou café/almoço — pensada especificamente pra
@@ -3837,12 +3837,13 @@ exports.alertaContasVencidas = onSchedule(
   }
 );
 
-// Roda todo dia às 10:35 e manda a imagem do extrato de refeições (café da
-// manhã: entrada antes das 7h; almoço: entrada antes das 10:30) do dia atual
-// pelo WhatsApp — mesma imagem gerada pela ferramenta extrato_refeicoes_imagem
-// do agenteGW, mas automática e diária, via Evolution API em vez de Telegram.
+// Roda de segunda a sábado às 10:15 (não roda domingo) e manda a imagem do
+// extrato de refeições (café da manhã: entrada antes das 7h; almoço: entrada
+// antes das 10:30) do dia atual pelo WhatsApp — mesma imagem gerada pela
+// ferramenta extrato_refeicoes_imagem do agenteGW, mas automática e diária,
+// via Evolution API em vez de Telegram.
 exports.relatorioRefeicoesHoje = onSchedule(
-  { schedule: "35 10 * * *", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
+  { schedule: "15 10 * * 1-6", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
   async () => {
     const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
     const dados = await calcularRefeicoesHojeComNomes(hojeISO);
@@ -3868,13 +3869,14 @@ exports.relatorioRefeicoesHoje = onSchedule(
   }
 );
 
-// Roda todo dia às 10:36 e avisa via WhatsApp quais funcionários ativos
-// ainda não bateram entrada hoje — mesmo cálculo do card "Ponto (Hoje)" da
-// Visão Geral (cruza funcionarios.ativo com pontos do dia, tentando casar
-// por funcionarioId e caindo pro nome se precisar). Só manda mensagem se
-// houver alguém faltando; se todo mundo já bateu ponto, fica em silêncio.
+// Roda de segunda a sábado às 10:00 (não roda domingo) e avisa via WhatsApp
+// quais funcionários ativos ainda não bateram entrada hoje — mesmo cálculo
+// do card "Ponto (Hoje)" da Visão Geral (cruza funcionarios.ativo com pontos
+// do dia, tentando casar por funcionarioId e caindo pro nome se precisar).
+// Só manda mensagem se houver alguém faltando; se todo mundo já bateu
+// ponto, fica em silêncio.
 exports.alertaPontoEmAberto = onSchedule(
-  { schedule: "36 10 * * *", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
+  { schedule: "0 10 * * 1-6", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
   async () => {
     const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
     const dataInicio = new Date(hojeISO + "T00:00:00-03:00");
