@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.52";
+const VERSAO_CAIXA = "3.53";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -15,6 +15,15 @@ document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA
 firebase.initializeApp(firebaseConfig);
 const db  = firebase.firestore();
 const col = db.collection("lancamentos");
+const storage = firebase.storage();
+
+async function uploadComprovante(file) {
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+  const ref = storage.ref(`comprovantes/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`);
+  await ref.put(file, { contentType: file.type || "application/octet-stream" });
+  const url = await ref.getDownloadURL();
+  return { url, nomeArquivo: file.name };
+}
 
 function fmtMoeda(v) {
   return "R$ " + v.toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
@@ -193,6 +202,7 @@ function render(docs) {
           <span class="numero">Nº ${numero}</span>
           <span>${escHtml(r.data)}</span>
           <span class="badge${isCredito ? ' credito-prolabore' : ''}">${escHtml(r.origem)}</span>
+          ${r.comprovanteUrl ? `<a href="${escHtml(r.comprovanteUrl)}" target="_blank" rel="noopener" class="card-comprovante-clip" onclick="event.stopPropagation()" title="Ver comprovante anexado">📎</a>` : ""}
         </div>
       </div>`;
   }).join("");
@@ -319,22 +329,44 @@ document.getElementById("form").addEventListener("submit", async function(e) {
     if (!confirmar) return;
   }
 
+  const btnAdd = document.getElementById("btn-add");
+  const arquivoComprovante = document.getElementById("f-comprovante").files[0];
+  let comprovante = null;
+  if (arquivoComprovante) {
+    btnAdd.disabled = true;
+    btnAdd.textContent = "Enviando comprovante...";
+    try {
+      comprovante = await uploadComprovante(arquivoComprovante);
+    } catch (err) {
+      alert("Erro ao enviar o comprovante. Tente novamente.");
+      btnAdd.disabled = false;
+      btnAdd.textContent = "+ Adicionar";
+      return;
+    }
+    btnAdd.disabled = false;
+    btnAdd.textContent = "+ Adicionar";
+  }
+
   if (origem === "JOAO->CTAS A RECEBER") {
-    criarContaAReceber(data, desc, saida);
+    criarContaAReceber(data, desc, saida, comprovante);
   } else if (origem === "JOAO->BAIXA CTAS A RECEBER" || origem === "ANE->BAIXA CTAS A RECEBER") {
     if (!contaReceberSelecionada) { alert("Selecione uma conta a receber. Selecione a origem novamente."); return; }
-    baixarContaAReceber(data, desc, entrada, origem);
+    baixarContaAReceber(data, desc, entrada, origem, comprovante);
   } else if (origem === "JOAO->CTAS A PAGAR") {
-    criarContaAPagar(data, desc, entrada);
+    criarContaAPagar(data, desc, entrada, comprovante);
   } else if (origem === "ANE->EMPRESTIMO") {
-    criarEntradaEmprestimo(data, desc, entrada);
+    criarEntradaEmprestimo(data, desc, entrada, comprovante);
   } else if (origem === "JOAO->BAIXA CTAS A PAGAR" || origem === "ANE->BAIXA CTAS A PAGAR") {
     if (!contaPagarSelecionada) { alert("Selecione uma conta a pagar. Selecione a origem novamente."); return; }
-    baixarContaAPagar(data, desc, saida, origem);
+    baixarContaAPagar(data, desc, saida, origem, comprovante);
   } else if (origem === "ANE->CREDITO A REPASSAR P BBS FOMENTO") {
-    criarCreditoRepassarBBS(data, desc, entrada);
+    criarCreditoRepassarBBS(data, desc, entrada, comprovante);
   } else {
-    col.add({ data, origem, descricao: desc, entrada, saida, criadoEm: firebase.firestore.FieldValue.serverTimestamp() });
+    col.add({
+      data, origem, descricao: desc, entrada, saida,
+      ...(comprovante ? { comprovanteUrl: comprovante.url, comprovanteNomeArquivo: comprovante.nomeArquivo } : {}),
+      criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+    });
   }
 
   document.getElementById("f-desc").value = "";
@@ -342,6 +374,7 @@ document.getElementById("form").addEventListener("submit", async function(e) {
   document.getElementById("f-saida").value = "";
   document.getElementById("f-saida").readOnly = false;
   document.getElementById("f-entrada").readOnly = false;
+  document.getElementById("f-comprovante").value = "";
   descPrefix = null;
   contaReceberSelecionada = null;
   contaPagarSelecionada = null;
@@ -619,13 +652,14 @@ document.getElementById("f-desc").addEventListener("input", function() {
 });
 
 
-function criarContaAReceber(data, desc, saida) {
+function criarContaAReceber(data, desc, saida, comprovante) {
   const numero = String(Object.keys(docsCache).length + 1).padStart(4, "0");
   const batch = db.batch();
 
   batch.set(col.doc(), {
     data, origem: "JOAO->CTAS A RECEBER", descricao: desc,
     entrada: 0, saida,
+    ...(comprovante ? { comprovanteUrl: comprovante.url, comprovanteNomeArquivo: comprovante.nomeArquivo } : {}),
     criadoEm: firebase.firestore.FieldValue.serverTimestamp()
   });
 
@@ -637,7 +671,7 @@ function criarContaAReceber(data, desc, saida) {
   batch.commit().catch(() => alert("Erro ao criar conta a receber. Tente novamente."));
 }
 
-function baixarContaAReceber(data, desc, entrada, origem) {
+function baixarContaAReceber(data, desc, entrada, origem, comprovante) {
   const { id, conta } = contaReceberSelecionada;
   const numero = String(Object.keys(docsCache).length + 1).padStart(4, "0");
   const batch = db.batch();
@@ -645,6 +679,7 @@ function baixarContaAReceber(data, desc, entrada, origem) {
   batch.set(col.doc(), {
     data, origem: origem || "JOAO->BAIXA CTAS A RECEBER", descricao: desc,
     entrada, saida: 0,
+    ...(comprovante ? { comprovanteUrl: comprovante.url, comprovanteNomeArquivo: comprovante.nomeArquivo } : {}),
     criadoEm: firebase.firestore.FieldValue.serverTimestamp()
   });
 
@@ -655,7 +690,7 @@ function baixarContaAReceber(data, desc, entrada, origem) {
   batch.commit().catch(() => alert("Erro ao baixar conta a receber. Tente novamente."));
 }
 
-function criarContaAPagar(data, desc, entrada) {
+function criarContaAPagar(data, desc, entrada, comprovante) {
   const numero = String(Object.keys(docsCache).length + 1).padStart(4, "0");
   const batch = db.batch();
   const contaPagarRef = db.collection("contasPagar").doc();
@@ -664,6 +699,7 @@ function criarContaAPagar(data, desc, entrada) {
     data, origem: "JOAO->CTAS A PAGAR", descricao: desc,
     entrada, saida: 0,
     contaPagarCriadoId: contaPagarRef.id,
+    ...(comprovante ? { comprovanteUrl: comprovante.url, comprovanteNomeArquivo: comprovante.nomeArquivo } : {}),
     criadoEm: firebase.firestore.FieldValue.serverTimestamp()
   });
 
@@ -680,7 +716,7 @@ function criarContaAPagar(data, desc, entrada) {
 // só muda o lado (CEF em vez de INTER/JOAO) e a origem do lançamento.
 // O vencimento da conta a pagar é pedido à parte (não pode ser a data do
 // lançamento, que é de quando o dinheiro entrou, não de quando vence).
-function criarEntradaEmprestimo(data, desc, entrada) {
+function criarEntradaEmprestimo(data, desc, entrada, comprovante) {
   const vencimento = prompt("Data de vencimento do empréstimo (quando deve ser pago):", data);
   if (vencimento === null) return;
   if (!/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(vencimento.trim())) {
@@ -696,6 +732,7 @@ function criarEntradaEmprestimo(data, desc, entrada) {
     data, origem: "ANE->EMPRESTIMO", descricao: desc,
     entrada, saida: 0,
     contaPagarCriadoId: contaPagarRef.id,
+    ...(comprovante ? { comprovanteUrl: comprovante.url, comprovanteNomeArquivo: comprovante.nomeArquivo } : {}),
     criadoEm: firebase.firestore.FieldValue.serverTimestamp()
   });
 
@@ -707,7 +744,7 @@ function criarEntradaEmprestimo(data, desc, entrada) {
   batch.commit().catch(() => alert("Erro ao registrar entrada de empréstimo. Tente novamente."));
 }
 
-function criarCreditoRepassarBBS(data, desc, entrada) {
+function criarCreditoRepassarBBS(data, desc, entrada, comprovante) {
   const numero = String(Object.keys(docsCache).length + 1).padStart(4, "0");
   const batch = db.batch();
   const contaPagarRef = db.collection("contasPagar").doc();
@@ -716,6 +753,7 @@ function criarCreditoRepassarBBS(data, desc, entrada) {
     data, origem: "ANE->CREDITO A REPASSAR P BBS FOMENTO", descricao: desc,
     entrada, saida: 0,
     contaPagarCriadoId: contaPagarRef.id,
+    ...(comprovante ? { comprovanteUrl: comprovante.url, comprovanteNomeArquivo: comprovante.nomeArquivo } : {}),
     criadoEm: firebase.firestore.FieldValue.serverTimestamp()
   });
 
@@ -727,7 +765,7 @@ function criarCreditoRepassarBBS(data, desc, entrada) {
   batch.commit().catch(() => alert("Erro ao criar conta a pagar. Tente novamente."));
 }
 
-function baixarContaAPagar(data, desc, saida, origem) {
+function baixarContaAPagar(data, desc, saida, origem, comprovante) {
   const { id, conta } = contaPagarSelecionada;
   const numero = String(Object.keys(docsCache).length + 1).padStart(4, "0");
   const batch = db.batch();
@@ -751,6 +789,7 @@ function baixarContaAPagar(data, desc, saida, origem) {
     statusContaPagarAntes: conta.status || "aberto",
     eraPrimeiroPagamento,
     pagamentoRegistrado: pagamento,
+    ...(comprovante ? { comprovanteUrl: comprovante.url, comprovanteNomeArquivo: comprovante.nomeArquivo } : {}),
     criadoEm: firebase.firestore.FieldValue.serverTimestamp()
   });
 

@@ -7,5 +7,8 @@ service firebase.storage {
     match /boletos/{arquivo} {
       allow read, write: if true;
     }
+    match /comprovantes/{arquivo} {
+      allow read, write: if true;
+    }
   }
 }

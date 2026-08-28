@@ -10,7 +10,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <link rel="manifest" href="./manifest.json" />
   <link rel="apple-touch-icon" href="./logo-gw.png.jpeg" />
-  <link rel="stylesheet" href="./style.css?v=31" />
+  <link rel="stylesheet" href="./style.css?v=32" />
   <style>
     html.gw-blocked body > *:not(#aviso-instalacao) { display: none !important; }
     #aviso-instalacao {
@@ -133,7 +133,11 @@
       <label for="f-saida">Saída (R$)</label>
       <input type="decimal" inputmode="decimal" id="f-saida" placeholder="0,00" />
     </div>
-    <button type="submit" class="btn-add">+ Adicionar</button>
+    <div class="full">
+      <label for="f-comprovante">📎 Comprovante de pagamento (opcional)</label>
+      <input type="file" id="f-comprovante" accept="image/*,application/pdf" />
+    </div>
+    <button type="submit" class="btn-add" id="btn-add">+ Adicionar</button>
   </div>
 </form>
 
@@ -145,6 +149,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 <div class="modal-overlay" id="confirm-overlay">
   <div class="modal">
     <h3 id="confirm-titulo" style="color:#1565c0">Confirmar</h3>
@@ -166,7 +171,7 @@
   </div>
 </div>
 
-<script src="./app.js?v=79"></script>
+<script src="./app.js?v=80"></script>
 <script>
   if (document.documentElement.classList.contains('gw-blocked')) {
     (function() {
