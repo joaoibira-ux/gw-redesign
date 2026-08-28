@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.95";
+  const VERSAO = "1.96";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1234,7 +1234,7 @@
         // mesmo objeto — cobre tanto o lookup antigo (id||nome) quanto o
         // novo merge por normNome.
         const func = s.funcionario;
-        if (func && !(func.cargo || '').toLowerCase().includes('ajudante')) {
+        if (func && !ehAjudantePorDiaria(func.cargo, func.nome)) {
           const chaves = [func.id, func.nome, normNome(func.nome)].filter(Boolean);
           const existente = chaves.map(k => porFunc.get(k)).find(Boolean);
           const info = existente || { total: 0, nome: func.nome, cargo: func.cargo || '', id: func.id || '' };
@@ -1469,6 +1469,11 @@
   db.collection('funcionarios').orderBy('nome').onSnapshot(snap => {
     _funcionariosSnap = snap;
     renderPrevisaoPassagens(snap);
+    // Recalcula _porFuncProducao também — ehAjudantePorDiaria (usada lá
+    // dentro) depende de _funcionariosSnap pra saber quem tem "porProducao"
+    // marcado; se locais/servicos carregaram antes de funcionarios, a
+    // primeira passada tratava todo ajudante como "vem só da diária".
+    renderPrevisaoMedicao();
     renderPrevisaoFolha();
   });
 
@@ -1509,14 +1514,29 @@
     });
   }
 
+  // Um Ajudante normalmente é pago por diária — mas quem tem o checkbox
+  // "Remunerar por produção" marcado em Funcionários (ex: Leonardo Ferreira)
+  // é pago igual um Pintor, por serviço. Sem essa checagem, o valor dele
+  // sumia do relatório inteiro (filtrado como "ajudante = vem da diária",
+  // mas ele não tem diária nenhuma, só produção).
+  function ehAjudantePorDiaria(cargo, nome) {
+    const isAjud = (cargo || '').toLowerCase().includes('ajudante');
+    if (!isAjud) return false;
+    if (!_funcionariosSnap) return true;
+    const alvo = normNome(nome);
+    const f = _funcionariosSnap.docs.find(d => normNome(d.data().nome) === alvo);
+    return !(f && f.data().porProducao === true);
+  }
+
   function renderPrevisaoFolha() {
     const el = document.getElementById('previsao-folha');
     if (!el || _ultimaFolha === undefined) return;
     if (_ultimaFolha === null) { el.innerHTML = ''; renderPrevisaoQuinzena(); return; }
 
     // Remove ajudantes do documento salvo — agora vêm da coleção 'diarias'
+    // (exceto quem é remunerado por produção, esses ficam)
     let grupos = (_ultimaFolha.grupos || []).filter(g =>
-      g.isEncarregado || !(g.funcionario?.cargo || '').toLowerCase().includes('ajudante')
+      g.isEncarregado || !ehAjudantePorDiaria(g.funcionario?.cargo, g.funcionario?.nome)
     );
 
     // Soma das diárias por funcionário (pintores também registram diária, além dos serviços de produção)
@@ -1609,7 +1629,7 @@
 
     let totalBruto = 0, totalInss = 0, totalPassagens = 0, totalAdiant = 0;
     const linhas = grupos.map(g => {
-      const isAjud = (g.funcionario?.cargo || '').toLowerCase().includes('ajudante');
+      const isAjudPorDiaria = ehAjudantePorDiaria(g.funcionario?.cargo, g.funcionario?.nome);
       // Bruto recalculado a partir do estado atual de 'locais' (mais confiável que o subtotal salvo na folha)
       let bruto = g.subtotal || 0;
       if (g.isEncarregado) {
@@ -1617,7 +1637,7 @@
           const quinzena = (g.itens || []).find(i => i.servico === 'Quinzena 50%');
           if (quinzena) bruto = Number(quinzena.valor || 0) + 5 * _nServTotal;
         }
-      } else if (_porFuncProducao && !isAjud) {
+      } else if (_porFuncProducao && !isAjudPorDiaria) {
         const key = g.funcionario.id || g.funcionario.nome;
         const info = _porFuncProducao.get(key) || _porFuncProducao.get(normNome(g.funcionario.nome));
         bruto = info ? info.total : 0;
@@ -1785,7 +1805,7 @@
   function calcularTotalFolhaAberta() {
     if (_ultimaFolha === undefined || _ultimaFolha === null) return 0;
     let grupos = (_ultimaFolha.grupos || []).filter(g =>
-      g.isEncarregado || !(g.funcionario?.cargo || '').toLowerCase().includes('ajudante')
+      g.isEncarregado || !ehAjudantePorDiaria(g.funcionario?.cargo, g.funcionario?.nome)
     );
 
     const diariaPorFunc = new Map();
@@ -1995,6 +2015,16 @@
         if (cat < 99 && !(cat in catFallback)) catFallback[cat] = { medicao: s.medicao || 0, mdo: s.mdo || 0 };
       });
 
+      // Ajudante "Remunerado por Produção" (ex: Leonardo Ferreira) é pago
+      // igual um Pintor, não por diária — sem essa checagem ele ficava de
+      // fora do fechamento inteiro (nem pago, nem com adiantamento descontado).
+      const porProducaoSet = new Set(
+        funcSnap.docs.filter(d => d.data().porProducao === true).map(d => normNome(d.data().nome))
+      );
+      function ehAjudantePorDiariaLocal(cargo, nome) {
+        return (cargo || '').toLowerCase().includes('ajudante') && !porProducaoSet.has(normNome(nome));
+      }
+
       const porFuncProducao = new Map();
       const custoPorServico = new Map(); // "localId:nomeServico" -> { valor, funcionario } — fallback do valorPago pra quem entrou só pelo merge de produção viva, sem item salvo em folha.grupos
       let nServTotal = 0;
@@ -2008,7 +2038,7 @@
           if (cat === 0 && s.funcionario && (s.funcionario.cargo || '').toLowerCase().includes('pintor')) custoApto += 10;
           custoPorServico.set(`${d.id}:${s.nome}`, { valor: custoApto, funcionario: s.funcionario || null });
           const func = s.funcionario;
-          if (func && !(func.cargo || '').toLowerCase().includes('ajudante')) {
+          if (func && !ehAjudantePorDiariaLocal(func.cargo, func.nome)) {
             const chaves = [func.id, func.nome, normNome(func.nome)].filter(Boolean);
             const existente = chaves.map(k => porFuncProducao.get(k)).find(Boolean);
             const info = existente || { total: 0, nome: func.nome, cargo: func.cargo || '', id: func.id || '' };
@@ -2019,7 +2049,7 @@
       });
 
       let grupos = (folha.grupos || []).filter(g =>
-        g.isEncarregado || !(g.funcionario?.cargo || '').toLowerCase().includes('ajudante')
+        g.isEncarregado || !ehAjudantePorDiariaLocal(g.funcionario?.cargo, g.funcionario?.nome)
       );
 
       const diariaPorFunc = new Map();
