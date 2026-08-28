@@ -3802,17 +3802,40 @@ exports.avisoRegistroEntrada = onDocumentCreated(
     const funcDoc = await db.collection("funcionarios").doc(p.funcionarioId).get();
     if (!funcDoc.exists) return;
     const f = funcDoc.data();
+    const nome = f.nome || p.funcionarioNome || "";
     const numero = formatarNumeroWhatsApp(f.telefone);
-    if (!numero) return;
 
     const ts = p.timestamp && p.timestamp.toDate ? p.timestamp.toDate() : new Date();
     const hora = ts.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
     const dataStr = ts.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
 
+    // Sem telefone cadastrado: em vez de ficar em silêncio, avisa o
+    // responsável (WHATSAPP_DESTINO) pra corrigir o cadastro o quanto antes
+    // — sem isso, esse funcionário nunca recebe confirmação nenhuma e
+    // ninguém percebe que o telefone está faltando.
+    if (!numero) {
+      const avisoFaltaTelefone = [
+        "⚠️ Funcionário sem telefone cadastrado",
+        "",
+        nome,
+        `Entrada registrada: ${hora} — ${dataStr}`,
+        "",
+        "Corrija o telefone em Funcionários pra ele passar a receber a confirmação de ponto."
+      ].join("\n");
+      try {
+        await enviarWhatsAppEvolution(avisoFaltaTelefone, evolutionApiKey.value(), [WHATSAPP_DESTINO]);
+      } catch (e) {
+        logger.error("[avisoRegistroEntrada] erro ao avisar falta de telefone:", e.message);
+        throw e;
+      }
+      logger.info("[avisoRegistroEntrada] funcionário sem telefone, aviso enviado ao responsável", { funcionario: nome });
+      return;
+    }
+
     const texto = [
       "✅ Ponto registrado",
       "",
-      f.nome || p.funcionarioNome || "",
+      nome,
       `Entrada: ${hora} — ${dataStr}`
     ].join("\n");
 
@@ -3823,7 +3846,7 @@ exports.avisoRegistroEntrada = onDocumentCreated(
       throw e;
     }
 
-    logger.info("[avisoRegistroEntrada] confirmação enviada", { funcionario: f.nome, numero });
+    logger.info("[avisoRegistroEntrada] confirmação enviada", { funcionario: nome, numero });
   }
 );
 
