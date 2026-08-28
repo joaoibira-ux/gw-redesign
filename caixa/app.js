@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.54";
+const VERSAO_CAIXA = "3.55";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -338,7 +338,8 @@ document.getElementById("form").addEventListener("submit", async function(e) {
     try {
       comprovante = await uploadComprovante(arquivoComprovante);
     } catch (err) {
-      alert("Erro ao enviar o comprovante. Tente novamente.");
+      console.error("Erro ao enviar comprovante:", err);
+      alert("Erro ao enviar o comprovante: " + (err.code || err.message || "falha desconhecida") + "\n\nTente novamente.");
       btnAdd.disabled = false;
       btnAdd.textContent = "+ Adicionar";
       return;
