@@ -3923,13 +3923,13 @@ exports.alertaContasVencidas = onSchedule(
   }
 );
 
-// Roda de segunda a sábado às 10:15 (não roda domingo) e manda a imagem do
-// extrato de refeições (café da manhã: entrada antes das 7h; almoço: entrada
-// antes das 10:30) do dia atual pelo WhatsApp — mesma imagem gerada pela
-// ferramenta extrato_refeicoes_imagem do agenteGW, mas automática e diária,
-// via Evolution API em vez de Telegram.
+// Roda de segunda a sexta às 10:15 (não roda sábado nem domingo) e manda a
+// imagem do extrato de refeições (café da manhã: entrada antes das 7h;
+// almoço: entrada antes das 10:30) do dia atual pelo WhatsApp — mesma
+// imagem gerada pela ferramenta extrato_refeicoes_imagem do agenteGW, mas
+// automática e diária, via Evolution API em vez de Telegram.
 exports.relatorioRefeicoesHoje = onSchedule(
-  { schedule: "15 10 * * 1-6", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
+  { schedule: "15 10 * * 1-5", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
   async () => {
     const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
     const dados = await calcularRefeicoesHojeComNomes(hojeISO);
