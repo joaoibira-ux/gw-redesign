@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.32";
+const VERSAO = "3.33";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -496,7 +496,7 @@ function lerCampos() {
     descontos:    parseFloat((v("f-descontos")||"0").replace(",",".")) || 0,
     salarioReferencia: remPorProd ? parseMoeda(v("f-salario-ref")) : 0,
     passagens:    parseMoeda(v("f-passagens")),
-    isentoPassagens: document.getElementById("f-isento-passagens").checked,
+    isentoPassagens: !document.getElementById("f-desconto-passagens").checked,
     tomaCafeObra: document.getElementById("f-toma-cafe-obra").checked,
     almocaObra:   document.getElementById("f-almoca-obra").checked,
     telefone:     v("f-telefone").trim(),
@@ -559,7 +559,10 @@ function editarFuncionario(id) {
   if (f.instrucaoStatus) { const r = document.querySelector(`input[name="instrucao_status"][value="${f.instrucaoStatus}"]`); if (r) r.checked = true; }
 
   document.getElementById("f-por-producao").checked = !!f.porProducao;
-  document.getElementById("f-isento-passagens").checked = !!f.isentoPassagens;
+  // Checkbox positivo ("Desconto de Passagens", marcado = desconto normal)
+  // — o campo salvo continua isentoPassagens (invertido), então some ausente
+  // (cadastro antigo) conta como desconto normal aplicado (checked=true).
+  document.getElementById("f-desconto-passagens").checked = !f.isentoPassagens;
   // Campo ausente (cadastro antigo, de antes desse checkbox existir) conta
   // como marcado — só fica desmarcado se alguém desmarcar explicitamente.
   document.getElementById("f-toma-cafe-obra").checked = f.tomaCafeObra !== false;

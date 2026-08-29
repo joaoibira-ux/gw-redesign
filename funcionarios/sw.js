@@ -1,8 +1,8 @@
-const VERSION = "func-v37";
+const VERSION = "func-v38";
 const ASSETS = [
   "./index.html",
   "./style.css?v=13",
-  "./app.js?v=37",
+  "./app.js?v=38",
   "./manifest.json",
   "./Logo-gw.png"
 ];
@@ -26,8 +26,21 @@ self.addEventListener("activate", e => {
 });
 
 self.addEventListener("fetch", e => {
-  if (e.request.mode === "navigate") {
-    e.respondWith(fetch(e.request, { cache: "no-store" }).catch(() => caches.match("./index.html")));
+  // Navegação (HTML) e app.js: rede primeiro, sem cache de resposta antiga —
+  // achado ao vivo (2026-08-29): checkboxes novos em Funcionários não
+  // apareciam marcados porque o app.js antigo (cache-first) continuava
+  // sendo servido mesmo depois do deploy. Mesmo padrão já usado no
+  // Caixa/Folha, que não tem esse problema.
+  const critico = e.request.mode === "navigate" || e.request.url.includes("app.js");
+  if (critico) {
+    e.respondWith(
+      fetch(e.request, { cache: "no-store" })
+        .then(response => {
+          if (response.ok) caches.open(VERSION).then(c => c.put(e.request, response.clone()));
+          return response;
+        })
+        .catch(() => caches.match(e.request).then(r => r || caches.match("./index.html")))
+    );
     return;
   }
   e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
