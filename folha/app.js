@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.98";
+const VERSAO = "4.99";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1447,6 +1447,7 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
   const hoje = new Date().toLocaleDateString('pt-BR');
 
   let totalDeducoes = 0;
+  const detalhes = []; // um item por pessoa — corpo mostrado no clique (abrirDetalheComprovante)
 
   let encHtml = '';
   if (encData) {
@@ -1462,15 +1463,22 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
         <span>(-) ${label}</span>
         <span>- ${fmtMoeda(v)}</span>
       </div>` : '';
-    encHtml = `
-      <div class="cp-grupo cp-enc">
-        <div class="cp-func">${escHtml(encData.nome)} <span class="cp-cargo">encarregado</span></div>
+    const subtotalEnc = totalDeducEnc > 0 ? liquidoEnc : valorEnc;
+    const idxEnc = detalhes.length;
+    detalhes.push({
+      nome: encData.nome, cargo: 'encarregado',
+      corpo: `
         <div class="cp-item"><span>Quinzena 50%</span><span>${fmtMoeda(quinzena)}</span></div>
         <div class="cp-item"><span>${nServ} serv × R$5</span><span>${fmtMoeda(bonus)}</span></div>
         ${linhaDeduc('INSS', inssEnc)}
         ${linhaDeduc('Passagens', passagensEnc)}
         ${linhaDeduc('Adiantamento', adiantEnc)}
-        <div class="cp-sub"><span>Subtotal</span><span>${fmtMoeda(totalDeducEnc > 0 ? liquidoEnc : valorEnc)}</span></div>
+        <div class="cp-sub"><span>Subtotal</span><span>${fmtMoeda(subtotalEnc)}</span></div>`
+    });
+    encHtml = `
+      <div class="cp-linha cp-enc" onclick="event.stopPropagation();abrirDetalheComprovante(${idxEnc})">
+        <span class="cp-linha-nome">${escHtml(encData.nome)} <span class="cp-cargo">encarregado</span></span>
+        <span class="cp-linha-valor">${fmtMoeda(subtotalEnc)}</span>
       </div>`;
   }
   const gruposHtml = gruposData.map(g => {
@@ -1493,16 +1501,25 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
         <span>(-) ${label}</span>
         <span>- ${fmtMoeda(v)}</span>
       </div>` : '';
-    return `
-      <div class="cp-grupo">
-        <div class="cp-func">${escHtml(g.funcionario.nome)} <span class="cp-cargo">${escHtml(g.funcionario.cargo||'')}</span></div>
+    const subtotalPessoa = totalDeduc > 0 ? liquido : sub;
+    const idx = detalhes.length;
+    detalhes.push({
+      nome: g.funcionario.nome, cargo: g.funcionario.cargo || '',
+      corpo: `
         ${itens}
         ${linhaDeduc('INSS', inss)}
         ${linhaDeduc('Passagens', passagens)}
         ${linhaDeduc('Adiantamento', adiant)}
-        <div class="cp-sub"><span>Subtotal</span><span>${fmtMoeda(totalDeduc > 0 ? liquido : sub)}</span></div>
+        <div class="cp-sub"><span>Subtotal</span><span>${fmtMoeda(subtotalPessoa)}</span></div>`
+    });
+    return `
+      <div class="cp-linha" onclick="event.stopPropagation();abrirDetalheComprovante(${idx})">
+        <span class="cp-linha-nome">${escHtml(g.funcionario.nome)} <span class="cp-cargo">${escHtml(g.funcionario.cargo||'')}</span></span>
+        <span class="cp-linha-valor">${fmtMoeda(subtotalPessoa)}</span>
       </div>`;
   }).join('');
+
+  window._cpDetalhes = detalhes;
 
   const totalLiquido = totalGeral - totalDeducoes;
 
@@ -1534,11 +1551,20 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
       .cp-cargo{font-size:0.56rem;font-weight:400;color:#4a8a5a;text-transform:capitalize;margin-left:5px}
       .cp-item{display:flex;justify-content:space-between;padding:3px 8px;border-top:1px solid rgba(76,140,90,0.12);color:#2e6b3e}
       .cp-sub{display:flex;justify-content:space-between;padding:4px 8px;border-top:1px solid rgba(76,140,90,0.25);font-weight:700;color:#1b5e20}
+      .cp-linha{display:flex;justify-content:space-between;align-items:center;border:1px solid rgba(76,140,90,0.35);border-radius:5px;margin-bottom:6px;padding:7px 9px;color:#1b5e20;background:#fff}
+      .cp-linha:active{background:#f0f0f0}
+      .cp-linha-nome{font-weight:700;font-size:0.68rem}
+      .cp-linha-valor{font-weight:800;font-size:0.72rem;white-space:nowrap}
       .cp-footer{background:#0d1f14;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(165,214,167,0.2);flex-shrink:0}
       .cp-total-l{font-size:0.68rem;font-weight:700;letter-spacing:1px;color:#66bb6a}
       .cp-total-v{font-size:1rem;font-weight:900;color:#a5d6a7}
       .cp-print-btn{background:rgba(165,214,167,0.15);border:1px solid rgba(165,214,167,0.4);color:#a5d6a7;
         font-size:0.62rem;font-weight:700;letter-spacing:0.5px;padding:5px 10px;border-radius:6px;cursor:pointer}
+      .cp-detalhe-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:flex-end;justify-content:center;z-index:400;cursor:default}
+      .cp-detalhe-overlay.ativa{display:flex}
+      .cp-detalhe-modal{background:#fff;color:#1b5e20;width:100%;max-width:480px;max-height:80vh;overflow-y:auto;border-radius:14px 14px 0 0;padding:10px 10px 16px}
+      .cp-detalhe-header{display:flex;justify-content:space-between;align-items:center;padding:6px 4px 10px;font-weight:800;font-size:0.8rem;color:#1b5e20;border-bottom:1px solid rgba(76,140,90,0.2);margin-bottom:8px}
+      .cp-detalhe-fechar{background:none;border:none;font-size:1.1rem;color:#4a8a5a;cursor:pointer;padding:2px 6px;line-height:1}
       @media print {
         .cp-print-btn, .cp-meta span:last-child { display:none !important }
         body{overflow:visible !important;height:auto !important;background:#fff !important}
@@ -1568,6 +1594,15 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
         <span class="cp-total-l">TOTAL GERAL</span>
         <span class="cp-total-v">${fmtMoeda(totalLiquido)}</span>
       </div>
+    </div>
+    <div class="cp-detalhe-overlay" id="cp-detalhe-overlay" onclick="fecharDetalheComprovanteSe(event)">
+      <div class="cp-detalhe-modal" onclick="event.stopPropagation()">
+        <div class="cp-detalhe-header">
+          <span id="cp-detalhe-nome"></span>
+          <button class="cp-detalhe-fechar" onclick="fecharDetalheComprovante()">✕</button>
+        </div>
+        <div id="cp-detalhe-corpo"></div>
+      </div>
     </div>`;
 
   // Auto-escala para caber tudo em uma tela (iOS não permite zoom out manual)
@@ -1591,6 +1626,20 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
     document.body.style.overflow = 'hidden';
     document.body.style.height   = `${viewH}px`;
   }, 150);
+}
+
+function abrirDetalheComprovante(idx) {
+  const d = (window._cpDetalhes || [])[idx];
+  if (!d) return;
+  document.getElementById('cp-detalhe-nome').innerHTML = `${escHtml(d.nome)} <span class="cp-cargo">${escHtml(d.cargo||'')}</span>`;
+  document.getElementById('cp-detalhe-corpo').innerHTML = d.corpo;
+  document.getElementById('cp-detalhe-overlay').classList.add('ativa');
+}
+function fecharDetalheComprovante() {
+  document.getElementById('cp-detalhe-overlay').classList.remove('ativa');
+}
+function fecharDetalheComprovanteSe(e) {
+  if (e.target.id === 'cp-detalhe-overlay') fecharDetalheComprovante();
 }
 
 function mostrarSucesso(pagamentos, totalGeral) {
