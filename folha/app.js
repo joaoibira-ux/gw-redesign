@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.97";
+const VERSAO = "4.98";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1191,7 +1191,7 @@ function renderizarFolha() {
         </div>
         ${tabelaDiaria}
         ${tabelaProd}
-        ${temAmbos ? `<div class="total-geral" style="font-size:0.9rem;padding:6px 4px"><span>Subtotal ${escHtml(g.funcionario.nome)}</span><span>${fmtMoeda(subtotalTotal)}</span></div>` : ''}
+        ${temAmbos ? `<div class="subtotal-combinado"><span>Subtotal ${escHtml(g.funcionario.nome)}</span><span>${fmtMoeda(subtotalTotal)}</span></div>` : ''}
       </div>`;
   }).join('');
 
