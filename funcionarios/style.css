@@ -446,7 +446,7 @@ header {
   margin-bottom: 3px;
 }
 
-.form-group input:not([type="radio"]),
+.form-group input:not([type="radio"]):not([type="checkbox"]),
 .form-group select {
   padding: 10px 11px;
   border: 1.5px solid #ddd;
@@ -459,7 +459,7 @@ header {
   color: #1a1a2e;
 }
 
-.form-group input:not([type="radio"]):focus,
+.form-group input:not([type="radio"]):not([type="checkbox"]):focus,
 .form-group select:focus { border-color: #1a3322; }
 
 .form-group input.campo-erro { border-color: #c62828 !important; background: #fff5f5; }
