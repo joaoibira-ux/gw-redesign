@@ -468,6 +468,9 @@
       gap: 10px;
     }
     .prev-cols { grid-template-columns: 1fr 100px 100px 100px 100px 100px; }
+    .prev-cols-simples { grid-template-columns: 1fr 100px; }
+    .prev-linha[onclick] { cursor: pointer; }
+    .prev-linha[onclick]:active { background: #f0f0f0; }
     .prev-cols-med { grid-template-columns: 1fr 90px 90px 90px 90px 90px 90px; }
     .prev-cols-pass { grid-template-columns: 1fr 100px 80px 100px 100px; }
     .prev-cols-quinz { grid-template-columns: 1fr 110px; }
@@ -686,11 +689,21 @@
   </div>
 </div>
 
+<div class="pesquisa-overlay" id="detalhe-func-overlay" onclick="fecharDetalheFuncionarioSe(event)">
+  <div class="pesquisa-modal">
+    <div class="pesquisa-header">
+      <span id="detalhe-func-nome" style="color:#e8f5e9;font-weight:700;font-size:1rem;flex:1"></span>
+      <button class="btn-fechar-pesquisa" onclick="fecharDetalheFuncionario()">✕</button>
+    </div>
+    <div class="pesquisa-resultado" id="detalhe-func-corpo"></div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "2.00";
+  const VERSAO = "2.01";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1119,6 +1132,27 @@
     if (e.target === document.getElementById('pesquisa-overlay')) fecharPesquisa();
   }
 
+  // ── Detalhe do funcionário na Previsão da Folha ──
+  function abrirDetalheFuncionarioFolha(idx) {
+    const d = _detalhesFolhaAtual[idx];
+    if (!d) return;
+    document.getElementById('detalhe-func-nome').textContent = d.nome + (d.cargo ? ' — ' + d.cargo : '');
+    document.getElementById('detalhe-func-corpo').innerHTML = `
+      <div class="pesq-linha"><span class="pesq-linha-info">Bruto</span><span class="pesq-linha-val pesq-val-entrada">${fmt(d.bruto)}</span></div>
+      <div class="pesq-linha"><span class="pesq-linha-info">INSS</span><span class="pesq-linha-val ${d.inss > 0 ? 'pesq-val-saida' : ''}">${d.inss > 0 ? '- '+fmt(d.inss) : '—'}</span></div>
+      <div class="pesq-linha"><span class="pesq-linha-info">Passagens</span><span class="pesq-linha-val ${d.passagens > 0 ? 'pesq-val-saida' : ''}">${d.passagens > 0 ? '- '+fmt(d.passagens) : '—'}</span></div>
+      <div class="pesq-linha"><span class="pesq-linha-info">Adiantamento</span><span class="pesq-linha-val ${d.adiant > 0 ? 'pesq-val-saida' : ''}">${d.adiant > 0 ? '- '+fmt(d.adiant) : '—'}</span></div>
+      <div class="pesq-resumo"><span>Líquido</span><span style="font-weight:800;font-size:1.05rem">${fmt(d.liq)}</span></div>
+    `;
+    document.getElementById('detalhe-func-overlay').classList.add('ativa');
+  }
+  function fecharDetalheFuncionario() {
+    document.getElementById('detalhe-func-overlay').classList.remove('ativa');
+  }
+  function fecharDetalheFuncionarioSe(e) {
+    if (e.target === document.getElementById('detalhe-func-overlay')) fecharDetalheFuncionario();
+  }
+
   function normPesq(s) {
     return String(s || '').toLowerCase()
       .replace(/\s+/g, '')                        // remove espaços
@@ -1484,6 +1518,7 @@
 
   // _ultimaFolha: undefined = ainda carregando, null = sem folha aberta, objeto = dados da folha
   let _ultimaFolha = undefined, _diariasSnap = null, _adiantSnap = null;
+  let _detalhesFolhaAtual = []; // detalhe (bruto/inss/passagens/adiant/líquido) por linha, pro modal ao clicar
 
   // Soma no adiantMap os adiantamentos lançados direto no caixa (origem 'Adiantamento').
   function somarAdiantamentosCaixa(lancamentosDocs, adiantMap) {
@@ -1545,6 +1580,7 @@
   function renderPrevisaoFolha() {
     const el = document.getElementById('previsao-folha');
     if (!el || _ultimaFolha === undefined) return;
+    _detalhesFolhaAtual = [];
     if (_ultimaFolha === null) { el.innerHTML = ''; renderPrevisaoQuinzena(); return; }
 
     // Remove ajudantes do documento salvo — agora vêm da coleção 'diarias'
@@ -1684,13 +1720,14 @@
         totalInss      += inss;
         totalPassagens += passagens;
         totalAdiant    += adiant;
+        const idx = _detalhesFolhaAtual.length;
+        _detalhesFolhaAtual.push({
+          nome: g.funcionario.nome, cargo: g.funcionario.cargo || '',
+          bruto, inss, passagens, adiant, liq
+        });
         return `
-          <div class="prev-linha prev-cols${g.isEncarregado ? ' prev-enc' : ''}">
+          <div class="prev-linha prev-cols-simples${g.isEncarregado ? ' prev-enc' : ''}" onclick="abrirDetalheFuncionarioFolha(${idx})">
             <div class="prev-nome">${escHtml(g.funcionario.nome)} <span class="prev-cargo">${escHtml(g.funcionario.cargo||'')}</span></div>
-            <div class="prev-valor">${fmt(bruto)}</div>
-            <div class="prev-adiant">${inss > 0 ? '- '+fmt(inss) : '—'}</div>
-            <div class="prev-adiant">${passagens > 0 ? '- '+fmt(passagens) : '—'}</div>
-            <div class="prev-adiant">${adiant > 0 ? '- '+fmt(adiant) : '—'}</div>
             <div class="prev-liq">${fmt(liq)}</div>
           </div>`;
       }).join('');
@@ -1701,16 +1738,12 @@
         <div class="prev-titulo">
           <span>Previsão da Folha de Pagamento</span>
         </div>
-        <div class="prev-header prev-cols">
-          <span>Funcionário</span><span>Bruto</span><span>INSS</span><span>Passagens</span><span>Adiant.</span><span>Líquido</span>
+        <div class="prev-header prev-cols-simples">
+          <span>Funcionário</span><span>Líquido</span>
         </div>
         ${linhas}
-        <div class="prev-total prev-cols">
+        <div class="prev-total prev-cols-simples">
           <span>Total</span>
-          <span>${fmt(totalBruto)}</span>
-          <span style="color:#ef9a9a">${totalInss > 0 ? '- '+fmt(totalInss) : '—'}</span>
-          <span style="color:#ef9a9a">${totalPassagens > 0 ? '- '+fmt(totalPassagens) : '—'}</span>
-          <span style="color:#ef9a9a">${totalAdiant > 0 ? '- '+fmt(totalAdiant) : '—'}</span>
           <span>${fmt(totalLiq)}</span>
         </div>
       </div>`;
