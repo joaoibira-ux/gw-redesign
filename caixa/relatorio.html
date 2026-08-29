@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "1.99";
+  const VERSAO = "2.00";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1526,13 +1526,20 @@
     const f = _funcionariosSnap.docs.find(d => normNome(d.data().nome) === alvo);
     return !!(f && f.data().porProducao === true);
   }
+  // Cadastro antigo (sem o campo porDiaria) precisa do mesmo default de
+  // sempre: "ajudante sem porProducao = diária" — senão alguém já marcado
+  // como porProducao (ex: Leonardo Ferreira) passa a ser tratado também
+  // como diária sem nunca ter sido configurado assim.
   function funcTemDiaria(cargo, nome) {
     const isAjud = (cargo || '').toLowerCase().includes('ajudante');
     if (!isAjud) return false;
     if (!_funcionariosSnap) return true;
     const alvo = normNome(nome);
     const f = _funcionariosSnap.docs.find(d => normNome(d.data().nome) === alvo);
-    return f ? f.data().porDiaria !== false : true;
+    if (!f) return true;
+    const dados = f.data();
+    if (dados.porDiaria !== undefined) return dados.porDiaria !== false;
+    return !dados.porProducao;
   }
 
   function renderPrevisaoFolha() {
@@ -2050,8 +2057,15 @@
       const porProducaoSet = new Set(
         funcSnap.docs.filter(d => d.data().porProducao === true).map(d => normNome(d.data().nome))
       );
-      const porDiariaFalseSet = new Set(
-        funcSnap.docs.filter(d => d.data().porDiaria === false).map(d => normNome(d.data().nome))
+      // Cadastro antigo (sem o campo porDiaria) precisa do mesmo default de
+      // sempre: "ajudante sem porProducao = diária" — senão alguém já
+      // marcado como porProducao passa a ser tratado também como diária
+      // sem nunca ter sido configurado assim.
+      const semDiariaSet = new Set(
+        funcSnap.docs.filter(d => {
+          const dados = d.data();
+          return dados.porDiaria !== undefined ? dados.porDiaria === false : !!dados.porProducao;
+        }).map(d => normNome(d.data().nome))
       );
       function funcTemProducaoLocal(cargo, nome) {
         const cargoUp = (cargo || '').toUpperCase();
@@ -2060,7 +2074,7 @@
       }
       function funcTemDiariaLocal(cargo, nome) {
         if (!(cargo || '').toLowerCase().includes('ajudante')) return false;
-        return !porDiariaFalseSet.has(normNome(nome));
+        return !semDiariaSet.has(normNome(nome));
       }
 
       const porFuncProducao = new Map();

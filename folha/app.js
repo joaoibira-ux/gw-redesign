@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.95";
+const VERSAO = "4.96";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -225,8 +225,22 @@ function ehAjudante(cargo) {
 // ser selecionado na Folha, se o lançamento é de Diária ou de Produção
 // (ver escolherTipoAjudanteAmbos). cargo continua "Ajudante" nos dois
 // casos (é o cargo de verdade dele), só a forma de pagamento muda.
+//
+// Cadastro antigo (sem o campo porDiaria, de antes dele existir) precisa
+// do MESMO default de sempre pra não regredir: antes, porDiaria não
+// existia e a regra era simplesmente "ajudante sem porProducao = diária".
+// Se porDiaria estiver ausente, replica essa regra antiga em vez de
+// assumir true sempre — senão um ajudante já marcado como porProducao
+// (ex: Leonardo Ferreira) passa a sincronizar diária do ponto sem nunca
+// ter sido configurado assim, e a regra "diária prevalece no mesmo dia"
+// zera a produção dele.
+function porDiariaEfetivo(func) {
+  if (!func) return true;
+  if (func.porDiaria !== undefined) return func.porDiaria !== false;
+  return !func.porProducao;
+}
 function ehAjudanteDiaria(func) {
-  return ehAjudante(func && func.cargo) && (func ? func.porDiaria !== false : true);
+  return ehAjudante(func && func.cargo) && porDiariaEfetivo(func);
 }
 function ehAjudanteProducao(func) {
   return ehAjudante(func && func.cargo) && !!(func && func.porProducao);

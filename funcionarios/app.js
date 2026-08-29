@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.35";
+const VERSAO = "3.36";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -60,6 +60,18 @@ function temDescontoInssPadrao(cargo) { return ehPorProducao(cargo) || (cargo||"
 function remuneradoPorProducao(f) {
   if (typeof f === "string") return ehPorProducao(f);
   return !!f && (ehPorProducao(f.cargo) || !!f.porProducao);
+}
+
+// Cadastro antigo (sem o campo porDiaria, de antes dele existir) precisa do
+// mesmo default de sempre pra não regredir: antes, a regra era "ajudante
+// sem porProducao = diária". Se porDiaria estiver ausente, replica essa
+// regra antiga em vez de assumir true sempre — senão um funcionário já
+// marcado como porProducao (ex: Leonardo Ferreira) passa a ser tratado
+// também como diária sem nunca ter sido configurado assim.
+function remuneradoPorDiaria(f) {
+  if (!f || ehPorProducao(f.cargo)) return false;
+  if (f.porDiaria !== undefined) return f.porDiaria !== false;
+  return !f.porProducao;
 }
 
 function diasDoMes() {
@@ -116,7 +128,7 @@ function render(docs) {
     const f = doc.data();
     funcionariosCache[doc.id] = f;
     const porProd = remuneradoPorProducao(f);
-    const porDia  = !ehPorProducao(f.cargo) && f.porDiaria !== false;
+    const porDia  = remuneradoPorDiaria(f);
     const ativo   = f.ativo !== false;
     // Card enxuto: nome sempre visível na própria linha, resumo do salário
     // numa frase curta (o detalhamento completo — INSS, passagens, diária —
@@ -573,7 +585,7 @@ function editarFuncionario(id) {
   document.getElementById("f-por-producao").checked = !!f.porProducao;
   // Cadastro antigo (de antes desse checkbox existir) conta como marcado —
   // preserva o comportamento de sempre (ajudante = diária por padrão).
-  document.getElementById("f-por-diaria").checked = f.porDiaria !== false;
+  document.getElementById("f-por-diaria").checked = remuneradoPorDiaria(f);
   // Checkbox positivo ("Desconto de Passagens", marcado = desconto normal)
   // — o campo salvo continua isentoPassagens (invertido), então some ausente
   // (cadastro antigo) conta como desconto normal aplicado (checked=true).
@@ -756,7 +768,7 @@ function consultarFuncionario(id) {
   const sec = title => `<div class="form-section-title">${title}</div><div class="cons-grid">`;
   const instrucao = [f.instrucao, f.instrucaoStatus].filter(Boolean).join(' — ');
   const temProd = remuneradoPorProducao(f);
-  const temDia  = !ehPorProducao(f.cargo) && f.porDiaria !== false;
+  const temDia  = remuneradoPorDiaria(f);
   document.getElementById('consultar-body').innerHTML = `
     ${sec('Identificação')}
       ${c('Nome', f.nome)}${c('Cargo', f.cargo)}${c('Admissão', f.admissao)}
