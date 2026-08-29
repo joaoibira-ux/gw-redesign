@@ -1,8 +1,8 @@
-const VERSION = "apagar-v11";
+const VERSION = "apagar-v12";
 const ASSETS = [
   "./index.html",
-  "./style.css?v=4",
-  "./app.js?v=11",
+  "./style.css?v=7",
+  "./app.js?v=12",
   "./manifest.json",
   "./Logo-gw.png"
 ];

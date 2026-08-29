@@ -128,6 +128,29 @@ header {
   padding: 2px 4px;
 }
 .card-boleto-clip:active { opacity: 0.6; }
+.card-boleto-add {
+  margin-left: auto;
+  background: #f0f4f0;
+  color: #4a7a54;
+  border: none;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.card-boleto-add:active { background: #dce8dd; }
+.card-boleto-del {
+  background: none;
+  border: none;
+  color: #ccc;
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.card-boleto-del:active { color: #f44336; }
 
 .badge {
   display: inline-block;

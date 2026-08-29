@@ -9,7 +9,7 @@
   <title>A Pagar</title>
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <link rel="manifest" href="./manifest.json" />
-  <link rel="stylesheet" href="./style.css?v=6" />
+  <link rel="stylesheet" href="./style.css?v=7" />
   <link rel="apple-touch-icon" href="./Logo-gw.png" />
 </head>
 <body>
@@ -30,6 +30,7 @@
 </div>
 
 <div id="lista" class="lista"></div>
+<input type="file" id="f-anexo-existente" accept="image/*,application/pdf" style="display:none" />
 
 <div class="pagos-overlay" id="pagos-overlay" style="display:none">
   <div class="pagos-header">
@@ -72,6 +73,10 @@
       <label for="f-valor">Valor (R$)</label>
       <input type="decimal" inputmode="decimal" id="f-valor" placeholder="0,00" />
     </div>
+    <div class="full">
+      <label for="f-anexo">📎 Boleto/comprovante (opcional)</label>
+      <input type="file" id="f-anexo" accept="image/*,application/pdf" />
+    </div>
     <button type="submit" class="btn-add" id="btn-add">+ Cadastrar</button>
   </div>
 </form>
@@ -79,7 +84,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
-<script src="./app.js?v=11"></script>
+<script src="./app.js?v=12"></script>
 <script src="../agente.js"></script>
 <script src="../bfcache-fix.js"></script>
 </body>

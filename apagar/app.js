@@ -7,12 +7,34 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "1.12";
+const VERSAO = "1.13";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
 const db  = firebase.firestore();
 const col = db.collection("contasPagar");
+const uploadComprovanteFn = firebase.functions().httpsCallable("uploadComprovanteCaixa");
+const excluirComprovanteFn = firebase.functions().httpsCallable("excluirComprovante");
+
+function fileParaBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(reader.result.split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// Upload via Cloud Function (Admin SDK no servidor) — mesmo padrão do
+// Caixa, evita qualquer questão de CORS/protocolo do Storage SDK direto no
+// navegador.
+async function uploadAnexo(file) {
+  const base64 = await fileParaBase64(file);
+  const result = await uploadComprovanteFn({
+    base64, nomeArquivo: file.name, contentType: file.type || "application/octet-stream"
+  });
+  return { url: result.data.url, nomeArquivo: file.name };
+}
 
 function escHtml(s) {
   return String(s || "")
@@ -85,7 +107,10 @@ function cardHtml(id, c, opts) {
         <span>${escHtml(c.data)}</span>
         <span class="badge ${baixado ? "baixado" : "aberto"}">${baixado ? "Pago" : "Em aberto"}</span>
         ${baixado && c.dataBaixa ? `<span>Pagto: ${escHtml(c.dataBaixa)}</span>` : ""}
-        ${c.boletoUrl ? `<a href="${escHtml(c.boletoUrl)}" target="_blank" rel="noopener" class="card-boleto-clip" onclick="event.stopPropagation()" title="Ver boleto anexado">📎</a>` : ""}
+        ${c.boletoUrl
+          ? `<a href="${escHtml(c.boletoUrl)}" target="_blank" rel="noopener" class="card-boleto-clip" onclick="event.stopPropagation()" title="Ver boleto anexado">📎</a>
+             <button type="button" class="card-boleto-del" onclick="event.stopPropagation();removerAnexo('${id}')" title="Excluir anexo">✕</button>`
+          : `<button type="button" class="card-boleto-add" onclick="event.stopPropagation();anexarAnexoExistente('${id}')" title="Anexar boleto/comprovante">📎 Anexar</button>`}
       </div>
     </div>`;
 }
@@ -240,7 +265,7 @@ function editarDaTelaDetalhe() {
   editar(id);
 }
 
-document.getElementById("form").addEventListener("submit", function(e) {
+document.getElementById("form").addEventListener("submit", async function(e) {
   e.preventDefault();
   const data      = isoParaBR(document.getElementById("f-data").value);
   const descricao = document.getElementById("f-desc").value.trim();
@@ -255,11 +280,33 @@ document.getElementById("form").addEventListener("submit", function(e) {
     return;
   }
 
+  const btnAdd = document.getElementById("btn-add");
+  const arquivo = document.getElementById("f-anexo").files[0];
+  let anexo = null;
+  if (arquivo) {
+    btnAdd.disabled = true;
+    btnAdd.textContent = "Enviando anexo...";
+    try {
+      anexo = await uploadAnexo(arquivo);
+    } catch (err) {
+      console.error("Erro ao enviar anexo:", err);
+      alert("Erro ao enviar o anexo: " + (err.code || err.message || "falha desconhecida") + "\n\nTente novamente.");
+      btnAdd.disabled = false;
+      btnAdd.textContent = editandoId ? "Salvar" : "+ Cadastrar";
+      return;
+    }
+    btnAdd.disabled = false;
+    btnAdd.textContent = editandoId ? "Salvar" : "+ Cadastrar";
+  }
+
+  const dadosAnexo = anexo ? { boletoUrl: anexo.url, boletoNomeArquivo: anexo.nomeArquivo } : {};
+
   if (editandoId) {
-    col.doc(editandoId).update({ data, descricao, valor });
+    col.doc(editandoId).update({ data, descricao, valor, ...dadosAnexo });
   } else {
     col.add({
       data, descricao, valor, status: "aberto",
+      ...dadosAnexo,
       criadoEm: firebase.firestore.FieldValue.serverTimestamp()
     });
   }
@@ -267,6 +314,50 @@ document.getElementById("form").addEventListener("submit", function(e) {
   this.reset();
   toggleForm();
 });
+
+// Anexa um boleto/comprovante a uma conta JÁ EXISTENTE (que ainda não tinha
+// nenhum) — abre o seletor de arquivo e, ao escolher, sobe e grava direto
+// no documento.
+let _anexarAlvoId = null;
+function anexarAnexoExistente(id) {
+  _anexarAlvoId = id;
+  document.getElementById("f-anexo-existente").click();
+}
+
+document.getElementById("f-anexo-existente").addEventListener("change", async function() {
+  const file = this.files[0];
+  this.value = "";
+  const id = _anexarAlvoId;
+  _anexarAlvoId = null;
+  if (!file || !id) return;
+
+  try {
+    const anexo = await uploadAnexo(file);
+    await col.doc(id).update({ boletoUrl: anexo.url, boletoNomeArquivo: anexo.nomeArquivo });
+  } catch (err) {
+    console.error("Erro ao anexar:", err);
+    alert("Erro ao anexar: " + (err.code || err.message || "falha desconhecida") + "\n\nTente novamente.");
+  }
+});
+
+async function removerAnexo(id) {
+  const c = docsCache[id];
+  if (!c || !c.boletoUrl) return;
+  const senha = prompt("EXCLUIR ANEXO?\n\n" + c.descricao + "\n\nDigite a senha:");
+  if (senha === null) return;
+  if (senha !== "6535" && senha !== "4512") { alert("Senha incorreta."); return; }
+
+  try {
+    await excluirComprovanteFn({ url: c.boletoUrl });
+    await col.doc(id).update({
+      boletoUrl: firebase.firestore.FieldValue.delete(),
+      boletoNomeArquivo: firebase.firestore.FieldValue.delete()
+    });
+  } catch (err) {
+    console.error("Erro ao excluir anexo:", err);
+    alert("Erro ao excluir anexo: " + (err.code || err.message || "falha desconhecida"));
+  }
+}
 
 document.getElementById("f-valor").addEventListener("blur", function() {
   const v = parseMoeda(this.value);

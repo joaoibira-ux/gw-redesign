@@ -2757,6 +2757,28 @@ exports.uploadComprovanteCaixa = onCall(
   }
 );
 
+// Exclui um arquivo do Storage a partir da URL pública (comprovantes/ ou
+// boletos/) — usado tanto no Caixa quanto em Contas a Pagar pra remover um
+// anexo. Mesma razão de rodar no servidor (Admin SDK) em vez do cliente:
+// evita qualquer questão de CORS/protocolo com o Storage SDK no navegador.
+exports.excluirComprovante = onCall(
+  { timeoutSeconds: 30, memory: "256MiB", cors: true, invoker: "public" },
+  async (request) => {
+    const { url } = request.data || {};
+    if (!url) throw new HttpsError("invalid-argument", "url é obrigatória.");
+    const m = /\/o\/([^?]+)/.exec(url);
+    if (!m) throw new HttpsError("invalid-argument", "URL inválida.");
+    const caminho = decodeURIComponent(m[1]);
+    const bucket = admin.storage().bucket();
+    try {
+      await bucket.file(caminho).delete();
+    } catch (e) {
+      if (e.code !== 404) throw e;
+    }
+    return { sucesso: true };
+  }
+);
+
 // Prompt de extração de dados de boleto (texto → JSON). Mandado como texto
 // puro pro Claude (não imagem) — a maioria dos boletos gerados por banco tem
 // texto embutido no PDF, não são digitalizados/escaneados.

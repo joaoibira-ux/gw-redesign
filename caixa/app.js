@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.57";
+const VERSAO_CAIXA = "3.58";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -66,6 +66,27 @@ document.getElementById("f-comprovante-existente").addEventListener("change", as
     alert("Erro ao anexar comprovante: " + (err.code || err.message || "falha desconhecida") + "\n\nTente novamente.");
   }
 });
+
+const excluirComprovanteFn = firebase.functions().httpsCallable("excluirComprovante");
+
+async function removerComprovante(id) {
+  const r = docsCache[id];
+  if (!r || !r.comprovanteUrl) return;
+  const senha = prompt("EXCLUIR COMPROVANTE ANEXADO?\n\n" + r.descricao + "\n\nDigite a senha:");
+  if (senha === null) return;
+  if (senha !== "6535" && senha !== "4512") { alert("Senha incorreta."); return; }
+
+  try {
+    await excluirComprovanteFn({ url: r.comprovanteUrl });
+    await col.doc(id).update({
+      comprovanteUrl: firebase.firestore.FieldValue.delete(),
+      comprovanteNomeArquivo: firebase.firestore.FieldValue.delete()
+    });
+  } catch (err) {
+    console.error("Erro ao excluir comprovante:", err);
+    alert("Erro ao excluir comprovante: " + (err.code || err.message || "falha desconhecida"));
+  }
+}
 
 function fmtMoeda(v) {
   return "R$ " + v.toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
@@ -245,7 +266,8 @@ function render(docs) {
           <span>${escHtml(r.data)}</span>
           <span class="badge${isCredito ? ' credito-prolabore' : ''}">${escHtml(r.origem)}</span>
           ${r.comprovanteUrl
-            ? `<a href="${escHtml(r.comprovanteUrl)}" target="_blank" rel="noopener" class="card-comprovante-clip" onclick="event.stopPropagation()" title="Ver comprovante anexado">📎</a>`
+            ? `<a href="${escHtml(r.comprovanteUrl)}" target="_blank" rel="noopener" class="card-comprovante-clip" onclick="event.stopPropagation()" title="Ver comprovante anexado">📎</a>
+               <button type="button" class="card-comprovante-del" onclick="event.stopPropagation();removerComprovante('${doc.id}')" title="Excluir comprovante">✕</button>`
             : `<button type="button" class="card-comprovante-add" onclick="event.stopPropagation();anexarComprovanteExistente('${doc.id}')" title="Anexar comprovante">📎 Anexar</button>`}
         </div>
       </div>`;

@@ -193,6 +193,16 @@ input:focus, select:focus {
   white-space: nowrap;
 }
 .card-comprovante-add:active { background: #dce8dd; }
+.card-comprovante-del {
+  background: none;
+  border: none;
+  color: #ccc;
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.card-comprovante-del:active { color: #f44336; }
 .card-meta .numero {
   font-weight: 600;
   color: #aaa;
