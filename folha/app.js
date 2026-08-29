@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.94";
+const VERSAO = "4.95";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -218,13 +218,18 @@ function ehAjudante(cargo) {
   return (cargo || '').toLowerCase().includes('ajudante');
 }
 
-// Um funcionário com cargo Ajudante pode ser marcado no cadastro (campo
-// porProducao) pra ser remunerado por produção em vez de diária — nesse
-// caso ele deve ser tratado como Pintor/Raspador nos fluxos daqui, não
-// como ajudante. cargo continua "Ajudante" (é o cargo de verdade dele),
-// só a forma de pagamento muda.
+// Um funcionário com cargo Ajudante pode ser marcado no cadastro com dois
+// campos independentes: porProducao (remunerado igual Pintor/Raspador) e
+// porDiaria (remunerado por diária, o padrão). Um ajudante pode ter os
+// dois marcados ao mesmo tempo — nesse caso ele deve poder escolher, ao
+// ser selecionado na Folha, se o lançamento é de Diária ou de Produção
+// (ver escolherTipoAjudanteAmbos). cargo continua "Ajudante" nos dois
+// casos (é o cargo de verdade dele), só a forma de pagamento muda.
 function ehAjudanteDiaria(func) {
-  return ehAjudante(func && func.cargo) && !(func && func.porProducao);
+  return ehAjudante(func && func.cargo) && (func ? func.porDiaria !== false : true);
+}
+function ehAjudanteProducao(func) {
+  return ehAjudante(func && func.cargo) && !!(func && func.porProducao);
 }
 
 // Para ajudante, se no mesmo dia houver diária e produção, a diária prevalece:
@@ -619,7 +624,12 @@ function selecionarFuncionario(func) {
   document.getElementById('func-atual').textContent = func.nome;
   atualizarBtnOk();
   const cargo = (func.cargo || '').toLowerCase();
-  if (ehAjudanteDiaria(func)) {
+  if (ehAjudanteDiaria(func) && ehAjudanteProducao(func)) {
+    // Ajudante com os dois modos marcados no cadastro — pergunta qual tipo
+    // de lançamento é essa entrada, antes de decidir entre diária ou mapa.
+    document.getElementById('modal-tipo-nome-ajudante-ambos').textContent = func.nome;
+    document.getElementById('modal-tipo-ajudante-ambos').classList.add('ativa');
+  } else if (ehAjudanteDiaria(func)) {
     if (_pendingClick) {
       // Veio do mapa clicando direto num serviço de Tratamento — já sabemos o tipo, dá andamento
       aguardandoCalendarioAjudante = true;
@@ -677,6 +687,33 @@ function escolherTipoAjudante(tipo) {
     aguardandoCalendarioAjudante = false;
     modoDiariaHoras = false;
     abrirCalendario(funcionarioAtual);
+  }
+}
+
+function fecharModalTipoAjudanteAmbos() {
+  document.getElementById('modal-tipo-ajudante-ambos').classList.remove('ativa');
+}
+
+// Ajudante com Produção e Diária marcadas ao mesmo tempo no cadastro:
+// pergunta primeiro qual dos dois modos é essa entrada. "Diária" segue pro
+// mesmo submenu (Tratamento/Serviços Gerais) que o ajudante só-diária já
+// usa; "Produção" vai direto pro mapa de serviços, igual pintor/raspador.
+function escolherTipoAjudanteAmbos(tipo) {
+  fecharModalTipoAjudanteAmbos();
+  if (tipo === 'diaria') {
+    if (_pendingClick) {
+      aguardandoCalendarioAjudante = true;
+      modoDiariaHoras = false;
+      mostrarView('view-mapa');
+      _aplicarPendingClick();
+    } else {
+      document.getElementById('modal-tipo-nome-ajudante').textContent = funcionarioAtual.nome;
+      document.getElementById('modal-tipo-ajudante').classList.add('ativa');
+    }
+  } else {
+    modoDiariaHoras = false;
+    mostrarView('view-mapa');
+    _aplicarPendingClick();
   }
 }
 

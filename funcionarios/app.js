@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.34";
+const VERSAO = "3.35";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -116,6 +116,7 @@ function render(docs) {
     const f = doc.data();
     funcionariosCache[doc.id] = f;
     const porProd = remuneradoPorProducao(f);
+    const porDia  = !ehPorProducao(f.cargo) && f.porDiaria !== false;
     const ativo   = f.ativo !== false;
     // Card enxuto: nome sempre visível na própria linha, resumo do salário
     // numa frase curta (o detalhamento completo — INSS, passagens, diária —
@@ -135,7 +136,7 @@ function render(docs) {
           </button>
         </div>
         <div class="card-salario ${porProd ? 'por-producao' : ''}">
-          ${porProd ? 'Por produção' : `${fmtMoeda(calcLiquido(f.salario, f.descontos))} líquido`}
+          ${porProd && porDia ? 'Produção + Diária' : porProd ? 'Por produção' : `${fmtMoeda(calcLiquido(f.salario, f.descontos))} líquido`}
         </div>
         <div class="card-meta">
           <span>Admissão: ${escHtml(f.admissao||'')}</span>
@@ -335,24 +336,31 @@ const DESCONTO_INSS_PADRAO_PRODUCAO = 7.5;
 function atualizarCamposRemuneracao() {
   const cargo = document.getElementById("f-cargo").value;
   const cargoJaEhProducao = ehPorProducao(cargo);
-  const checkbox = document.getElementById("f-por-producao");
+  const chkProducao = document.getElementById("f-por-producao");
+  const chkDiaria = document.getElementById("f-por-diaria");
 
-  // O checkbox só faz sentido pra cargo que não é produção por padrão —
-  // pra Pintor/Raspador já é sempre por produção, esconde a opção.
-  document.getElementById("wrap-por-producao").style.display = (cargo && !cargoJaEhProducao) ? "" : "none";
-  if (cargoJaEhProducao) checkbox.checked = false;
+  // Os checkboxes só fazem sentido pra cargo que não é produção por padrão —
+  // pra Pintor/Raspador já é sempre por produção, esconde as opções.
+  const mostrarOpcoes = !!(cargo && !cargoJaEhProducao);
+  document.getElementById("wrap-por-producao").style.display = mostrarOpcoes ? "" : "none";
+  document.getElementById("wrap-por-diaria").style.display = mostrarOpcoes ? "" : "none";
+  if (cargoJaEhProducao) { chkProducao.checked = false; chkDiaria.checked = false; }
 
-  const porProd = cargoJaEhProducao || checkbox.checked;
-  document.getElementById("wrap-salario").style.display = porProd ? "none" : "";
+  // Produção e Diária são independentes agora — um Ajudante pode ter só uma
+  // das duas, ou as duas (ex: parte do mês por diária, parte por serviço).
+  const porProd = cargoJaEhProducao || chkProducao.checked;
+  const porDia  = mostrarOpcoes && chkDiaria.checked;
+  document.getElementById("wrap-salario").style.display = porDia ? "" : "none";
   document.getElementById("wrap-salario-ref").style.display = porProd ? "" : "none";
   const salarioRef = document.getElementById("f-salario-ref");
   if (porProd && !salarioRef.value) salarioRef.value = SALARIO_REFERENCIA_PADRAO.toFixed(2).replace(".",",");
   const descontos = document.getElementById("f-descontos");
-  if ((temDescontoInssPadrao(cargo) || checkbox.checked) && !descontos.value) descontos.value = DESCONTO_INSS_PADRAO_PRODUCAO.toFixed(2).replace(".",",");
+  if ((temDescontoInssPadrao(cargo) || chkProducao.checked) && !descontos.value) descontos.value = DESCONTO_INSS_PADRAO_PRODUCAO.toFixed(2).replace(".",",");
 }
 
 document.getElementById("f-cargo").addEventListener("change", atualizarCamposRemuneracao);
 document.getElementById("f-por-producao").addEventListener("change", atualizarCamposRemuneracao);
+document.getElementById("f-por-diaria").addEventListener("change", atualizarCamposRemuneracao);
 
 document.getElementById("f-salario").addEventListener("blur", function() {
   const v = parseMoeda(this.value);
@@ -454,7 +462,9 @@ function validarFormulario() {
   data(v("f-admissao"), "Admissão (DD/MM/AAAA)", erros);
   if (!editando && !v("f-telefone"))       erros.push("Telefone");
   if (simplificado) return erros;
-  if (!remuneradoPorProducao({ cargo: v("f-cargo"), porProducao: document.getElementById("f-por-producao").checked }) && !parseMoeda(v("f-salario")) && !editando) erros.push("Salário / Diária");
+  const cargoValidacao = v("f-cargo");
+  const diariaAtiva = !ehPorProducao(cargoValidacao) && document.getElementById("f-por-diaria").checked;
+  if (diariaAtiva && !parseMoeda(v("f-salario")) && !editando) erros.push("Salário / Diária");
   if (!editando && !v("f-nacionalidade"))  erros.push("Nacionalidade");
   if (!editando && !v("f-estadocivil"))    erros.push("Estado Civil");
   data(v("f-nascimento"), "Data de Nascimento (DD/MM/AAAA)", erros);
@@ -485,16 +495,18 @@ function lerCampos() {
   const v = id => (document.getElementById(id)||{}).value || "";
   const radios = name => { const r = document.querySelector(`input[name="${name}"]:checked`); return r ? r.value : ""; };
   const cargo = v("f-cargo");
-  const porProducao = !ehPorProducao(cargo) && document.getElementById("f-por-producao").checked;
-  const remPorProd = ehPorProducao(cargo) || porProducao;
+  const cargoJaEhProducao = ehPorProducao(cargo);
+  const porProducao = cargoJaEhProducao || (!cargoJaEhProducao && document.getElementById("f-por-producao").checked);
+  const porDiaria   = !cargoJaEhProducao && document.getElementById("f-por-diaria").checked;
   return {
     nome:         v("f-nome").trim(),
     cargo:        cargo,
     admissao:     v("f-admissao").trim(),
-    porProducao:  porProducao,
-    salario:      remPorProd ? 0 : parseMoeda(v("f-salario")),
+    porProducao:  !cargoJaEhProducao && document.getElementById("f-por-producao").checked,
+    porDiaria:    porDiaria,
+    salario:      porDiaria ? parseMoeda(v("f-salario")) : 0,
     descontos:    parseFloat((v("f-descontos")||"0").replace(",",".")) || 0,
-    salarioReferencia: remPorProd ? parseMoeda(v("f-salario-ref")) : 0,
+    salarioReferencia: porProducao ? parseMoeda(v("f-salario-ref")) : 0,
     passagens:    parseMoeda(v("f-passagens")),
     isentoPassagens: !document.getElementById("f-desconto-passagens").checked,
     tomaCafeObra: document.getElementById("f-toma-cafe-obra").checked,
@@ -559,6 +571,9 @@ function editarFuncionario(id) {
   if (f.instrucaoStatus) { const r = document.querySelector(`input[name="instrucao_status"][value="${f.instrucaoStatus}"]`); if (r) r.checked = true; }
 
   document.getElementById("f-por-producao").checked = !!f.porProducao;
+  // Cadastro antigo (de antes desse checkbox existir) conta como marcado —
+  // preserva o comportamento de sempre (ajudante = diária por padrão).
+  document.getElementById("f-por-diaria").checked = f.porDiaria !== false;
   // Checkbox positivo ("Desconto de Passagens", marcado = desconto normal)
   // — o campo salvo continua isentoPassagens (invertido), então some ausente
   // (cadastro antigo) conta como desconto normal aplicado (checked=true).
@@ -740,21 +755,24 @@ function consultarFuncionario(id) {
   const c = (label, val) => val ? `<div class="cons-campo"><span class="cons-label">${escHtml(label)}</span><span class="cons-valor">${escHtml(val)}</span></div>` : '';
   const sec = title => `<div class="form-section-title">${title}</div><div class="cons-grid">`;
   const instrucao = [f.instrucao, f.instrucaoStatus].filter(Boolean).join(' — ');
+  const temProd = remuneradoPorProducao(f);
+  const temDia  = !ehPorProducao(f.cargo) && f.porDiaria !== false;
   document.getElementById('consultar-body').innerHTML = `
     ${sec('Identificação')}
       ${c('Nome', f.nome)}${c('Cargo', f.cargo)}${c('Admissão', f.admissao)}
-      ${remuneradoPorProducao(f) ? `
-        ${c('Remuneração', 'Por produção')}
+      ${c('Remuneração', temProd && temDia ? 'Produção + Diária' : temProd ? 'Por produção' : 'Por diária')}
+      ${temProd ? `
         ${c('Salário de Referência', fmtMoeda(f.salarioReferencia))}
         ${f.descontos > 0 ? c('Desconto de INSS ('+f.descontos.toFixed(2).replace('.',',')+'%)', fmtMoeda(calcDescontoInss(f.salarioReferencia, f.descontos))) : ''}
         ${c('Desconto das Passagens (6%)', fmtMoeda(calcDescontoPassagens(f.salarioReferencia)))}
-      ` : `
+      ` : ''}
+      ${temDia ? `
         ${c('Salário Bruto', fmtMoeda(f.salario))}
-        ${f.descontos > 0 ? c('Desconto de INSS ('+f.descontos.toFixed(2).replace('.',',')+'%)', fmtMoeda(calcDescontoInss(f.salario, f.descontos))) : ''}
-        ${c('Desconto das Passagens (6%)', fmtMoeda(calcDescontoPassagens(f.salario)))}
-        ${c('Valor Líquido', fmtMoeda(calcLiquido(f.salario, f.descontos)))}
         ${c('Diária ('+diasDoMes()+' dias)', fmtMoeda(calcDiaria(f.salario)))}
-      `}
+        ${!temProd && f.descontos > 0 ? c('Desconto de INSS ('+f.descontos.toFixed(2).replace('.',',')+'%)', fmtMoeda(calcDescontoInss(f.salario, f.descontos))) : ''}
+        ${!temProd ? c('Desconto das Passagens (6%)', fmtMoeda(calcDescontoPassagens(f.salario))) : ''}
+        ${!temProd ? c('Valor Líquido', fmtMoeda(calcLiquido(f.salario, f.descontos))) : ''}
+      ` : ''}
       ${c('Telefone', f.telefone)}${c('Observações', f.obs)}
       ${c('Passagens (15dd)', f.passagens > 0 ? fmtMoeda(f.passagens) : '')}
     </div>

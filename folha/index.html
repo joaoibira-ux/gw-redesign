@@ -153,6 +153,17 @@
     </div>
   </div>
 
+  <!-- Modal: ajudante com Produção e Diária marcadas ao mesmo tempo -->
+  <div id="modal-tipo-ajudante-ambos" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-titulo">Como deseja registrar?</div>
+      <div class="modal-nome" id="modal-tipo-nome-ajudante-ambos"></div>
+      <button class="modal-btn modal-btn-diaria" onclick="escolherTipoAjudanteAmbos('diaria')">Diária</button>
+      <button class="modal-btn modal-btn-producao" onclick="escolherTipoAjudanteAmbos('producao')">Produção</button>
+      <button class="modal-btn modal-btn-cancelar" onclick="fecharModalTipoAjudanteAmbos()">Cancelar</button>
+    </div>
+  </div>
+
   <!-- View 4: Folha Preview -->
   <div id="view-folha" class="view">
     <div id="folha-documento"></div>
@@ -167,7 +178,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
-  <script src="app.js?v=4.94"></script>
+  <script src="app.js?v=4.95"></script>
   <script>
     if (document.documentElement.classList.contains('gw-blocked')) {
       (function() {
