@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.96";
+const VERSAO = "4.97";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -185,6 +185,7 @@ function sincronizarDiaristas() {
     });
   });
   filtrarProducaoConflitanteComDiaria();
+  filtrarDiariaConflitanteComProducaoPintor();
 }
 
 db.collection('diarias').onSnapshot(snap => {
@@ -263,6 +264,70 @@ function filtrarProducaoConflitanteComDiaria() {
     if (!e.dataRegistro) return e;
     const diaMes = e.dataRegistro.split('/').slice(0, 2).join('/');
     if (!diasComDiaria.has(`${e.funcionario.id || e.funcionario.nome}|${diaMes}`)) return e;
+    return { ...e, valor: 0 };
+  });
+}
+
+function ehPintorOuRaspador(cargo) {
+  const c = (cargo || '').toLowerCase();
+  return c.includes('pintor') || c.includes('raspador');
+}
+
+// Para Pintor/Raspador é o oposto do ajudante: se no mesmo dia houver
+// diária e produção, a PRODUÇÃO prevalece (é o valor medido/preciso do
+// serviço) e a diária daquele dia é zerada — exceto sábado ou domingo em
+// que ele já tem a semana inteira (segunda a sexta) de diária completa:
+// nesse caso a diária de fim de semana é um bônus que ele já garantiu e
+// mantém mesmo trabalhando produção nesse dia.
+function filtrarDiariaConflitanteComProducaoPintor() {
+  const diasComProducao = new Set();
+  entradas.forEach(e => {
+    if (!e.firestoreLocalId) return; // só produção
+    if (!ehPintorOuRaspador(e.funcionario.cargo)) return;
+    if (!e.dataRegistro) return;
+    const diaMes = e.dataRegistro.split('/').slice(0, 2).join('/');
+    diasComProducao.add(`${e.funcionario.id || e.funcionario.nome}|${diaMes}`);
+  });
+
+  const diasDiariaPorFunc = new Map();
+  entradas.forEach(e => {
+    if (e.firestoreLocalId) return;
+    if (!ehPintorOuRaspador(e.funcionario.cargo)) return;
+    const diaMes = (e.localId || '').replace(' ½', '').trim();
+    if (!diaMes) return;
+    const key = e.funcionario.id || e.funcionario.nome;
+    if (!diasDiariaPorFunc.has(key)) diasDiariaPorFunc.set(key, new Set());
+    diasDiariaPorFunc.get(key).add(diaMes);
+  });
+
+  function semanaSegASextaCompleta(key, dia, mes) {
+    const ano = new Date().getFullYear();
+    const data = new Date(ano, mes - 1, dia);
+    const diaSemana = data.getDay(); // 0=domingo, 6=sábado
+    const deltaSegunda = diaSemana === 0 ? -6 : -(diaSemana - 1);
+    const dias = diasDiariaPorFunc.get(key) || new Set();
+    for (let i = 0; i < 5; i++) {
+      const d = new Date(data);
+      d.setDate(d.getDate() + deltaSegunda + i);
+      const dm = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (!dias.has(dm)) return false;
+    }
+    return true;
+  }
+
+  entradas = entradas.map(e => {
+    if (e.firestoreLocalId) return e; // mantém produção
+    if (!ehPintorOuRaspador(e.funcionario.cargo)) return e; // regra é só para Pintor/Raspador
+    const diaMes = (e.localId || '').replace(' ½', '').trim();
+    if (!diaMes) return e;
+    const key = e.funcionario.id || e.funcionario.nome;
+    if (!diasComProducao.has(`${key}|${diaMes}`)) return e; // sem conflito nesse dia
+    const [dia, mes] = diaMes.split('/').map(Number);
+    if (!dia || !mes) return e;
+    const diaSemana = new Date(new Date().getFullYear(), mes - 1, dia).getDay();
+    if ((diaSemana === 0 || diaSemana === 6) && semanaSegASextaCompleta(key, dia, mes)) {
+      return e; // bônus de fim de semana já garantido, mantém mesmo com produção
+    }
     return { ...e, valor: 0 };
   });
 }
@@ -878,6 +943,7 @@ db.collection("locais").orderBy("identificacao", "asc").onSnapshot(snap => {
           return { ...e, funcionario: novoFn, valor: novoValor, dataRegistro: found.dataRegistro || e.dataRegistro || null };
         });
         filtrarProducaoConflitanteComDiaria();
+        filtrarDiariaConflitanteComProducaoPintor();
 
         // Sempre re-renderiza aqui: além do refino por lookup, o filtro de
         // conflito diária×produção acima também pode ter alterado valores.
@@ -985,6 +1051,7 @@ function confirmarSelecao() {
     });
   });
   filtrarProducaoConflitanteComDiaria();
+  filtrarDiariaConflitanteComProducaoPintor();
 
   renderizarFolha();
   atualizarHeader();
@@ -1060,14 +1127,15 @@ function renderizarFolha() {
       </div>`;
   }
 
-  // ── Grupos de produção ── (diárias e produção ficam em tabelas separadas,
-  // já que um pintor pode ter os dois tipos de lançamento na mesma folha)
+  // ── Grupos de produção ── (diária e produção ficam em tabelas com colunas
+  // diferentes, mas agora dentro do MESMO card por funcionário, já que
+  // um pintor/ajudante pode ter os dois tipos de lançamento na mesma folha)
   const grupos = new Map();
   entradas.forEach((e, idx) => {
     const ehDiaria = !e.firestoreLocalId;
-    const key = `${e.funcionario.id || e.funcionario.nome}::${ehDiaria ? 'diaria' : 'prod'}`;
-    if (!grupos.has(key)) grupos.set(key, { funcionario: e.funcionario, itens: [], isDiaria: ehDiaria });
-    grupos.get(key).itens.push({ ...e, _idx: idx });
+    const key = e.funcionario.id || e.funcionario.nome;
+    if (!grupos.has(key)) grupos.set(key, { funcionario: e.funcionario, itensDiaria: [], itensProd: [] });
+    (ehDiaria ? grupos.get(key).itensDiaria : grupos.get(key).itensProd).push({ ...e, _idx: idx });
   });
 
   const totalProducao = entradas.reduce((acc, e) => acc + Number(e.valor), 0);
@@ -1083,29 +1151,37 @@ function renderizarFolha() {
   }
 
   const gruposHtml = [...grupos.values()].map(g => {
-    const isAjud   = g.isDiaria;
-    if (isAjud) g.itens.sort((a, b) => chaveDataLocalId(a.localId) - chaveDataLocalId(b.localId));
-    const subtotal = g.itens.reduce((acc, e) => acc + Number(e.valor), 0);
-    const linhas   = g.itens.map(e => isAjud ? `
+    g.itensDiaria.sort((a, b) => chaveDataLocalId(a.localId) - chaveDataLocalId(b.localId));
+    const subtotalDiaria = g.itensDiaria.reduce((acc, e) => acc + Number(e.valor), 0);
+    const subtotalProd   = g.itensProd.reduce((acc, e) => acc + Number(e.valor), 0);
+    const subtotalTotal  = subtotalDiaria + subtotalProd;
+    const temAmbos = g.itensDiaria.length > 0 && g.itensProd.length > 0;
+
+    const tabelaDiaria = g.itensDiaria.length ? `
+        <table class="folha-tabela">
+          <thead><tr><th>Data</th><th>Diária</th><th>Valor</th><th></th></tr></thead>
+          <tbody>${g.itensDiaria.map(e => `
       <tr>
         <td>${escHtml(e.localId)}</td>
         <td>${escHtml(e.servico)}</td>
         <td class="td-valor">${fmtMoeda(e.valor)}</td>
         <td class="td-del"><button class="btn-del-dia" onclick="removerDiaria(${e._idx})">✕</button></td>
-      </tr>` : `
+      </tr>`).join('')}</tbody>
+          <tfoot><tr><td colspan="3" class="td-sub-label">Subtotal</td><td class="td-sub-valor">${fmtMoeda(subtotalDiaria)}</td></tr></tfoot>
+        </table>` : '';
+
+    const tabelaProd = g.itensProd.length ? `
+        <table class="folha-tabela">
+          <thead><tr><th>Local</th><th>Serviço</th><th>Registro</th><th>Valor</th></tr></thead>
+          <tbody>${g.itensProd.map(e => `
       <tr>
         <td>${escHtml(e.localId)}</td>
         <td>${escHtml(nomeExibicaoServico(e.servico))}</td>
         <td style="font-size:0.75rem;color:#888">${escHtml(e.dataRegistro || '—')}</td>
         <td class="td-valor">${fmtMoeda(e.valor)}</td>
-      </tr>`).join('');
-
-    const thead = isAjud
-      ? `<tr><th>Data</th><th>Diária</th><th>Valor</th><th></th></tr>`
-      : `<tr><th>Local</th><th>Serviço</th><th>Registro</th><th>Valor</th></tr>`;
-    const tfoot = isAjud
-      ? `<tr><td colspan="3" class="td-sub-label">Subtotal</td><td class="td-sub-valor">${fmtMoeda(subtotal)}</td></tr>`
-      : `<tr><td colspan="3" class="td-sub-label">Subtotal</td><td class="td-sub-valor">${fmtMoeda(subtotal)}</td></tr>`;
+      </tr>`).join('')}</tbody>
+          <tfoot><tr><td colspan="3" class="td-sub-label">Subtotal</td><td class="td-sub-valor">${fmtMoeda(subtotalProd)}</td></tr></tfoot>
+        </table>` : '';
 
     return `
       <div class="grupo-func">
@@ -1113,11 +1189,9 @@ function renderizarFolha() {
           <span class="grupo-nome">${escHtml(g.funcionario.nome)}</span>
           <span class="grupo-cargo ${(g.funcionario.cargo||'').toLowerCase()}">${escHtml(g.funcionario.cargo||'')}</span>
         </div>
-        <table class="folha-tabela">
-          <thead>${thead}</thead>
-          <tbody>${linhas}</tbody>
-          <tfoot>${tfoot}</tfoot>
-        </table>
+        ${tabelaDiaria}
+        ${tabelaProd}
+        ${temAmbos ? `<div class="total-geral" style="font-size:0.9rem;padding:6px 4px"><span>Subtotal ${escHtml(g.funcionario.nome)}</span><span>${fmtMoeda(subtotalTotal)}</span></div>` : ''}
       </div>`;
   }).join('');
 
@@ -1184,6 +1258,7 @@ async function salvarFolha(silencioso = false, completarAjudantes = true) {
           });
         });
         filtrarProducaoConflitanteComDiaria();
+        filtrarDiariaConflitanteComProducaoPintor();
       }
     } catch(e) {}
   }
