@@ -790,12 +790,24 @@ async function calcularRefeicoesHojeComNomes(hojeISO) {
   const inicio = new Date(hojeISO + "T00:00:00-03:00");
   const fim    = new Date(hojeISO + "T23:59:59-03:00");
 
-  const snap = await db.collection("pontos")
-    .where("tipo", "==", "entrada")
-    .where("timestamp", ">=", inicio)
-    .where("timestamp", "<=", fim)
-    .orderBy("timestamp")
-    .get();
+  const [snap, funcSnap] = await Promise.all([
+    db.collection("pontos")
+      .where("tipo", "==", "entrada")
+      .where("timestamp", ">=", inicio)
+      .where("timestamp", "<=", fim)
+      .orderBy("timestamp")
+      .get(),
+    db.collection("funcionarios").get()
+  ]);
+
+  // "tomaCafeObra"/"almocaObra" ausentes (cadastro antigo, de antes desses
+  // checkboxes existirem) contam como marcados — só ficam de fora se
+  // alguém desmarcar explicitamente em Funcionários.
+  const prefFuncionario = {};
+  funcSnap.docs.forEach(d => {
+    const f = d.data();
+    prefFuncionario[d.id] = { tomaCafeObra: f.tomaCafeObra !== false, almocaObra: f.almocaObra !== false };
+  });
 
   // Só a entrada mais cedo de cada funcionário no dia.
   const porFuncionario = {};
@@ -807,12 +819,13 @@ async function calcularRefeicoesHojeComNomes(hojeISO) {
   });
 
   const cafeNomes = [], almocoNomes = [];
-  Object.values(porFuncionario).forEach(({ ts, nome }) => {
+  Object.entries(porFuncionario).forEach(([funcionarioId, { ts, nome }]) => {
     const horaLocal = new Date(ts).toLocaleTimeString("en-GB", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", hour12: false });
     const [h, m] = horaLocal.split(":").map(Number);
     const horaDecimal = h + m / 60;
-    if (horaDecimal < CORTE_CAFE_HORAS)   cafeNomes.push(nome);
-    if (horaDecimal < CORTE_ALMOCO_HORAS) almocoNomes.push(nome);
+    const pref = prefFuncionario[funcionarioId] || { tomaCafeObra: true, almocaObra: true };
+    if (horaDecimal < CORTE_CAFE_HORAS   && pref.tomaCafeObra) cafeNomes.push(nome);
+    if (horaDecimal < CORTE_ALMOCO_HORAS && pref.almocaObra)   almocoNomes.push(nome);
   });
 
   cafeNomes.sort((a, b) => a.localeCompare(b, "pt-BR"));

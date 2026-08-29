@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.31";
+const VERSAO = "3.32";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -497,6 +497,8 @@ function lerCampos() {
     salarioReferencia: remPorProd ? parseMoeda(v("f-salario-ref")) : 0,
     passagens:    parseMoeda(v("f-passagens")),
     isentoPassagens: document.getElementById("f-isento-passagens").checked,
+    tomaCafeObra: document.getElementById("f-toma-cafe-obra").checked,
+    almocaObra:   document.getElementById("f-almoca-obra").checked,
     telefone:     v("f-telefone").trim(),
     obs:          v("f-obs").trim(),
     // Pessoais
@@ -558,6 +560,10 @@ function editarFuncionario(id) {
 
   document.getElementById("f-por-producao").checked = !!f.porProducao;
   document.getElementById("f-isento-passagens").checked = !!f.isentoPassagens;
+  // Campo ausente (cadastro antigo, de antes desse checkbox existir) conta
+  // como marcado — só fica desmarcado se alguém desmarcar explicitamente.
+  document.getElementById("f-toma-cafe-obra").checked = f.tomaCafeObra !== false;
+  document.getElementById("f-almoca-obra").checked = f.almocaObra !== false;
   atualizarCamposRemuneracao();
   if (temDescontoInssPadrao(f.cargo) && !(f.descontos > 0)) {
     document.getElementById("f-descontos").value = DESCONTO_INSS_PADRAO_PRODUCAO.toFixed(2).replace(".",",");
