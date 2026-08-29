@@ -621,6 +621,11 @@ async function calcularExtratoRefeicoes(data_inicio, data_fim) {
     const p = d.data();
     const ts = p.timestamp.toDate();
     const diaKey = ts.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    // Refeitório não funciona mais aos fins de semana — mesmo que o
+    // funcionário trabalhe e bata ponto, sábado/domingo não contam
+    // refeição nenhuma.
+    const diaSemana = new Date(diaKey + "T12:00:00-03:00").getDay();
+    if (diaSemana === 0 || diaSemana === 6) return;
     if (!porDia[diaKey]) porDia[diaKey] = {};
     const atual = porDia[diaKey][p.funcionarioId];
     if (atual === undefined || ts.getTime() < atual) porDia[diaKey][p.funcionarioId] = ts.getTime();
