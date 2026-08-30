@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.00";
+const VERSAO = "5.01";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1464,7 +1464,14 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
   const linhaAdiantItens = nome => {
     const info = adiantamentosMap.get((nome || '').normalize('NFC'));
     if (!info || !info.itens.length) return '';
-    return info.itens.map(it => `
+    const itensOrdenados = [...info.itens].sort((a, b) => {
+      const da = parseDataBRparaDate(a.data), db_ = parseDataBRparaDate(b.data);
+      if (!da && !db_) return 0;
+      if (!da) return 1; // sem data conhecida vai pro fim
+      if (!db_) return -1;
+      return da - db_;
+    });
+    return itensOrdenados.map(it => `
       <div class="cp-item" style="color:#c62828">
         <span>(-) Adiantamento${it.data ? ' · ' + escHtml(it.data) : ''}<span style="color:#999;font-size:0.6rem;margin-left:3px">${escHtml(it.origem||'')}</span></span>
         <span>- ${fmtMoeda(it.valor)}</span>
