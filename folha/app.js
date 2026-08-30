@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.10";
+const VERSAO = "5.11";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1800,12 +1800,23 @@ function telefoneParaWhatsApp(telefone) {
   return digitos.startsWith('55') && digitos.length >= 12 ? digitos : '55' + digitos;
 }
 
+// João pediu pra acompanhar por enquanto — toda vez que o recibo é enviado
+// pro funcionário, abre uma segunda aba já preenchida mandando uma cópia
+// pro número dele também. Provisório (ver mensagem do João, sem data de
+// revisão marcada).
+const NUMERO_COPIA_JOAO = '81992114764';
+
 function enviarReciboWhatsApp(idx) {
   const d = (window._cpDetalhes || [])[idx];
   if (!d || !d.telefone) return;
   const numero = telefoneParaWhatsApp(d.telefone);
   const url = `https://wa.me/${numero}?text=${encodeURIComponent(d.mensagem || '')}`;
   window.open(url, '_blank');
+
+  const numeroJoao = telefoneParaWhatsApp(NUMERO_COPIA_JOAO);
+  const mensagemCopia = `_Cópia — enviado para o funcionário_\n\n${d.mensagem || ''}`;
+  const urlCopia = `https://wa.me/${numeroJoao}?text=${encodeURIComponent(mensagemCopia)}`;
+  window.open(urlCopia, '_blank');
 }
 
 function mostrarSucesso(pagamentos, totalGeral) {
