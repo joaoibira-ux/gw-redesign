@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.09";
+const VERSAO = "5.10";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1507,6 +1507,25 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
       </div>`;
   }
 
+  // Texto simples (sem HTML) do mesmo recibo, pro botão de WhatsApp.
+  function montarMensagemWhatsApp(nome, cargo, proventos, descontos, liquidoFinal, totalHoras) {
+    const linhas = arr => arr.map(p => `${p.label}${p.meta ? ' (' + p.meta + ')' : ''}: ${fmtMoeda(p.valor)}`).join('\n');
+    let msg = `*Recibo de Pagamento — Green Wall*\n${nome}${cargo ? ' — ' + cargo : ''}\nReferente a ${hoje}\n`;
+    if (totalHoras > 0) msg += `${totalHoras.toLocaleString('pt-BR')}h trabalhadas\n`;
+    msg += `\n*Proventos*\n${linhas(proventos)}`;
+    if (descontos.length) msg += `\n\n*Descontos*\n${linhas(descontos)}`;
+    msg += `\n\n*Líquido a Receber: ${fmtMoeda(liquidoFinal)}*`;
+    return msg;
+  }
+
+  // Telefone cadastrado do funcionário (pro botão de WhatsApp) — mesma
+  // fonte que a lista de Funcionários usa (_todosFunc).
+  function telefoneFuncionario(nome) {
+    const alvo = (nome || '').trim().normalize('NFC');
+    const f = (_todosFunc || []).find(x => (x.nome || '').trim().normalize('NFC') === alvo);
+    return f ? (f.telefone || '') : '';
+  }
+
   let encHtml = '';
   if (encData) {
     const quinzena  = (encData.salario || 0) / 2;
@@ -1524,12 +1543,15 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
       label: 'Adiantamento', valor: it.valor,
       meta: [it.data, it.origem].filter(Boolean).join(' · ')
     }));
+    const proventosEnc = [
+      { label: 'Quinzena 50%', valor: quinzena },
+      { label: `${nServ} serviço${nServ !== 1 ? 's' : ''} × R$5`, valor: bonus }
+    ];
     const idxEnc = detalhes.length;
     detalhes.push({
-      corpo: montarReciboPessoa(encData.nome, 'Encarregado', [
-        { label: 'Quinzena 50%', valor: quinzena },
-        { label: `${nServ} serviço${nServ !== 1 ? 's' : ''} × R$5`, valor: bonus }
-      ], descontosEnc, subtotalEnc)
+      corpo: montarReciboPessoa(encData.nome, 'Encarregado', proventosEnc, descontosEnc, subtotalEnc),
+      mensagem: montarMensagemWhatsApp(encData.nome, 'Encarregado', proventosEnc, descontosEnc, subtotalEnc),
+      telefone: telefoneFuncionario(encData.nome)
     });
     encHtml = `
       <div class="cp-linha cp-enc" onclick="event.stopPropagation();abrirDetalheComprovante(${idxEnc})">
@@ -1563,7 +1585,9 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
     const totalHoras = g.itens.reduce((a, e) => a + (Number(e.horas) || 0), 0);
     const idx = detalhes.length;
     detalhes.push({
-      corpo: montarReciboPessoa(g.funcionario.nome, g.funcionario.cargo || '', proventosPessoa, descontosPessoa, subtotalPessoa, totalHoras)
+      corpo: montarReciboPessoa(g.funcionario.nome, g.funcionario.cargo || '', proventosPessoa, descontosPessoa, subtotalPessoa, totalHoras),
+      mensagem: montarMensagemWhatsApp(g.funcionario.nome, g.funcionario.cargo || '', proventosPessoa, descontosPessoa, subtotalPessoa, totalHoras),
+      telefone: telefoneFuncionario(g.funcionario.nome)
     });
     return `
       <div class="cp-linha" onclick="event.stopPropagation();abrirDetalheComprovante(${idx})">
@@ -1687,7 +1711,9 @@ function abrirDetalheComprovante(idx) {
       .cp-detalhe-page{display:flex;flex-direction:column;height:100dvh}
       .cp-detalhe-header{background:linear-gradient(160deg,#1e4d2e 0%,#1a3322 100%);padding:10px 12px;display:flex;align-items:center;gap:10px;flex-shrink:0}
       .cp-detalhe-voltar{background:none;border:none;color:#a5d6a7;font-size:0.72rem;font-weight:800;letter-spacing:0.5px;cursor:pointer;padding:5px 6px 5px 0;white-space:nowrap}
-      .cp-detalhe-nome-wrap{color:#e8f5e9;font-weight:800;font-size:0.78rem;min-width:0}
+      .cp-detalhe-nome-wrap{color:#e8f5e9;font-weight:800;font-size:0.78rem;min-width:0;flex:1}
+      .cp-detalhe-zap{background:#25d366;border:none;color:#fff;font-size:0.68rem;font-weight:800;letter-spacing:0.3px;
+        cursor:pointer;padding:6px 10px;border-radius:20px;white-space:nowrap;display:flex;align-items:center;gap:5px}
       .cp-detalhe-corpo-wrap{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;width:100%;max-width:560px;align-self:center;box-sizing:border-box}
       #cp-detalhe-corpo{padding:12px 14px 28px;box-sizing:border-box;font-size:0.66rem}
       .cp-cargo{font-size:0.56rem;font-weight:400;color:#4a8a5a;text-transform:capitalize;margin-left:5px}
@@ -1722,6 +1748,7 @@ function abrirDetalheComprovante(idx) {
       <div class="cp-detalhe-header">
         <button class="cp-detalhe-voltar" onclick="fecharDetalheComprovante()">← Voltar</button>
         <span class="cp-detalhe-nome-wrap">Recibo de Pagamento</span>
+        ${d.telefone ? `<button class="cp-detalhe-zap" onclick="enviarReciboWhatsApp(${idx})">📱 WhatsApp</button>` : ''}
       </div>
       <div class="cp-detalhe-corpo-wrap">
         <div id="cp-detalhe-corpo">${d.corpo}</div>
@@ -1762,6 +1789,23 @@ function abrirDetalheComprovante(idx) {
 }
 function fecharDetalheComprovante() {
   if (typeof window._cpRenderLista === 'function') window._cpRenderLista();
+}
+
+// Normaliza o telefone cadastrado (sem máscara fixa no cadastro — pode vir
+// só com DDD+número, ou já com o 55 na frente) pro formato que o link do
+// WhatsApp espera: código do país + DDD + número, só dígitos.
+function telefoneParaWhatsApp(telefone) {
+  const digitos = (telefone || '').replace(/\D/g, '');
+  if (!digitos) return '';
+  return digitos.startsWith('55') && digitos.length >= 12 ? digitos : '55' + digitos;
+}
+
+function enviarReciboWhatsApp(idx) {
+  const d = (window._cpDetalhes || [])[idx];
+  if (!d || !d.telefone) return;
+  const numero = telefoneParaWhatsApp(d.telefone);
+  const url = `https://wa.me/${numero}?text=${encodeURIComponent(d.mensagem || '')}`;
+  window.open(url, '_blank');
 }
 
 function mostrarSucesso(pagamentos, totalGeral) {
