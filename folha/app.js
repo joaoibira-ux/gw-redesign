@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.01";
+const VERSAO = "5.02";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1591,7 +1591,7 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
         font-size:0.62rem;font-weight:700;letter-spacing:0.5px;padding:5px 10px;border-radius:6px;cursor:pointer}
       .cp-detalhe-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:flex-end;justify-content:center;z-index:400;cursor:default}
       .cp-detalhe-overlay.ativa{display:flex}
-      .cp-detalhe-modal{background:#fff;color:#1b5e20;width:100%;max-width:480px;max-height:80vh;overflow-y:auto;border-radius:14px 14px 0 0;padding:10px 10px 16px}
+      .cp-detalhe-modal{background:#fff;color:#1b5e20;width:100%;max-width:480px;max-height:92vh;overflow:hidden;border-radius:14px 14px 0 0;padding:10px 10px 16px;transform-origin:center bottom}
       .cp-detalhe-header{display:flex;justify-content:space-between;align-items:center;padding:6px 4px 10px;font-weight:800;font-size:0.8rem;color:#1b5e20;border-bottom:1px solid rgba(76,140,90,0.2);margin-bottom:8px}
       .cp-detalhe-fechar{background:none;border:none;font-size:1.1rem;color:#4a8a5a;cursor:pointer;padding:2px 6px;line-height:1}
       @media print {
@@ -1662,7 +1662,17 @@ function abrirDetalheComprovante(idx) {
   if (!d) return;
   document.getElementById('cp-detalhe-nome').innerHTML = `${escHtml(d.nome)} <span class="cp-cargo">${escHtml(d.cargo||'')}</span>`;
   document.getElementById('cp-detalhe-corpo').innerHTML = d.corpo;
+  const modal = document.querySelector('.cp-detalhe-modal');
+  modal.style.transform = 'none';
   document.getElementById('cp-detalhe-overlay').classList.add('ativa');
+  // Sem rolagem — se não couber na tela, encolhe tudo (igual à tela anterior)
+  setTimeout(() => {
+    const maxH = window.innerHeight * 0.92;
+    const totalH = modal.scrollHeight;
+    if (totalH > maxH) {
+      modal.style.transform = `scale(${(maxH / totalH).toFixed(4)})`;
+    }
+  }, 0);
 }
 function fecharDetalheComprovante() {
   document.getElementById('cp-detalhe-overlay').classList.remove('ativa');

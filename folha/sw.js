@@ -1,8 +1,8 @@
-const VERSION = "folha-v5.01";
+const VERSION = "folha-v5.02";
 const ASSETS = [
   "./index.html",
   "./style.css?v=4.22",
-  "./app.js?v=5.01",
+  "./app.js?v=5.02",
   "./Logo-gw.png",
   "./Aviso iPhone.png",
   "./Aviso Adroide.png",
