@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "2.00";
+  const VERSAO = "2.01";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1531,6 +1531,8 @@
   // como porProducao (ex: Leonardo Ferreira) passa a ser tratado também
   // como diária sem nunca ter sido configurado assim.
   function funcTemDiaria(cargo, nome) {
+    const cargoUp = (cargo || '').toUpperCase();
+    if (['PINTOR', 'RASPADOR'].includes(cargoUp)) return true; // sempre puderam ter diária junto da produção
     const isAjud = (cargo || '').toLowerCase().includes('ajudante');
     if (!isAjud) return false;
     if (!_funcionariosSnap) return true;
@@ -2073,6 +2075,8 @@
         return porProducaoSet.has(normNome(nome));
       }
       function funcTemDiariaLocal(cargo, nome) {
+        const cargoUp = (cargo || '').toUpperCase();
+        if (['PINTOR', 'RASPADOR'].includes(cargoUp)) return true; // sempre puderam ter diária junto da produção
         if (!(cargo || '').toLowerCase().includes('ajudante')) return false;
         return !semDiariaSet.has(normNome(nome));
       }
