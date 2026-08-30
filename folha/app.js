@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "4.99";
+const VERSAO = "5.00";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1343,6 +1343,20 @@ async function salvarFolha(silencioso = false, completarAjudantes = true) {
 // descontadoDaFolha). Mesmo critério usado em caixa/relatorio.html — sem a
 // segunda parte, um adiantamento pago via Contas a Pagar nunca aparecia
 // aqui, mesmo já tendo sido desembolsado pro funcionário.
+// Cada entrada do Map agora é { total, itens: [{data, valor, origem}] } em
+// vez de só o total somado — pra dar pra listar os adiantamentos um a um
+// no detalhe do comprovante, não só o valor descontado no total.
+function _addAdiantItem(map, nome, valor, data, origem) {
+  if (!nome || !valor) return;
+  const atual = map.get(nome) || { total: 0, itens: [] };
+  atual.total += valor;
+  atual.itens.push({ data: data || '', valor, origem });
+  map.set(nome, atual);
+}
+function adiantTotal(map, nome) {
+  const info = map.get((nome || '').normalize('NFC'));
+  return info ? info.total : 0;
+}
 async function buscarAdiantamentosMap() {
   const adiantamentosMap = new Map();
   try {
@@ -1355,8 +1369,7 @@ async function buscarAdiantamentosMap() {
       const desc = r.descricao || '';
       if (!desc.startsWith('Adiantamento: ')) return;
       const nome = desc.slice('Adiantamento: '.length).split(/\s*[—–\-]/)[0].trim().normalize('NFC');
-      if (!nome) return;
-      adiantamentosMap.set(nome, (adiantamentosMap.get(nome) || 0) + (r.saida || 0));
+      _addAdiantItem(adiantamentosMap, nome, r.saida || 0, r.data, 'Caixa');
     });
     cpSnap.docs.forEach(d => {
       const r = d.data();
@@ -1364,9 +1377,8 @@ async function buscarAdiantamentosMap() {
       const desc = r.descricao || '';
       if (!desc.startsWith('Adiantamento: ')) return;
       const nome = desc.slice('Adiantamento: '.length).split(/\s*[—–\-]/)[0].trim().normalize('NFC');
-      if (!nome) return;
       const valor = r.valorOriginal !== undefined ? r.valorOriginal : r.valor;
-      adiantamentosMap.set(nome, (adiantamentosMap.get(nome) || 0) + (valor || 0));
+      _addAdiantItem(adiantamentosMap, nome, valor || 0, r.data, 'Contas a Pagar');
     });
   } catch (e) {}
   return adiantamentosMap;
@@ -1449,11 +1461,21 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
   let totalDeducoes = 0;
   const detalhes = []; // um item por pessoa — corpo mostrado no clique (abrirDetalheComprovante)
 
+  const linhaAdiantItens = nome => {
+    const info = adiantamentosMap.get((nome || '').normalize('NFC'));
+    if (!info || !info.itens.length) return '';
+    return info.itens.map(it => `
+      <div class="cp-item" style="color:#c62828">
+        <span>(-) Adiantamento${it.data ? ' · ' + escHtml(it.data) : ''}<span style="color:#999;font-size:0.6rem;margin-left:3px">${escHtml(it.origem||'')}</span></span>
+        <span>- ${fmtMoeda(it.valor)}</span>
+      </div>`).join('');
+  };
+
   let encHtml = '';
   if (encData) {
     const quinzena  = (encData.salario || 0) / 2;
     const bonus     = 5 * nServ;
-    const adiantEnc = adiantamentosMap.get((encData.nome || '').normalize('NFC')) || 0;
+    const adiantEnc = adiantTotal(adiantamentosMap, encData.nome);
     const { inss: inssEnc, passagens: passagensEnc } = calcularDescontosFixos(encData.nome);
     const totalDeducEnc = adiantEnc + inssEnc + passagensEnc;
     const liquidoEnc = valorEnc - totalDeducEnc;
@@ -1472,7 +1494,7 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
         <div class="cp-item"><span>${nServ} serv × R$5</span><span>${fmtMoeda(bonus)}</span></div>
         ${linhaDeduc('INSS', inssEnc)}
         ${linhaDeduc('Passagens', passagensEnc)}
-        ${linhaDeduc('Adiantamento', adiantEnc)}
+        ${linhaAdiantItens(encData.nome)}
         <div class="cp-sub"><span>Subtotal</span><span>${fmtMoeda(subtotalEnc)}</span></div>`
     });
     encHtml = `
@@ -1483,7 +1505,7 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
   }
   const gruposHtml = gruposData.map(g => {
     const sub    = g.itens.reduce((a, e) => a + Number(e.valor), 0);
-    const adiant = adiantamentosMap.get((g.funcionario.nome || '').normalize('NFC')) || 0;
+    const adiant = adiantTotal(adiantamentosMap, g.funcionario.nome);
     const { inss, passagens } = calcularDescontosFixos(g.funcionario.nome);
     const totalDeduc = adiant + inss + passagens;
     const liquido = sub - totalDeduc;
@@ -1509,7 +1531,7 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
         ${itens}
         ${linhaDeduc('INSS', inss)}
         ${linhaDeduc('Passagens', passagens)}
-        ${linhaDeduc('Adiantamento', adiant)}
+        ${linhaAdiantItens(g.funcionario.nome)}
         <div class="cp-sub"><span>Subtotal</span><span>${fmtMoeda(subtotalPessoa)}</span></div>`
     });
     return `
@@ -1528,7 +1550,7 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
     const { inss, passagens } = calcularDescontosFixos(p.nome);
     return {
       ...p,
-      valor: p.valor - (adiantamentosMap.get((p.nome || '').normalize('NFC')) || 0) - inss - passagens
+      valor: p.valor - adiantTotal(adiantamentosMap, p.nome) - inss - passagens
     };
   });
 
