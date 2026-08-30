@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.08";
+const VERSAO = "5.09";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1683,7 +1683,8 @@ function abrirDetalheComprovante(idx) {
     <style>
       *{box-sizing:border-box;margin:0;padding:0}
       html,body{height:100%;height:100dvh}
-      body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:flex;flex-direction:column;background:#fff}
+      body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff}
+      .cp-detalhe-page{display:flex;flex-direction:column;height:100dvh}
       .cp-detalhe-header{background:linear-gradient(160deg,#1e4d2e 0%,#1a3322 100%);padding:10px 12px;display:flex;align-items:center;gap:10px;flex-shrink:0}
       .cp-detalhe-voltar{background:none;border:none;color:#a5d6a7;font-size:0.72rem;font-weight:800;letter-spacing:0.5px;cursor:pointer;padding:5px 6px 5px 0;white-space:nowrap}
       .cp-detalhe-nome-wrap{color:#e8f5e9;font-weight:800;font-size:0.78rem;min-width:0}
@@ -1717,13 +1718,47 @@ function abrirDetalheComprovante(idx) {
       .rec-liquido span:first-child{color:#a5d6a7;font-weight:800;font-size:0.68rem;letter-spacing:1px;text-transform:uppercase}
       .rec-liquido span:last-child{color:#fff;font-weight:900;font-size:1.25rem}
     </style>
-    <div class="cp-detalhe-header">
-      <button class="cp-detalhe-voltar" onclick="fecharDetalheComprovante()">← Voltar</button>
-      <span class="cp-detalhe-nome-wrap">Recibo de Pagamento</span>
-    </div>
-    <div class="cp-detalhe-corpo-wrap">
-      <div id="cp-detalhe-corpo">${d.corpo}</div>
+    <div class="cp-detalhe-page">
+      <div class="cp-detalhe-header">
+        <button class="cp-detalhe-voltar" onclick="fecharDetalheComprovante()">← Voltar</button>
+        <span class="cp-detalhe-nome-wrap">Recibo de Pagamento</span>
+      </div>
+      <div class="cp-detalhe-corpo-wrap">
+        <div id="cp-detalhe-corpo">${d.corpo}</div>
+      </div>
     </div>`;
+
+  // Encolhe a página inteira (cabeçalho + corpo) só se não couber sem
+  // rolar — mesma técnica já usada na lista (ver renderizarListaComprovante),
+  // mas agora aplicada na página de detalhe como um bloco só, escalando o
+  // .cp-detalhe-page (sem max-width próprio) em vez do corpo-wrap (que tem
+  // max-width e travaria a compensação de largura, como já aconteceu antes).
+  setTimeout(() => {
+    const page      = document.querySelector('.cp-detalhe-page');
+    const corpoWrap = document.querySelector('.cp-detalhe-corpo-wrap');
+    if (!page || !corpoWrap) return;
+    corpoWrap.style.overflow = 'visible';
+    corpoWrap.style.flex     = 'none';
+    page.style.height = 'auto';
+    const totalH = page.scrollHeight;
+    const viewH  = window.innerHeight;
+    const viewW  = window.innerWidth;
+    if (totalH > viewH * 0.98) {
+      const scale = viewH / totalH;
+      page.style.transform       = `scale(${scale.toFixed(4)})`;
+      page.style.transformOrigin = 'top left';
+      page.style.width           = `${Math.ceil(viewW / scale)}px`;
+      page.style.height          = `${totalH}px`;
+      document.body.style.overflow = 'hidden';
+      document.body.style.height   = `${viewH}px`;
+    } else {
+      corpoWrap.style.overflow = 'auto';
+      corpoWrap.style.flex     = '1';
+      page.style.height = '100dvh';
+      document.body.style.overflow = '';
+      document.body.style.height   = '';
+    }
+  }, 0);
 }
 function fecharDetalheComprovante() {
   if (typeof window._cpRenderLista === 'function') window._cpRenderLista();
