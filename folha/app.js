@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.11";
+const VERSAO = "5.12";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1623,7 +1623,7 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
         html,body{height:100%;height:100dvh}
         body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
         .cp-wrap{display:flex;flex-direction:column;height:100dvh;background:#0d1f14;color:#c8e6c9;font-size:0.66rem;cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none}
-        .cp-header{background:linear-gradient(160deg,#1e4d2e 0%,#1a3322 100%);padding:10px 12px 8px;flex-shrink:0;border-bottom:1px solid rgba(165,214,167,0.15)}
+        .cp-header{background:linear-gradient(160deg,#1e4d2e 0%,#1a3322 100%);padding:10px 12px 8px;padding-top:max(10px, env(safe-area-inset-top));flex-shrink:0;border-bottom:1px solid rgba(165,214,167,0.15)}
         .cp-title{font-size:0.75rem;font-weight:900;letter-spacing:1.5px;color:#a5d6a7}
         .cp-meta{font-size:0.58rem;color:#4a8a5a;margin-top:2px;display:flex;justify-content:space-between}
         .cp-body{flex:1;overflow-y:auto;padding:7px 10px;background:#ffffff}
@@ -1709,7 +1709,7 @@ function abrirDetalheComprovante(idx) {
       html,body{height:100%;height:100dvh}
       body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff}
       .cp-detalhe-page{display:flex;flex-direction:column;height:100dvh}
-      .cp-detalhe-header{background:linear-gradient(160deg,#1e4d2e 0%,#1a3322 100%);padding:10px 12px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+      .cp-detalhe-header{background:linear-gradient(160deg,#1e4d2e 0%,#1a3322 100%);padding:10px 12px;padding-top:max(10px, env(safe-area-inset-top));display:flex;align-items:center;gap:10px;flex-shrink:0}
       .cp-detalhe-voltar{background:none;border:none;color:#a5d6a7;font-size:0.72rem;font-weight:800;letter-spacing:0.5px;cursor:pointer;padding:5px 6px 5px 0;white-space:nowrap}
       .cp-detalhe-nome-wrap{color:#e8f5e9;font-weight:800;font-size:0.78rem;min-width:0;flex:1}
       .cp-detalhe-zap{background:#25d366;border:none;color:#fff;font-size:0.68rem;font-weight:800;letter-spacing:0.3px;
