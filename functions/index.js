@@ -3687,6 +3687,43 @@ async function enviarImagemEvolution(buffer, filename, caption, apiKeyValue, des
   }
 }
 
+// Chamada direta do app (Rel. Folha) pra mandar o recibo de pagamento como
+// imagem, direto pro WhatsApp do funcionário, sem abrir o WhatsApp — mesma
+// Evolution API já usada nos avisos automáticos, mas com número dinâmico
+// (não a lista fixa EVOLUTION_DESTINATARIOS).
+exports.enviarReciboWhatsApp = onCall(
+  { secrets: [evolutionApiKey], cors: true, invoker: "public" },
+  async (request) => {
+    const { telefone, imagemBase64, legenda, nomeArquivo } = request.data || {};
+    if (!telefone) throw new HttpsError("invalid-argument", "telefone é obrigatório.");
+    if (!imagemBase64) throw new HttpsError("invalid-argument", "imagemBase64 é obrigatória.");
+
+    const digitos = String(telefone).replace(/\D/g, "");
+    if (!digitos) throw new HttpsError("invalid-argument", "telefone inválido.");
+    const numero = digitos.startsWith("55") && digitos.length >= 12 ? digitos : "55" + digitos;
+    const base64Limpo = imagemBase64.includes(",") ? imagemBase64.split(",")[1] : imagemBase64;
+
+    const resp = await fetch(`${EVOLUTION_API_URL}/message/sendMedia/${EVOLUTION_INSTANCE}`, {
+      method: "POST",
+      headers: { "apikey": evolutionApiKey.value(), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        number: numero,
+        mediatype: "image",
+        mimetype: "image/png",
+        media: base64Limpo,
+        fileName: nomeArquivo || "recibo.png",
+        caption: legenda || ""
+      })
+    });
+    if (!resp.ok) {
+      const respText = await resp.text();
+      logger.error("[enviarReciboWhatsApp] falha Evolution API", { numero, status: resp.status, respText: respText.slice(0, 300) });
+      throw new HttpsError("internal", `Falha ao enviar imagem: status ${resp.status}`);
+    }
+    return { enviado: true };
+  }
+);
+
 // Dispara assim que uma conta a pagar é criada (não importa a origem — form
 // manual em "apagar", adiantamento em "funcionarios", lançamento em "caixa"
 // ou lançamento recorrente automático): se o vencimento já é hoje, avisa na

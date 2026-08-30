@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.12";
+const VERSAO = "5.13";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1791,32 +1791,41 @@ function fecharDetalheComprovante() {
   if (typeof window._cpRenderLista === 'function') window._cpRenderLista();
 }
 
-// Normaliza o telefone cadastrado (sem máscara fixa no cadastro — pode vir
-// só com DDD+número, ou já com o 55 na frente) pro formato que o link do
-// WhatsApp espera: código do país + DDD + número, só dígitos.
-function telefoneParaWhatsApp(telefone) {
-  const digitos = (telefone || '').replace(/\D/g, '');
-  if (!digitos) return '';
-  return digitos.startsWith('55') && digitos.length >= 12 ? digitos : '55' + digitos;
-}
-
 // João pediu pra acompanhar por enquanto — toda vez que o recibo é enviado
-// pro funcionário, abre uma segunda aba já preenchida mandando uma cópia
-// pro número dele também. Provisório (ver mensagem do João, sem data de
-// revisão marcada).
+// pro funcionário, manda uma cópia da mesma imagem pro número dele também.
+// Provisório (ver mensagem do João, sem data de revisão marcada).
 const NUMERO_COPIA_JOAO = '81992114764';
 
-function enviarReciboWhatsApp(idx) {
+// Manda o recibo como IMAGEM direto pro WhatsApp do funcionário, sem abrir
+// o WhatsApp — tira um "print" do próprio recibo (html2canvas) e envia via
+// Evolution API (Cloud Function enviarReciboWhatsApp), silenciosamente.
+async function enviarReciboWhatsApp(idx) {
   const d = (window._cpDetalhes || [])[idx];
   if (!d || !d.telefone) return;
-  const numero = telefoneParaWhatsApp(d.telefone);
-  const url = `https://wa.me/${numero}?text=${encodeURIComponent(d.mensagem || '')}`;
-  window.open(url, '_blank');
+  const el = document.getElementById('cp-detalhe-corpo');
+  const btn = document.querySelector('.cp-detalhe-zap');
+  if (!el || typeof html2canvas === 'undefined') { alert('Não foi possível gerar a imagem do recibo.'); return; }
 
-  const numeroJoao = telefoneParaWhatsApp(NUMERO_COPIA_JOAO);
-  const mensagemCopia = `_Cópia — enviado para o funcionário_\n\n${d.mensagem || ''}`;
-  const urlCopia = `https://wa.me/${numeroJoao}?text=${encodeURIComponent(mensagemCopia)}`;
-  window.open(urlCopia, '_blank');
+  if (btn) { btn.disabled = true; btn.textContent = 'Enviando...'; }
+  try {
+    const canvas = await html2canvas(el, { backgroundColor: '#ffffff', scale: 2 });
+    const imagemBase64 = canvas.toDataURL('image/png');
+    const enviarFn = firebase.functions().httpsCallable('enviarReciboWhatsApp');
+
+    await enviarFn({
+      telefone: d.telefone, imagemBase64, nomeArquivo: 'recibo.png',
+      legenda: d.mensagem || ''
+    });
+    await enviarFn({
+      telefone: NUMERO_COPIA_JOAO, imagemBase64, nomeArquivo: 'recibo.png',
+      legenda: `_Cópia — enviado para o funcionário_\n\n${d.mensagem || ''}`
+    });
+
+    if (btn) { btn.textContent = '✓ Enviado'; }
+  } catch (e) {
+    alert('Erro ao enviar pelo WhatsApp: ' + (e.message || e));
+    if (btn) { btn.disabled = false; btn.textContent = '📱 WhatsApp'; }
+  }
 }
 
 function mostrarSucesso(pagamentos, totalGeral) {
