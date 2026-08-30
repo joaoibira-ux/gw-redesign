@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.03";
+const VERSAO = "5.04";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1461,22 +1461,50 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
   let totalDeducoes = 0;
   const detalhes = []; // um item por pessoa — corpo mostrado no clique (abrirDetalheComprovante)
 
-  const linhaAdiantItens = nome => {
+  const adiantItensOrdenados = nome => {
     const info = adiantamentosMap.get((nome || '').normalize('NFC'));
-    if (!info || !info.itens.length) return '';
-    const itensOrdenados = [...info.itens].sort((a, b) => {
+    if (!info || !info.itens.length) return [];
+    return [...info.itens].sort((a, b) => {
       const da = parseDataBRparaDate(a.data), db_ = parseDataBRparaDate(b.data);
       if (!da && !db_) return 0;
       if (!da) return 1; // sem data conhecida vai pro fim
       if (!db_) return -1;
       return da - db_;
     });
-    return itensOrdenados.map(it => `
-      <div class="cp-item" style="color:#c62828">
-        <span>(-) Adiantamento${it.data ? ' · ' + escHtml(it.data) : ''}<span style="color:#999;font-size:0.6rem;margin-left:3px">${escHtml(it.origem||'')}</span></span>
-        <span>- ${fmtMoeda(it.valor)}</span>
-      </div>`).join('');
   };
+
+  // Monta o "recibo" (proventos + descontos + líquido) de uma pessoa —
+  // usado tanto pro encarregado quanto pros demais funcionários.
+  function montarReciboPessoa(nome, cargo, proventos, descontos, liquidoFinal) {
+    const totalProv = proventos.reduce((a, p) => a + p.valor, 0);
+    const totalDesc = descontos.reduce((a, p) => a + p.valor, 0);
+    const linha = (p, neg) => `
+      <div class="rec-linha">
+        <span class="rec-linha-label">${escHtml(p.label)}${p.meta ? `<span class="rec-linha-meta">${escHtml(p.meta)}</span>` : ''}</span>
+        <span class="rec-linha-val${neg ? ' neg' : ''}">${neg ? '- ' : ''}${fmtMoeda(p.valor)}</span>
+      </div>`;
+    return `
+      <div class="rec-hero">
+        <div class="rec-hero-nome">${escHtml(nome)}</div>
+        <div class="rec-hero-cargo">${escHtml(cargo||'')}</div>
+        <div class="rec-hero-data">Referente a ${hoje}</div>
+      </div>
+      <div class="rec-secao">
+        <div class="rec-secao-titulo">Proventos</div>
+        ${proventos.map(p => linha(p, false)).join('')}
+        <div class="rec-secao-sub"><span>Total de Proventos</span><span>${fmtMoeda(totalProv)}</span></div>
+      </div>
+      ${descontos.length ? `
+      <div class="rec-secao">
+        <div class="rec-secao-titulo rec-titulo-desc">Descontos</div>
+        ${descontos.map(p => linha(p, true)).join('')}
+        <div class="rec-secao-sub"><span>Total de Descontos</span><span>- ${fmtMoeda(totalDesc)}</span></div>
+      </div>` : ''}
+      <div class="rec-liquido">
+        <span>Líquido a Receber</span>
+        <span>${fmtMoeda(liquidoFinal)}</span>
+      </div>`;
+  }
 
   let encHtml = '';
   if (encData) {
@@ -1487,22 +1515,20 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
     const totalDeducEnc = adiantEnc + inssEnc + passagensEnc;
     const liquidoEnc = valorEnc - totalDeducEnc;
     totalDeducoes += totalDeducEnc;
-    const linhaDeduc = (label, v) => v > 0 ? `
-      <div class="cp-item" style="color:#c62828">
-        <span>(-) ${label}</span>
-        <span>- ${fmtMoeda(v)}</span>
-      </div>` : '';
     const subtotalEnc = totalDeducEnc > 0 ? liquidoEnc : valorEnc;
+    const descontosEnc = [];
+    if (inssEnc > 0) descontosEnc.push({ label: 'INSS', valor: inssEnc });
+    if (passagensEnc > 0) descontosEnc.push({ label: 'Passagens', valor: passagensEnc });
+    adiantItensOrdenados(encData.nome).forEach(it => descontosEnc.push({
+      label: 'Adiantamento', valor: it.valor,
+      meta: [it.data, it.origem].filter(Boolean).join(' · ')
+    }));
     const idxEnc = detalhes.length;
     detalhes.push({
-      nome: encData.nome, cargo: 'encarregado',
-      corpo: `
-        <div class="cp-item"><span>Quinzena 50%</span><span>${fmtMoeda(quinzena)}</span></div>
-        <div class="cp-item"><span>${nServ} serv × R$5</span><span>${fmtMoeda(bonus)}</span></div>
-        ${linhaDeduc('INSS', inssEnc)}
-        ${linhaDeduc('Passagens', passagensEnc)}
-        ${linhaAdiantItens(encData.nome)}
-        <div class="cp-sub"><span>Subtotal</span><span>${fmtMoeda(subtotalEnc)}</span></div>`
+      corpo: montarReciboPessoa(encData.nome, 'Encarregado', [
+        { label: 'Quinzena 50%', valor: quinzena },
+        { label: `${nServ} serviço${nServ !== 1 ? 's' : ''} × R$5`, valor: bonus }
+      ], descontosEnc, subtotalEnc)
     });
     encHtml = `
       <div class="cp-linha cp-enc" onclick="event.stopPropagation();abrirDetalheComprovante(${idxEnc})">
@@ -1517,29 +1543,25 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
     const totalDeduc = adiant + inss + passagens;
     const liquido = sub - totalDeduc;
     totalDeducoes += totalDeduc;
-    const itens  = g.itens.map(e => {
+    const proventosPessoa = g.itens.map(e => {
       const isProd = !!e.firestoreLocalId;
-      return `
-      <div class="cp-item">
-        <span>${escHtml(e.localId)} · ${escHtml(isProd ? nomeExibicaoServico(e.servico) : e.servico)}${isProd && e.dataRegistro ? `<span style="color:#4a8a5a;font-size:0.65rem;margin-left:4px">${escHtml(e.dataRegistro)}</span>` : ''}</span>
-        <span>${fmtMoeda(e.valor)}</span>
-      </div>`;
-    }).join('');
-    const linhaDeduc = (label, v) => v > 0 ? `
-      <div class="cp-item" style="color:#c62828">
-        <span>(-) ${label}</span>
-        <span>- ${fmtMoeda(v)}</span>
-      </div>` : '';
+      return {
+        label: `${e.localId} · ${isProd ? nomeExibicaoServico(e.servico) : e.servico}`,
+        valor: Number(e.valor),
+        meta: isProd ? (e.dataRegistro || '') : ''
+      };
+    });
+    const descontosPessoa = [];
+    if (inss > 0) descontosPessoa.push({ label: 'INSS', valor: inss });
+    if (passagens > 0) descontosPessoa.push({ label: 'Passagens', valor: passagens });
+    adiantItensOrdenados(g.funcionario.nome).forEach(it => descontosPessoa.push({
+      label: 'Adiantamento', valor: it.valor,
+      meta: [it.data, it.origem].filter(Boolean).join(' · ')
+    }));
     const subtotalPessoa = totalDeduc > 0 ? liquido : sub;
     const idx = detalhes.length;
     detalhes.push({
-      nome: g.funcionario.nome, cargo: g.funcionario.cargo || '',
-      corpo: `
-        ${itens}
-        ${linhaDeduc('INSS', inss)}
-        ${linhaDeduc('Passagens', passagens)}
-        ${linhaAdiantItens(g.funcionario.nome)}
-        <div class="cp-sub"><span>Subtotal</span><span>${fmtMoeda(subtotalPessoa)}</span></div>`
+      corpo: montarReciboPessoa(g.funcionario.nome, g.funcionario.cargo || '', proventosPessoa, descontosPessoa, subtotalPessoa)
     });
     return `
       <div class="cp-linha" onclick="event.stopPropagation();abrirDetalheComprovante(${idx})">
@@ -1595,6 +1617,31 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
       .cp-detalhe-voltar{background:none;border:none;color:#a5d6a7;font-size:0.72rem;font-weight:800;letter-spacing:0.5px;cursor:pointer;padding:5px 6px 5px 0;white-space:nowrap}
       .cp-detalhe-nome-wrap{color:#e8f5e9;font-weight:800;font-size:0.78rem;min-width:0}
       .cp-detalhe-corpo-wrap{flex:1;overflow:hidden;padding:12px 14px;transform-origin:top left}
+      /* ── Recibo (detalhe por pessoa) ── */
+      .rec-hero{background:linear-gradient(135deg,#1e4d2e 0%,#0d2318 100%);color:#fff;border-radius:12px;
+        padding:16px 18px;margin-bottom:12px;position:relative;overflow:hidden}
+      .rec-hero::after{content:'GW';position:absolute;right:-4px;bottom:-22px;font-size:5rem;font-weight:900;
+        color:rgba(255,255,255,0.06);letter-spacing:-4px;line-height:1}
+      .rec-hero-nome{font-size:1.05rem;font-weight:900;color:#fff;position:relative}
+      .rec-hero-cargo{font-size:0.66rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+        color:#a5d6a7;margin-top:3px;position:relative}
+      .rec-hero-data{font-size:0.6rem;color:#6fae7c;margin-top:8px;position:relative}
+      .rec-secao{margin-bottom:10px;border:1px solid rgba(76,140,90,0.25);border-radius:10px;overflow:hidden}
+      .rec-secao-titulo{background:#e8f5e9;color:#1b5e20;font-size:0.62rem;font-weight:800;letter-spacing:1.3px;
+        text-transform:uppercase;padding:6px 12px}
+      .rec-titulo-desc{background:#fdecea;color:#c62828}
+      .rec-linha{display:flex;justify-content:space-between;align-items:baseline;padding:6px 12px;
+        border-top:1px solid rgba(0,0,0,0.05);font-size:0.68rem;gap:10px;background:#fff}
+      .rec-linha-label{color:#333;flex:1;min-width:0}
+      .rec-linha-meta{color:#999;font-size:0.58rem;display:block;margin-top:1px}
+      .rec-linha-val{font-weight:700;white-space:nowrap;color:#1b5e20}
+      .rec-linha-val.neg{color:#c62828}
+      .rec-secao-sub{display:flex;justify-content:space-between;padding:7px 12px;background:#f5f5f5;
+        font-weight:800;font-size:0.66rem;border-top:1px solid rgba(0,0,0,0.08);color:#333}
+      .rec-liquido{background:linear-gradient(135deg,#1e4d2e 0%,#0d2318 100%);border-radius:12px;
+        padding:14px 18px;display:flex;justify-content:space-between;align-items:center;margin-top:14px}
+      .rec-liquido span:first-child{color:#a5d6a7;font-weight:800;font-size:0.68rem;letter-spacing:1px;text-transform:uppercase}
+      .rec-liquido span:last-child{color:#fff;font-weight:900;font-size:1.25rem}
       @media print {
         .cp-print-btn, .cp-meta span:last-child { display:none !important }
         body{overflow:visible !important;height:auto !important;background:#fff !important}
@@ -1628,7 +1675,7 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
     <div class="cp-detalhe-overlay" id="cp-detalhe-overlay">
       <div class="cp-detalhe-header">
         <button class="cp-detalhe-voltar" onclick="fecharDetalheComprovante()">← Voltar</button>
-        <span class="cp-detalhe-nome-wrap" id="cp-detalhe-nome"></span>
+        <span class="cp-detalhe-nome-wrap">Recibo de Pagamento</span>
       </div>
       <div class="cp-detalhe-corpo-wrap">
         <div id="cp-detalhe-corpo"></div>
@@ -1661,7 +1708,6 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
 function abrirDetalheComprovante(idx) {
   const d = (window._cpDetalhes || [])[idx];
   if (!d) return;
-  document.getElementById('cp-detalhe-nome').innerHTML = `${escHtml(d.nome)} <span class="cp-cargo">${escHtml(d.cargo||'')}</span>`;
   const corpo = document.getElementById('cp-detalhe-corpo');
   corpo.innerHTML = d.corpo;
   const wrap = document.querySelector('.cp-detalhe-corpo-wrap');
