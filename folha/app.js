@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.04";
+const VERSAO = "5.05";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1475,7 +1475,7 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
 
   // Monta o "recibo" (proventos + descontos + líquido) de uma pessoa —
   // usado tanto pro encarregado quanto pros demais funcionários.
-  function montarReciboPessoa(nome, cargo, proventos, descontos, liquidoFinal) {
+  function montarReciboPessoa(nome, cargo, proventos, descontos, liquidoFinal, totalHoras) {
     const totalProv = proventos.reduce((a, p) => a + p.valor, 0);
     const totalDesc = descontos.reduce((a, p) => a + p.valor, 0);
     const linha = (p, neg) => `
@@ -1488,6 +1488,7 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
         <div class="rec-hero-nome">${escHtml(nome)}</div>
         <div class="rec-hero-cargo">${escHtml(cargo||'')}</div>
         <div class="rec-hero-data">Referente a ${hoje}</div>
+        ${totalHoras > 0 ? `<div class="rec-hero-horas">${totalHoras.toLocaleString('pt-BR')}h trabalhadas</div>` : ''}
       </div>
       <div class="rec-secao">
         <div class="rec-secao-titulo">Proventos</div>
@@ -1559,9 +1560,10 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
       meta: [it.data, it.origem].filter(Boolean).join(' · ')
     }));
     const subtotalPessoa = totalDeduc > 0 ? liquido : sub;
+    const totalHoras = g.itens.reduce((a, e) => a + (Number(e.horas) || 0), 0);
     const idx = detalhes.length;
     detalhes.push({
-      corpo: montarReciboPessoa(g.funcionario.nome, g.funcionario.cargo || '', proventosPessoa, descontosPessoa, subtotalPessoa)
+      corpo: montarReciboPessoa(g.funcionario.nome, g.funcionario.cargo || '', proventosPessoa, descontosPessoa, subtotalPessoa, totalHoras)
     });
     return `
       <div class="cp-linha" onclick="event.stopPropagation();abrirDetalheComprovante(${idx})">
@@ -1616,7 +1618,8 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
       .cp-detalhe-header{background:linear-gradient(160deg,#1e4d2e 0%,#1a3322 100%);padding:10px 12px;display:flex;align-items:center;gap:10px;flex-shrink:0;border-bottom:1px solid rgba(165,214,167,0.15)}
       .cp-detalhe-voltar{background:none;border:none;color:#a5d6a7;font-size:0.72rem;font-weight:800;letter-spacing:0.5px;cursor:pointer;padding:5px 6px 5px 0;white-space:nowrap}
       .cp-detalhe-nome-wrap{color:#e8f5e9;font-weight:800;font-size:0.78rem;min-width:0}
-      .cp-detalhe-corpo-wrap{flex:1;overflow:hidden;padding:12px 14px;transform-origin:top left}
+      .cp-detalhe-corpo-wrap{flex:1;overflow:hidden;padding:12px 14px;transform-origin:top center;
+        width:100%;max-width:560px;align-self:center;box-sizing:border-box}
       /* ── Recibo (detalhe por pessoa) ── */
       .rec-hero{background:linear-gradient(135deg,#1e4d2e 0%,#0d2318 100%);color:#fff;border-radius:12px;
         padding:16px 18px;margin-bottom:12px;position:relative;overflow:hidden}
@@ -1626,6 +1629,8 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
       .rec-hero-cargo{font-size:0.66rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
         color:#a5d6a7;margin-top:3px;position:relative}
       .rec-hero-data{font-size:0.6rem;color:#6fae7c;margin-top:8px;position:relative}
+      .rec-hero-horas{display:inline-block;margin-top:8px;background:rgba(165,214,167,0.15);border:1px solid rgba(165,214,167,0.35);
+        border-radius:20px;padding:4px 12px;font-size:0.64rem;font-weight:800;color:#c8e6c9;position:relative}
       .rec-secao{margin-bottom:10px;border:1px solid rgba(76,140,90,0.25);border-radius:10px;overflow:hidden}
       .rec-secao-titulo{background:#e8f5e9;color:#1b5e20;font-size:0.62rem;font-weight:800;letter-spacing:1.3px;
         text-transform:uppercase;padding:6px 12px}
@@ -1800,7 +1805,7 @@ async function verRelatorio() {
       (doc.dias || []).forEach(d => {
         grupos.get(key).itens.push({
           funcionario: func, firestoreLocalId: '', localId: d.localId,
-          servico: labelDiaria(d), valor: d.valor
+          servico: labelDiaria(d), valor: d.valor, horas: d.horas || null
         });
       });
     });
