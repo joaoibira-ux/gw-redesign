@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.05";
+const VERSAO = "5.06";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1618,8 +1618,8 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
       .cp-detalhe-header{background:linear-gradient(160deg,#1e4d2e 0%,#1a3322 100%);padding:10px 12px;display:flex;align-items:center;gap:10px;flex-shrink:0;border-bottom:1px solid rgba(165,214,167,0.15)}
       .cp-detalhe-voltar{background:none;border:none;color:#a5d6a7;font-size:0.72rem;font-weight:800;letter-spacing:0.5px;cursor:pointer;padding:5px 6px 5px 0;white-space:nowrap}
       .cp-detalhe-nome-wrap{color:#e8f5e9;font-weight:800;font-size:0.78rem;min-width:0}
-      .cp-detalhe-corpo-wrap{flex:1;overflow:hidden;padding:12px 14px;transform-origin:top center;
-        width:100%;max-width:560px;align-self:center;box-sizing:border-box}
+      .cp-detalhe-corpo-wrap{flex:1;overflow:hidden;width:100%;max-width:560px;align-self:center;box-sizing:border-box}
+      #cp-detalhe-corpo{padding:12px 14px;transform-origin:top center;box-sizing:border-box}
       /* ── Recibo (detalhe por pessoa) ── */
       .rec-hero{background:linear-gradient(135deg,#1e4d2e 0%,#0d2318 100%);color:#fff;border-radius:12px;
         padding:16px 18px;margin-bottom:12px;position:relative;overflow:hidden}
@@ -1714,19 +1714,22 @@ function abrirDetalheComprovante(idx) {
   const d = (window._cpDetalhes || [])[idx];
   if (!d) return;
   const corpo = document.getElementById('cp-detalhe-corpo');
+  const wrap  = document.querySelector('.cp-detalhe-corpo-wrap');
+  corpo.style.transform = 'none';
+  corpo.style.width     = '';
   corpo.innerHTML = d.corpo;
-  const wrap = document.querySelector('.cp-detalhe-corpo-wrap');
-  wrap.style.transform = 'none';
   document.getElementById('cp-detalhe-overlay').classList.add('ativa');
-  // Sem rolagem — se não couber na tela inteira, encolhe o corpo (igual à tela anterior)
+  // Sem rolagem — se não couber na tela inteira, encolhe o corpo (wrap tem
+  // largura fixa via CSS; quem escala/redimensiona é o corpo, não o wrap,
+  // senão o max-width do wrap trava a compensação de largura do JS).
   setTimeout(() => {
     const viewW  = wrap.clientWidth;
     const maxH   = wrap.clientHeight;
     const totalH = corpo.scrollHeight;
     if (totalH > maxH) {
-      const scale = maxH / totalH;
-      wrap.style.transform = `scale(${scale.toFixed(4)})`;
-      wrap.style.width     = `${Math.ceil(viewW / scale)}px`;
+      const scale = Math.min(1, maxH / totalH);
+      corpo.style.transform = `scale(${scale.toFixed(4)})`;
+      corpo.style.width     = `${Math.ceil(viewW / scale)}px`;
     }
   }, 0);
 }
