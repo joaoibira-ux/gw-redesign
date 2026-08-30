@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.07";
+const VERSAO = "5.08";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1588,39 +1588,108 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
   window._sucPag   = pagamentosAjustados;
   window._sucTotal = totalLiquido;
 
+  // Lista e recibo são duas páginas completas, cada uma substituindo o body
+  // inteiro (nunca coexistem no DOM) — evita qualquer interação entre o
+  // transform/overflow que a auto-escala da lista aplica e o layout da tela
+  // de detalhe (já causou o recibo abrir cortado/encolhido incorretamente).
+  function renderizarListaComprovante() {
+    document.body.innerHTML = `
+      <style>
+        *{box-sizing:border-box;margin:0;padding:0}
+        html,body{height:100%;height:100dvh}
+        body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+        .cp-wrap{display:flex;flex-direction:column;height:100dvh;background:#0d1f14;color:#c8e6c9;font-size:0.66rem;cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none}
+        .cp-header{background:linear-gradient(160deg,#1e4d2e 0%,#1a3322 100%);padding:10px 12px 8px;flex-shrink:0;border-bottom:1px solid rgba(165,214,167,0.15)}
+        .cp-title{font-size:0.75rem;font-weight:900;letter-spacing:1.5px;color:#a5d6a7}
+        .cp-meta{font-size:0.58rem;color:#4a8a5a;margin-top:2px;display:flex;justify-content:space-between}
+        .cp-body{flex:1;overflow-y:auto;padding:7px 10px;background:#ffffff}
+        .cp-cargo{font-size:0.56rem;font-weight:400;color:#4a8a5a;text-transform:capitalize;margin-left:5px}
+        .cp-linha{display:flex;justify-content:space-between;align-items:center;border:1px solid rgba(76,140,90,0.35);border-radius:5px;margin-bottom:6px;padding:7px 9px;color:#1b5e20;background:#fff}
+        .cp-linha:active{background:#f0f0f0}
+        .cp-linha.cp-enc{border-color:rgba(76,140,90,0.6);border-width:2px}
+        .cp-linha-nome{font-weight:700;font-size:0.68rem}
+        .cp-linha-valor{font-weight:800;font-size:0.72rem;white-space:nowrap}
+        .cp-footer{background:#0d1f14;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(165,214,167,0.2);flex-shrink:0}
+        .cp-total-l{font-size:0.68rem;font-weight:700;letter-spacing:1px;color:#66bb6a}
+        .cp-total-v{font-size:1rem;font-weight:900;color:#a5d6a7}
+        .cp-print-btn{background:rgba(165,214,167,0.15);border:1px solid rgba(165,214,167,0.4);color:#a5d6a7;
+          font-size:0.62rem;font-weight:700;letter-spacing:0.5px;padding:5px 10px;border-radius:6px;cursor:pointer}
+        @media print {
+          .cp-print-btn, .cp-meta span:last-child { display:none !important }
+          body{overflow:visible !important;height:auto !important;background:#fff !important}
+          .cp-wrap{transform:none !important;width:auto !important;height:auto !important;overflow:visible !important;background:#fff;color:#000}
+          .cp-header{background:#fff !important;border-bottom:1px solid #ccc}
+          .cp-title{color:#1b5e20 !important}
+          .cp-meta{color:#555 !important}
+          .cp-body{overflow:visible !important;background:#fff !important}
+          .cp-footer{background:#fff !important;border-top:2px solid #1b5e20}
+        }
+      </style>
+      <div class="cp-wrap" onclick="mostrarSucesso(window._sucPag,window._sucTotal)">
+        <div class="cp-header">
+          <div class="cp-title">FOLHA DE PAGAMENTO DA PRODUÇÃO</div>
+          <div class="cp-meta">
+            <span>Emitida em ${hoje} · v${VERSAO}</span>
+            <span>toque para continuar →</span>
+          </div>
+          <button class="cp-print-btn" style="margin-top:6px" onclick="event.stopPropagation();window.print()">🖨 Imprimir</button>
+        </div>
+        <div class="cp-body">
+          ${encHtml}
+          ${gruposHtml}
+        </div>
+        <div class="cp-footer">
+          <span class="cp-total-l">TOTAL GERAL</span>
+          <span class="cp-total-v">${fmtMoeda(totalLiquido)}</span>
+        </div>
+      </div>`;
+
+    // Auto-escala para caber tudo em uma tela (iOS não permite zoom out manual)
+    setTimeout(() => {
+      const wrap   = document.querySelector('.cp-wrap');
+      const cpBody = document.querySelector('.cp-body');
+      if (!wrap) return;
+      if (cpBody) { cpBody.style.overflow = 'visible'; cpBody.style.flex = 'none'; }
+      wrap.style.height   = 'auto';
+      wrap.style.overflow = 'visible';
+      const totalH = wrap.scrollHeight;
+      const viewH  = window.innerHeight;
+      const viewW  = window.innerWidth;
+      if (totalH > viewH * 0.98) {
+        const scale = viewH / totalH;
+        wrap.style.transform       = `scale(${scale.toFixed(4)})`;
+        wrap.style.transformOrigin = 'top left';
+        wrap.style.width           = `${Math.ceil(viewW / scale)}px`;
+        wrap.style.height          = `${totalH}px`;
+      }
+      document.body.style.overflow = 'hidden';
+      document.body.style.height   = `${viewH}px`;
+    }, 150);
+  }
+
+  window._cpRenderLista = renderizarListaComprovante;
+  renderizarListaComprovante();
+}
+
+// Página de detalhe (recibo) — substitui o body inteiro em vez de sobrepor
+// uma camada por cima da lista, pra não herdar nenhum transform/overflow
+// que a lista possa ter aplicado em si mesma (auto-escala acima).
+function abrirDetalheComprovante(idx) {
+  const d = (window._cpDetalhes || [])[idx];
+  if (!d) return;
+  document.body.style.overflow = '';
+  document.body.style.height   = '';
   document.body.innerHTML = `
     <style>
       *{box-sizing:border-box;margin:0;padding:0}
       html,body{height:100%;height:100dvh}
-      body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
-      .cp-wrap{display:flex;flex-direction:column;height:100dvh;background:#0d1f14;color:#c8e6c9;font-size:0.66rem;cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none}
-      .cp-header{background:linear-gradient(160deg,#1e4d2e 0%,#1a3322 100%);padding:10px 12px 8px;flex-shrink:0;border-bottom:1px solid rgba(165,214,167,0.15)}
-      .cp-title{font-size:0.75rem;font-weight:900;letter-spacing:1.5px;color:#a5d6a7}
-      .cp-meta{font-size:0.58rem;color:#4a8a5a;margin-top:2px;display:flex;justify-content:space-between}
-      .cp-body{flex:1;overflow-y:auto;padding:7px 10px;background:#ffffff}
-      .cp-grupo{border:1px solid rgba(76,140,90,0.35);border-radius:5px;margin-bottom:6px;overflow:hidden}
-      .cp-enc{border-color:rgba(76,140,90,0.6)}
-      .cp-func{background:rgba(165,214,167,0.18);padding:4px 8px;font-weight:700;color:#1b5e20;font-size:0.68rem}
-      .cp-cargo{font-size:0.56rem;font-weight:400;color:#4a8a5a;text-transform:capitalize;margin-left:5px}
-      .cp-item{display:flex;justify-content:space-between;padding:3px 8px;border-top:1px solid rgba(76,140,90,0.12);color:#2e6b3e}
-      .cp-sub{display:flex;justify-content:space-between;padding:4px 8px;border-top:1px solid rgba(76,140,90,0.25);font-weight:700;color:#1b5e20}
-      .cp-linha{display:flex;justify-content:space-between;align-items:center;border:1px solid rgba(76,140,90,0.35);border-radius:5px;margin-bottom:6px;padding:7px 9px;color:#1b5e20;background:#fff}
-      .cp-linha:active{background:#f0f0f0}
-      .cp-linha-nome{font-weight:700;font-size:0.68rem}
-      .cp-linha-valor{font-weight:800;font-size:0.72rem;white-space:nowrap}
-      .cp-footer{background:#0d1f14;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(165,214,167,0.2);flex-shrink:0}
-      .cp-total-l{font-size:0.68rem;font-weight:700;letter-spacing:1px;color:#66bb6a}
-      .cp-total-v{font-size:1rem;font-weight:900;color:#a5d6a7}
-      .cp-print-btn{background:rgba(165,214,167,0.15);border:1px solid rgba(165,214,167,0.4);color:#a5d6a7;
-        font-size:0.62rem;font-weight:700;letter-spacing:0.5px;padding:5px 10px;border-radius:6px;cursor:pointer}
-      .cp-detalhe-overlay{position:fixed;inset:0;background:#fff;display:none;flex-direction:column;z-index:400}
-      .cp-detalhe-overlay.ativa{display:flex}
-      .cp-detalhe-header{background:linear-gradient(160deg,#1e4d2e 0%,#1a3322 100%);padding:10px 12px;display:flex;align-items:center;gap:10px;flex-shrink:0;border-bottom:1px solid rgba(165,214,167,0.15)}
+      body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:flex;flex-direction:column;background:#fff}
+      .cp-detalhe-header{background:linear-gradient(160deg,#1e4d2e 0%,#1a3322 100%);padding:10px 12px;display:flex;align-items:center;gap:10px;flex-shrink:0}
       .cp-detalhe-voltar{background:none;border:none;color:#a5d6a7;font-size:0.72rem;font-weight:800;letter-spacing:0.5px;cursor:pointer;padding:5px 6px 5px 0;white-space:nowrap}
       .cp-detalhe-nome-wrap{color:#e8f5e9;font-weight:800;font-size:0.78rem;min-width:0}
       .cp-detalhe-corpo-wrap{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;width:100%;max-width:560px;align-self:center;box-sizing:border-box}
-      #cp-detalhe-corpo{padding:12px 14px 28px;box-sizing:border-box}
-      /* ── Recibo (detalhe por pessoa) ── */
+      #cp-detalhe-corpo{padding:12px 14px 28px;box-sizing:border-box;font-size:0.66rem}
+      .cp-cargo{font-size:0.56rem;font-weight:400;color:#4a8a5a;text-transform:capitalize;margin-left:5px}
       .rec-hero{background:linear-gradient(135deg,#1e4d2e 0%,#0d2318 100%);color:#fff;border-radius:12px;
         padding:16px 18px;margin-bottom:12px;position:relative;overflow:hidden}
       .rec-hero::after{content:'GW';position:absolute;right:-4px;bottom:-22px;font-size:5rem;font-weight:900;
@@ -1647,80 +1716,17 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
         padding:14px 18px;display:flex;justify-content:space-between;align-items:center;margin-top:14px}
       .rec-liquido span:first-child{color:#a5d6a7;font-weight:800;font-size:0.68rem;letter-spacing:1px;text-transform:uppercase}
       .rec-liquido span:last-child{color:#fff;font-weight:900;font-size:1.25rem}
-      @media print {
-        .cp-print-btn, .cp-meta span:last-child { display:none !important }
-        body{overflow:visible !important;height:auto !important;background:#fff !important}
-        .cp-wrap{transform:none !important;width:auto !important;height:auto !important;overflow:visible !important;background:#fff;color:#000}
-        .cp-header{background:#fff !important;border-bottom:1px solid #ccc}
-        .cp-title{color:#1b5e20 !important}
-        .cp-meta{color:#555 !important}
-        .cp-body{overflow:visible !important;background:#fff !important}
-        .cp-footer{background:#fff !important;border-top:2px solid #1b5e20}
-        .cp-grupo{break-inside:avoid;page-break-inside:avoid}
-      }
     </style>
-    <div class="cp-wrap" onclick="mostrarSucesso(window._sucPag,window._sucTotal)">
-      <div class="cp-header">
-        <div class="cp-title">FOLHA DE PAGAMENTO DA PRODUÇÃO</div>
-        <div class="cp-meta">
-          <span>Emitida em ${hoje} · v${VERSAO}</span>
-          <span>toque para continuar →</span>
-        </div>
-        <button class="cp-print-btn" style="margin-top:6px" onclick="event.stopPropagation();window.print()">🖨 Imprimir</button>
-      </div>
-      <div class="cp-body">
-        ${encHtml}
-        ${gruposHtml}
-      </div>
-      <div class="cp-footer">
-        <span class="cp-total-l">TOTAL GERAL</span>
-        <span class="cp-total-v">${fmtMoeda(totalLiquido)}</span>
-      </div>
+    <div class="cp-detalhe-header">
+      <button class="cp-detalhe-voltar" onclick="fecharDetalheComprovante()">← Voltar</button>
+      <span class="cp-detalhe-nome-wrap">Recibo de Pagamento</span>
     </div>
-    <div class="cp-detalhe-overlay" id="cp-detalhe-overlay">
-      <div class="cp-detalhe-header">
-        <button class="cp-detalhe-voltar" onclick="fecharDetalheComprovante()">← Voltar</button>
-        <span class="cp-detalhe-nome-wrap">Recibo de Pagamento</span>
-      </div>
-      <div class="cp-detalhe-corpo-wrap">
-        <div id="cp-detalhe-corpo"></div>
-      </div>
+    <div class="cp-detalhe-corpo-wrap">
+      <div id="cp-detalhe-corpo">${d.corpo}</div>
     </div>`;
-
-  // Auto-escala para caber tudo em uma tela (iOS não permite zoom out manual)
-  setTimeout(() => {
-    const wrap   = document.querySelector('.cp-wrap');
-    const cpBody = document.querySelector('.cp-body');
-    if (!wrap) return;
-    if (cpBody) { cpBody.style.overflow = 'visible'; cpBody.style.flex = 'none'; }
-    wrap.style.height   = 'auto';
-    wrap.style.overflow = 'visible';
-    const totalH = wrap.scrollHeight;
-    const viewH  = window.innerHeight;
-    const viewW  = window.innerWidth;
-    if (totalH > viewH * 0.98) {
-      const scale = viewH / totalH;
-      wrap.style.transform       = `scale(${scale.toFixed(4)})`;
-      wrap.style.transformOrigin = 'top left';
-      wrap.style.width           = `${Math.ceil(viewW / scale)}px`;
-      wrap.style.height          = `${totalH}px`;
-    }
-    document.body.style.overflow = 'hidden';
-    document.body.style.height   = `${viewH}px`;
-  }, 150);
-}
-
-function abrirDetalheComprovante(idx) {
-  const d = (window._cpDetalhes || [])[idx];
-  if (!d) return;
-  const corpo = document.getElementById('cp-detalhe-corpo');
-  const wrap  = document.querySelector('.cp-detalhe-corpo-wrap');
-  corpo.innerHTML = d.corpo;
-  wrap.scrollTop = 0;
-  document.getElementById('cp-detalhe-overlay').classList.add('ativa');
 }
 function fecharDetalheComprovante() {
-  document.getElementById('cp-detalhe-overlay').classList.remove('ativa');
+  if (typeof window._cpRenderLista === 'function') window._cpRenderLista();
 }
 
 function mostrarSucesso(pagamentos, totalGeral) {
