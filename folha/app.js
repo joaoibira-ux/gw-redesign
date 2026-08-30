@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.02";
+const VERSAO = "5.03";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1589,11 +1589,12 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
       .cp-total-v{font-size:1rem;font-weight:900;color:#a5d6a7}
       .cp-print-btn{background:rgba(165,214,167,0.15);border:1px solid rgba(165,214,167,0.4);color:#a5d6a7;
         font-size:0.62rem;font-weight:700;letter-spacing:0.5px;padding:5px 10px;border-radius:6px;cursor:pointer}
-      .cp-detalhe-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:flex-end;justify-content:center;z-index:400;cursor:default}
+      .cp-detalhe-overlay{position:fixed;inset:0;background:#fff;display:none;flex-direction:column;z-index:400}
       .cp-detalhe-overlay.ativa{display:flex}
-      .cp-detalhe-modal{background:#fff;color:#1b5e20;width:100%;max-width:480px;max-height:92vh;overflow:hidden;border-radius:14px 14px 0 0;padding:10px 10px 16px;transform-origin:center bottom}
-      .cp-detalhe-header{display:flex;justify-content:space-between;align-items:center;padding:6px 4px 10px;font-weight:800;font-size:0.8rem;color:#1b5e20;border-bottom:1px solid rgba(76,140,90,0.2);margin-bottom:8px}
-      .cp-detalhe-fechar{background:none;border:none;font-size:1.1rem;color:#4a8a5a;cursor:pointer;padding:2px 6px;line-height:1}
+      .cp-detalhe-header{background:linear-gradient(160deg,#1e4d2e 0%,#1a3322 100%);padding:10px 12px;display:flex;align-items:center;gap:10px;flex-shrink:0;border-bottom:1px solid rgba(165,214,167,0.15)}
+      .cp-detalhe-voltar{background:none;border:none;color:#a5d6a7;font-size:0.72rem;font-weight:800;letter-spacing:0.5px;cursor:pointer;padding:5px 6px 5px 0;white-space:nowrap}
+      .cp-detalhe-nome-wrap{color:#e8f5e9;font-weight:800;font-size:0.78rem;min-width:0}
+      .cp-detalhe-corpo-wrap{flex:1;overflow:hidden;padding:12px 14px;transform-origin:top left}
       @media print {
         .cp-print-btn, .cp-meta span:last-child { display:none !important }
         body{overflow:visible !important;height:auto !important;background:#fff !important}
@@ -1624,12 +1625,12 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
         <span class="cp-total-v">${fmtMoeda(totalLiquido)}</span>
       </div>
     </div>
-    <div class="cp-detalhe-overlay" id="cp-detalhe-overlay" onclick="fecharDetalheComprovanteSe(event)">
-      <div class="cp-detalhe-modal" onclick="event.stopPropagation()">
-        <div class="cp-detalhe-header">
-          <span id="cp-detalhe-nome"></span>
-          <button class="cp-detalhe-fechar" onclick="fecharDetalheComprovante()">✕</button>
-        </div>
+    <div class="cp-detalhe-overlay" id="cp-detalhe-overlay">
+      <div class="cp-detalhe-header">
+        <button class="cp-detalhe-voltar" onclick="fecharDetalheComprovante()">← Voltar</button>
+        <span class="cp-detalhe-nome-wrap" id="cp-detalhe-nome"></span>
+      </div>
+      <div class="cp-detalhe-corpo-wrap">
         <div id="cp-detalhe-corpo"></div>
       </div>
     </div>`;
@@ -1661,24 +1662,25 @@ function abrirDetalheComprovante(idx) {
   const d = (window._cpDetalhes || [])[idx];
   if (!d) return;
   document.getElementById('cp-detalhe-nome').innerHTML = `${escHtml(d.nome)} <span class="cp-cargo">${escHtml(d.cargo||'')}</span>`;
-  document.getElementById('cp-detalhe-corpo').innerHTML = d.corpo;
-  const modal = document.querySelector('.cp-detalhe-modal');
-  modal.style.transform = 'none';
+  const corpo = document.getElementById('cp-detalhe-corpo');
+  corpo.innerHTML = d.corpo;
+  const wrap = document.querySelector('.cp-detalhe-corpo-wrap');
+  wrap.style.transform = 'none';
   document.getElementById('cp-detalhe-overlay').classList.add('ativa');
-  // Sem rolagem — se não couber na tela, encolhe tudo (igual à tela anterior)
+  // Sem rolagem — se não couber na tela inteira, encolhe o corpo (igual à tela anterior)
   setTimeout(() => {
-    const maxH = window.innerHeight * 0.92;
-    const totalH = modal.scrollHeight;
+    const viewW  = wrap.clientWidth;
+    const maxH   = wrap.clientHeight;
+    const totalH = corpo.scrollHeight;
     if (totalH > maxH) {
-      modal.style.transform = `scale(${(maxH / totalH).toFixed(4)})`;
+      const scale = maxH / totalH;
+      wrap.style.transform = `scale(${scale.toFixed(4)})`;
+      wrap.style.width     = `${Math.ceil(viewW / scale)}px`;
     }
   }, 0);
 }
 function fecharDetalheComprovante() {
   document.getElementById('cp-detalhe-overlay').classList.remove('ativa');
-}
-function fecharDetalheComprovanteSe(e) {
-  if (e.target.id === 'cp-detalhe-overlay') fecharDetalheComprovante();
 }
 
 function mostrarSucesso(pagamentos, totalGeral) {
