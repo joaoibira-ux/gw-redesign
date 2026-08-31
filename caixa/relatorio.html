@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "2.01";
+  const VERSAO = "2.02";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1544,6 +1544,59 @@
     return !dados.porProducao;
   }
 
+  // Desconto de INSS e Passagens em R$, fixos por pessoa — os mesmos já
+  // calculados em Funcionários sobre o salário base (Salário Bruto ou
+  // Salário de Referência, conforme o cargo), não sobre o Bruto do período.
+  // Só entram na folha da quinzena 16-fim do mês (a quinzena 1-15 é o
+  // adiantamento, sem esses descontos) — mesmo corte de dia usado em
+  // folha/app.js pra determinar a quinzena atual (hoje.getDate() <= 15 ? 1 : 16).
+  // Compartilhada entre renderPrevisaoFolha (tabela por pessoa) e
+  // calcularTotalFolhaAberta (total da Previsão de Gastos) — as duas
+  // precisam bater no mesmo valor líquido.
+  function montarDescontosMap() {
+    const descontosMap = new Map();
+    if (!_funcionariosSnap || !_ultimaFolha) return descontosMap;
+    const dataFolha = _ultimaFolha.criadoEm && _ultimaFolha.criadoEm.toDate ? _ultimaFolha.criadoEm.toDate() : null;
+    const descontaInssPassagens = !dataFolha || dataFolha.getDate() >= 16;
+    const CARGOS_POR_PRODUCAO_REL = ['PINTOR', 'RASPADOR'];
+
+    // Quem foi admitido DENTRO da quinzena 16-fim do mês não trabalhou o
+    // período inteiro sobre o qual o INSS/Passagens fixo é calculado — sem
+    // isso, um funcionário admitido no meio do mês levava o desconto cheio
+    // como se tivesse trabalhado a quinzena toda. Proporcional aos dias
+    // efetivamente admitido dentro do período.
+    const refDataProrata = dataFolha || new Date();
+    const periodoIni = new Date(refDataProrata.getFullYear(), refDataProrata.getMonth(), 16);
+    const periodoFim = new Date(refDataProrata.getFullYear(), refDataProrata.getMonth() + 1, 0);
+    const diasPeriodo = Math.round((periodoFim - periodoIni) / 86400000) + 1;
+    function fatorProrata(admissaoStr) {
+      const admissao = parseDataBRparaDate(admissaoStr);
+      if (!admissao || admissao <= periodoIni) return 1;
+      if (admissao > periodoFim) return 0;
+      const diasTrabalhados = Math.round((periodoFim - admissao) / 86400000) + 1;
+      return Math.max(0, Math.min(1, diasTrabalhados / diasPeriodo));
+    }
+
+    _funcionariosSnap.docs.forEach(d => {
+      const f = d.data();
+      // Cargos que já são "por produção" por natureza (Pintor/Raspador) OU
+      // quem tem o checkbox "Remunerar por produção" marcado (ex: Leonardo
+      // Ferreira, Ajudante) usa o Salário de Referência como base — sem
+      // isso, esse segundo caso caía no Salário Bruto normal, que fica 0
+      // pra quem é pago só por produção, zerando o desconto dele.
+      const porProd = CARGOS_POR_PRODUCAO_REL.includes((f.cargo || '').toUpperCase()) || f.porProducao === true;
+      const base = porProd ? Number(f.salarioReferencia || 0) : Number(f.salario || 0);
+      const pct = Number(f.descontos || 0);
+      const fator = descontaInssPassagens ? fatorProrata(f.admissao) : 0;
+      const valores = descontaInssPassagens
+        ? { inss: base * pct / 100 * fator, passagens: f.isentoPassagens ? 0 : base * 0.06 * fator }
+        : { inss: 0, passagens: 0 };
+      descontosMap.set(d.id, valores);
+      descontosMap.set(normNome(f.nome), valores);
+    });
+    return descontosMap;
+  }
+
   function renderPrevisaoFolha() {
     const el = document.getElementById('previsao-folha');
     if (!el || _ultimaFolha === undefined) return;
@@ -1602,51 +1655,7 @@
     if (_adiantSnap) somarAdiantamentosCaixa(_adiantSnap.docs, adiantMap);
     if (_contasPagarSnap) somarAdiantamentosContasPagar(_contasPagarSnap.docs, adiantMap);
 
-    // Desconto de INSS e Passagens em R$, fixos — os mesmos já calculados em
-    // Funcionários sobre o salário base (Salário Bruto ou Salário de
-    // Referência, conforme o cargo), não sobre o Bruto do período.
-    // Só entram na folha da quinzena 16-fim do mês (a quinzena 1-15 é o
-    // adiantamento, sem esses descontos) — mesmo corte de dia usado em
-    // folha/app.js pra determinar a quinzena atual (hoje.getDate() <= 15 ? 1 : 16).
-    const dataFolha = _ultimaFolha.criadoEm && _ultimaFolha.criadoEm.toDate ? _ultimaFolha.criadoEm.toDate() : null;
-    const descontaInssPassagens = !dataFolha || dataFolha.getDate() >= 16;
-    const CARGOS_POR_PRODUCAO_REL = ['PINTOR', 'RASPADOR'];
-
-    // Quem foi admitido DENTRO da quinzena 16-fim do mês não trabalhou o
-    // período inteiro sobre o qual o INSS/Passagens fixo é calculado — sem
-    // isso, um funcionário admitido no meio do mês levava o desconto cheio
-    // como se tivesse trabalhado a quinzena toda. Proporcional aos dias
-    // efetivamente admitido dentro do período.
-    const refDataProrata = dataFolha || new Date();
-    const periodoIni = new Date(refDataProrata.getFullYear(), refDataProrata.getMonth(), 16);
-    const periodoFim = new Date(refDataProrata.getFullYear(), refDataProrata.getMonth() + 1, 0);
-    const diasPeriodo = Math.round((periodoFim - periodoIni) / 86400000) + 1;
-    function fatorProrata(admissaoStr) {
-      const admissao = parseDataBRparaDate(admissaoStr);
-      if (!admissao || admissao <= periodoIni) return 1;
-      if (admissao > periodoFim) return 0;
-      const diasTrabalhados = Math.round((periodoFim - admissao) / 86400000) + 1;
-      return Math.max(0, Math.min(1, diasTrabalhados / diasPeriodo));
-    }
-
-    const descontosMap = new Map();
-    if (_funcionariosSnap) _funcionariosSnap.docs.forEach(d => {
-      const f = d.data();
-      // Cargos que já são "por produção" por natureza (Pintor/Raspador) OU
-      // quem tem o checkbox "Remunerar por produção" marcado (ex: Leonardo
-      // Ferreira, Ajudante) usa o Salário de Referência como base — sem
-      // isso, esse segundo caso caía no Salário Bruto normal, que fica 0
-      // pra quem é pago só por produção, zerando o desconto dele.
-      const porProd = CARGOS_POR_PRODUCAO_REL.includes((f.cargo || '').toUpperCase()) || f.porProducao === true;
-      const base = porProd ? Number(f.salarioReferencia || 0) : Number(f.salario || 0);
-      const pct = Number(f.descontos || 0);
-      const fator = descontaInssPassagens ? fatorProrata(f.admissao) : 0;
-      const valores = descontaInssPassagens
-        ? { inss: base * pct / 100 * fator, passagens: f.isentoPassagens ? 0 : base * 0.06 * fator }
-        : { inss: 0, passagens: 0 };
-      descontosMap.set(d.id, valores);
-      descontosMap.set(normNome(f.nome), valores);
-    });
+    const descontosMap = montarDescontosMap();
 
     let totalBruto = 0, totalInss = 0, totalPassagens = 0, totalAdiant = 0;
     const linhas = grupos.map(g => {
@@ -1738,11 +1747,12 @@
   // 'concluido', zera diárias e passagens, converte adiantamentos (mesmas
   // baixas que o pagamento da folha fazia direto no caixa) — só que, em vez
   // de lançar a saída direto no caixa, gera contas a pagar (folha e
-  // passagens separadas) com vencimento na próxima sexta-feira.
-  function proximaSexta() {
-    const d = new Date();
-    while (d.getDay() !== 5) d.setDate(d.getDate() + 1);
-    return d;
+  // passagens separadas) com vencimento no fim da quinzena atual (dia 15,
+  // ou o último dia do mês na quinzena 16-fim).
+  function fimQuinzenaAtual() {
+    const hoje = new Date();
+    if (hoje.getDate() <= 15) return new Date(hoje.getFullYear(), hoje.getMonth(), 15);
+    return new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
   }
 
   function fmtDataBR(d) {
@@ -1753,9 +1763,9 @@
   // Projeta, a partir dos dados já carregados em tela, quanto vai ser
   // preciso ter em caixa nos próximos 3 e 7 dias: soma as contas a pagar já
   // abertas (vencimento em 'data') com o que a Folha, as Passagens e as
-  // Refeições vão gerar quando fechadas (mesmo cálculo de fecharMedicaoFolha
-  // e de extrato_refeicoes do agenteGW, usando proximaSexta() como data de
-  // vencimento projetada).
+  // Refeições vão gerar quando fechadas (mesmo cálculo de fecharMedicaoFolha,
+  // usando fimQuinzenaAtual() como data de vencimento projetada — dia 15 ou
+  // o último dia do mês, conforme a quinzena atual).
   let _contasPagarSnap = null;
 
   // Mesmos valores/cortes usados em functions/index.js (calcularExtratoRefeicoes)
@@ -1876,8 +1886,9 @@
     const adiantMap = new Map();
     if (_adiantSnap) somarAdiantamentosCaixa(_adiantSnap.docs, adiantMap);
     if (_contasPagarSnap) somarAdiantamentosContasPagar(_contasPagarSnap.docs, adiantMap);
+    const descontosMap = montarDescontosMap();
 
-    let totalBruto = 0, totalAdiant = 0;
+    let totalBruto = 0, totalInss = 0, totalPassagens = 0, totalAdiant = 0;
     grupos.forEach(g => {
       const temProd = !g.isEncarregado && funcTemProducao(g.funcionario?.cargo, g.funcionario?.nome);
       const temDia  = !g.isEncarregado && funcTemDiaria(g.funcionario?.cargo, g.funcionario?.nome);
@@ -1899,10 +1910,13 @@
         const diaria = diariaPorFunc.get(normNome(g.funcionario?.nome));
         if (diaria) bruto += diaria.total;
       }
-      totalBruto  += bruto;
-      totalAdiant += adiantMap.get(normNome(g.funcionario?.nome)) || 0;
+      const desc = descontosMap.get(g.funcionario?.id) ?? descontosMap.get(normNome(g.funcionario?.nome)) ?? { inss: 0, passagens: 0 };
+      totalBruto     += bruto;
+      totalInss      += desc.inss;
+      totalPassagens += desc.passagens;
+      totalAdiant    += adiantMap.get(normNome(g.funcionario?.nome)) || 0;
     });
-    return totalBruto - totalAdiant;
+    return totalBruto - totalInss - totalPassagens - totalAdiant;
   }
 
   function calcularTotalPassagensQuinzena() {
@@ -1924,7 +1938,7 @@
     if (!el || _ultimaFolha === undefined || !_contasPagarSnap) return;
 
     const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-    const dataFechamento = proximaSexta(); dataFechamento.setHours(0, 0, 0, 0);
+    const dataFechamento = fimQuinzenaAtual(); dataFechamento.setHours(0, 0, 0, 0);
 
     const itens = [];
     const totalFolha = calcularTotalFolhaAberta();
@@ -2198,8 +2212,8 @@
         return;
       }
 
-      const dataSexta = fmtDataBR(proximaSexta());
-      const resumo = `Folha: R$ ${fmt(totalFolha)}\nPassagens: R$ ${fmt(totalPassagens)}\n\nVão ser criadas contas a pagar com vencimento em ${dataSexta}.\nOs serviços em medição serão marcados como concluídos, e as diárias/passagens zeradas.`;
+      const dataVencimento = fmtDataBR(fimQuinzenaAtual());
+      const resumo = `Folha: R$ ${fmt(totalFolha)}\nPassagens: R$ ${fmt(totalPassagens)}\n\nVão ser criadas contas a pagar com vencimento em ${dataVencimento}.\nOs serviços em medição serão marcados como concluídos, e as diárias/passagens zeradas.`;
       if (!confirm('Fechar Medição/Folha?\n\n' + resumo)) return;
 
       btn.textContent = '📸 Enviando mapa...';
@@ -2210,13 +2224,13 @@
 
       if (totalFolha > 0) {
         batch.set(db.collection('contasPagar').doc(), {
-          data: dataSexta, descricao: 'Folha de Pagamento da Produção', valor: totalFolha,
+          data: dataVencimento, descricao: 'Folha de Pagamento da Produção', valor: totalFolha,
           status: 'aberto', criadoEm: firebase.firestore.FieldValue.serverTimestamp()
         });
       }
       if (totalPassagens > 0) {
         batch.set(db.collection('contasPagar').doc(), {
-          data: dataSexta, descricao: 'Passagens da Quinzena', valor: totalPassagens,
+          data: dataVencimento, descricao: 'Passagens da Quinzena', valor: totalPassagens,
           status: 'aberto', criadoEm: firebase.firestore.FieldValue.serverTimestamp()
         });
       }
@@ -2251,7 +2265,7 @@
           return {
             id: s.id, nome: s.nome, status: 'concluido',
             executor: executor ? { nome: executor.nome, id: executor.id || '', cargo: executor.cargo || '' } : null,
-            valorPago, dataPagamento: dataSexta
+            valorPago, dataPagamento: dataVencimento
           };
         });
 
@@ -2282,7 +2296,7 @@
       });
 
       await batch.commit();
-      alert('Fechado com sucesso! Contas a pagar geradas para ' + dataSexta + '.');
+      alert('Fechado com sucesso! Contas a pagar geradas para ' + dataVencimento + '.');
     } catch (e) {
       console.error(e);
       alert('Erro ao fechar: ' + e.message);
