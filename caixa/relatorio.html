@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "2.03";
+  const VERSAO = "2.04";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1553,10 +1553,17 @@
   // Compartilhada entre renderPrevisaoFolha (tabela por pessoa) e
   // calcularTotalFolhaAberta (total da Previsão de Gastos) — as duas
   // precisam bater no mesmo valor líquido.
-  function montarDescontosMap() {
+  // Aceita snapshot de funcionários e dados da folha como parâmetro (em vez
+  // de só usar os _funcionariosSnap/_ultimaFolha vindos dos listeners ao
+  // vivo) pra dar pra reusar em fecharMedicaoFolha, que busca sua própria
+  // cópia fresca — sem isso, o fechamento real registrava um valor
+  // diferente do que a prévia mostrava (mesmo desconto de INSS/Passagens
+  // que faltava em calcularTotalFolhaAberta, só que no valor de verdade
+  // gravado no Contas a Pagar).
+  function montarDescontosMap(funcionariosSnap = _funcionariosSnap, folhaData = _ultimaFolha) {
     const descontosMap = new Map();
-    if (!_funcionariosSnap || !_ultimaFolha) return descontosMap;
-    const dataFolha = _ultimaFolha.criadoEm && _ultimaFolha.criadoEm.toDate ? _ultimaFolha.criadoEm.toDate() : null;
+    if (!funcionariosSnap || !folhaData) return descontosMap;
+    const dataFolha = folhaData.criadoEm && folhaData.criadoEm.toDate ? folhaData.criadoEm.toDate() : null;
     const descontaInssPassagens = !dataFolha || dataFolha.getDate() >= 16;
     const CARGOS_POR_PRODUCAO_REL = ['PINTOR', 'RASPADOR'];
 
@@ -1577,7 +1584,7 @@
       return Math.max(0, Math.min(1, diasTrabalhados / diasPeriodo));
     }
 
-    _funcionariosSnap.docs.forEach(d => {
+    funcionariosSnap.docs.forEach(d => {
       const f = d.data();
       // Cargos que já são "por produção" por natureza (Pintor/Raspador) OU
       // quem tem o checkbox "Remunerar por produção" marcado (ex: Leonardo
@@ -2171,8 +2178,9 @@
       const adiantMap = new Map();
       somarAdiantamentosCaixa(adSnap.docs, adiantMap);
       somarAdiantamentosContasPagar(cpAdSnap.docs, adiantMap);
+      const descontosMapFechamento = montarDescontosMap(funcSnap, folha);
 
-      let totalBruto = 0, totalAdiant = 0;
+      let totalBruto = 0, totalInssFechamento = 0, totalPassagensFechamento = 0, totalAdiant = 0;
       grupos.forEach(g => {
         const temProd = !g.isEncarregado && funcTemProducaoLocal(g.funcionario?.cargo, g.funcionario?.nome);
         const temDia  = !g.isEncarregado && funcTemDiariaLocal(g.funcionario?.cargo, g.funcionario?.nome);
@@ -2192,10 +2200,13 @@
           const diaria = diariaPorFunc.get(normNome(g.funcionario.nome));
           if (diaria) bruto += diaria.total;
         }
-        totalBruto  += bruto;
+        const descFechamento = descontosMapFechamento.get(g.funcionario?.id) ?? descontosMapFechamento.get(normNome(g.funcionario?.nome)) ?? { inss: 0, passagens: 0 };
+        totalBruto     += bruto;
+        totalInssFechamento      += descFechamento.inss;
+        totalPassagensFechamento += descFechamento.passagens;
         totalAdiant += adiantMap.get(normNome(g.funcionario.nome)) || 0;
       });
-      const totalFolha = totalBruto - totalAdiant;
+      const totalFolha = totalBruto - totalInssFechamento - totalPassagensFechamento - totalAdiant;
 
       // Total das passagens da quinzena, descontando faltas líquidas da
       // quinzena anterior (após compensar com o crédito acumulado) — ver
