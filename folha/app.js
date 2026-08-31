@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.13";
+const VERSAO = "5.14";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -115,8 +115,13 @@ function nomeExibicaoServico(nomeCompleto) {
   return disp && disp.nomeMapa ? disp.nomeMapa : nomeAbrev(nomeCompleto);
 }
 
+// Sem "^" no início de propósito: identificações agora podem ter um
+// prefixo de torre/fase antes do bloco (ex: "K2A01" = torre K2, bloco A,
+// apto 01) — pega só a letra do bloco + número no FINAL da string, o
+// prefixo (se houver) é ignorado. Continua funcionando também pra
+// identificações antigas sem prefixo (ex: "A01").
 function parseId(id) {
-  const m = id.match(/^([A-Z]+)(\d+)$/);
+  const m = id.match(/([A-Z]+)(\d+)$/);
   return m ? { block: m[1], num: parseInt(m[2]) } : null;
 }
 
@@ -825,7 +830,7 @@ function buildCols(wing) {
 function renderAptCell(local) {
   if (!local) return `<div class="apt-vazio"></div>`;
   locaisCache[local.id] = local;
-  const numPart = local.identificacao.replace(/^[A-Z]+/, "");
+  const numPart = (local.identificacao.match(/\d+$/) || [local.identificacao])[0];
   const servs   = [...(local.servicos || [])].sort((a, b) => ordemServico(a.nome) - ordemServico(b.nome));
   return `
     <div class="apt-cell">

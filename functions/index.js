@@ -2569,7 +2569,10 @@ async function executarFerramenta(nome, input, apiKeyValue) {
     locaisSnap.docs.forEach(d => {
       const local = d.data();
       const ident = local.identificacao || d.id;
-      const blocoMatch = String(ident).match(/^([A-Za-z]+)/);
+      // Sem "^" de propósito: identificações podem ter um prefixo de
+      // torre/fase antes do bloco (ex: "K2A01" = torre K2, bloco A) — pega
+      // só a letra do bloco imediatamente antes do número final.
+      const blocoMatch = String(ident).match(/([A-Za-z]+)\d+$/);
       const bloco = blocoMatch ? blocoMatch[1].toUpperCase() : "";
       (local.servicos || []).forEach(s => {
         if (s.status !== "concluido") return;
