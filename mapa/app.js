@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.20";
+const VERSAO = "3.21";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -42,26 +42,38 @@ function servicoComNomeMapa(s) {
   return disp && disp.nomeMapa ? { ...s, nomeMapa: disp.nomeMapa } : s;
 }
 
-// Sem "^" no início de propósito: identificações agora podem ter um
-// prefixo de torre/fase antes do bloco (ex: "K2A01" = torre K2, bloco A,
-// apto 01) — pega só a letra do bloco + número no FINAL da string, o
-// prefixo (se houver) é ignorado. Continua funcionando também pra
-// identificações antigas sem prefixo (ex: "A01").
+// Identificações agora podem ter um prefixo de torre/fase antes do bloco
+// (ex: "K2A01" = torre K2, bloco A, apto 01) — separa prefixo, letra do
+// bloco e número, pegando a letra+número sempre no FINAL da string.
+// Continua funcionando pra identificações antigas sem prefixo (ex: "A01",
+// onde prefix fica "").
 function parseId(id) {
-  const m = id.match(/([A-Z]+)(\d+)$/);
-  return m ? { block: m[1], num: parseInt(m[2]) } : null;
+  const m = id.match(/^(.*?)([A-Z]+)(\d+)$/);
+  return m ? { prefix: m[1], block: m[2], num: parseInt(m[3]) } : null;
 }
 
-// Agrupa locais por bloco e pavimento
+// "K2" -> "KEL2 ", "K1" -> "KEL1 " etc. — rótulo de torre/fase mostrado
+// antes de "BLOCO X" no mapa. Sem prefixo (identificação antiga), retorna
+// string vazia.
+function labelPrefixoBloco(prefix) {
+  if (!prefix) return '';
+  const m = prefix.match(/^K(\d+)$/);
+  return (m ? `KEL${m[1]}` : prefix) + ' ';
+}
+
+// Agrupa locais por torre+bloco e pavimento — a chave inclui o prefixo
+// (não só a letra) pra não misturar blocos de mesma letra em torres
+// diferentes (ex: "K2B" e "K1B" são blocos B distintos).
 function groupByBloco(data) {
   const blocos = {};
   data.forEach(local => {
     const parsed = parseId(local.identificacao);
     if (!parsed) return;
-    const { block, num } = parsed;
-    if (!blocos[block]) blocos[block] = { ground: {}, upper: {} };
-    if (num >= 100) blocos[block].upper[num - 100] = local;
-    else            blocos[block].ground[num]       = local;
+    const { prefix, block, num } = parsed;
+    const key = prefix + block;
+    if (!blocos[key]) blocos[key] = { prefix, block, ground: {}, upper: {} };
+    if (num >= 100) blocos[key].upper[num - 100] = local;
+    else            blocos[key].ground[num]       = local;
   });
   return blocos;
 }
@@ -256,21 +268,21 @@ function renderWing(cols) {
 
 function render(data) {
   const blocos = groupByBloco(data);
-  const letras = Object.keys(blocos).sort();
+  const chaves = Object.keys(blocos).sort();
 
-  if (!letras.length) {
+  if (!chaves.length) {
     document.getElementById("mapa").innerHTML =
       '<p class="empty">Nenhum local cadastrado.</p>';
     return;
   }
 
-  document.getElementById("mapa").innerHTML = letras.map(letra => {
-    const { ground, upper } = blocos[letra];
+  document.getElementById("mapa").innerHTML = chaves.map(chave => {
+    const { prefix, block, ground, upper } = blocos[chave];
     const gCols = buildCols(ground);
     const uCols = buildCols(upper);
     return `
       <div class="bloco">
-        <div class="bloco-label">BLOCO ${letra}</div>
+        <div class="bloco-label">${labelPrefixoBloco(prefix)}BLOCO ${block}</div>
         <div class="bloco-body">
           ${gCols.length ? renderWing(gCols) : ""}
           ${uCols.length ? `<div class="corredor"></div>${renderWing(uCols)}` : ""}
