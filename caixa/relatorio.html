@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "2.02";
+  const VERSAO = "2.03";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1967,8 +1967,12 @@
     }
 
     function montarJanela(dias) {
+      // Sem limite inferior de propósito: uma conta vencida (data no
+      // passado, ainda em aberto) é mais urgente que qualquer coisa "nos
+      // próximos X dias", não deve some da previsão só por já ter passado
+      // da data.
       const limite = new Date(hoje); limite.setDate(limite.getDate() + dias);
-      const doPeriodo = itens.filter(it => it.data >= hoje && it.data <= limite).sort((a, b) => a.data - b.data);
+      const doPeriodo = itens.filter(it => it.data <= limite).sort((a, b) => a.data - b.data);
       if (!doPeriodo.length) return `
         <div class="previsao-card">
           <div class="prev-titulo"><span>Próximos ${dias} dias</span></div>
@@ -1976,11 +1980,14 @@
           ${linhaSaldoProjetado(0)}
         </div>`;
       const total = doPeriodo.reduce((s, it) => s + it.valor, 0);
-      const linhas = doPeriodo.map(it => `
+      const linhas = doPeriodo.map(it => {
+        const vencido = it.data < hoje;
+        return `
         <div class="prev-linha prev-cols-quinz">
-          <div class="prev-nome">${escHtml(it.desc)} <span class="prev-cargo">${fmtDataBR(it.data)}</span></div>
+          <div class="prev-nome">${escHtml(it.desc)} <span class="prev-cargo"${vencido ? ' style="color:#ef9a9a;font-weight:700"' : ''}>${fmtDataBR(it.data)}${vencido ? ' · VENCIDO' : ''}</span></div>
           <div class="prev-liq">${fmt(it.valor)}</div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
       return `
         <div class="previsao-card">
           <div class="prev-titulo"><span>Próximos ${dias} dias</span></div>
