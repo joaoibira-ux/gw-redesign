@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.15";
+const VERSAO = "5.16";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1825,6 +1825,24 @@ async function enviarReciboWhatsApp(idx) {
   if (!el || typeof html2canvas === 'undefined') { alert('Não foi possível gerar a imagem do recibo.'); return; }
 
   if (btn) { btn.disabled = true; btn.textContent = 'Enviando...'; }
+
+  // Quando o recibo é grande (ex: pintor com muitas diárias), a tela
+  // encolhe tudo com transform:scale() pra caber sem rolar (ver
+  // abrirDetalheComprovante) — o html2canvas não lida bem com um elemento
+  // que tem um ANCESTRAL com transform ativo (achado ao vivo: texto saía
+  // sobreposto/cortado na imagem gerada). Desliga o encolhimento antes de
+  // capturar e reaplica depois, já que quem está olhando a tela continua
+  // precisando do recibo cabendo sem rolar.
+  const page = document.querySelector('.cp-detalhe-page');
+  const estiloOriginal = page ? {
+    transform: page.style.transform, width: page.style.width, height: page.style.height
+  } : null;
+  if (page && page.style.transform) {
+    page.style.transform = 'none';
+    page.style.width     = '';
+    page.style.height    = '100dvh';
+  }
+
   try {
     const canvas = await html2canvas(el, { backgroundColor: '#ffffff', scale: 2 });
     const imagemBase64 = canvas.toDataURL('image/png');
@@ -1843,6 +1861,12 @@ async function enviarReciboWhatsApp(idx) {
   } catch (e) {
     alert('Erro ao enviar pelo WhatsApp: ' + (e.message || e));
     if (btn) { btn.disabled = false; btn.textContent = '📱 WhatsApp'; }
+  } finally {
+    if (page && estiloOriginal) {
+      page.style.transform = estiloOriginal.transform;
+      page.style.width     = estiloOriginal.width;
+      page.style.height    = estiloOriginal.height;
+    }
   }
 }
 
