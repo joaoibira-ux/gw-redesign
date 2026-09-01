@@ -1,8 +1,8 @@
-const VERSION = "caixa-v106";
+const VERSION = "caixa-v107";
 const ASSETS = [
   "./index.html",
   "./style.css?v=34",
-  "./app.js?v=85",
+  "./app.js?v=86",
   "./manifest.json",
   "./Logo-gw.png",
   "./Aviso iPhone.png",
@@ -29,11 +29,24 @@ self.addEventListener("activate", e => {
 });
 
 self.addEventListener("fetch", e => {
-  if (e.request.mode === "navigate") {
-    // HTML sempre vem da rede — garante versão mais nova
-    e.respondWith(fetch(e.request, { cache: "no-store" }).catch(() => caches.match("./index.html")));
+  // Navegação (HTML) e app.js: rede primeiro, sem cache de resposta antiga —
+  // esse é o caixa (lógica financeira), não pode rodar código desatualizado
+  // por causa de cache de service worker. Mesmo padrão já usado em
+  // funcionarios/folha/mapa (achado ao vivo: app.js cache-first fazia
+  // mudanças recém-publicadas não aparecerem até o app ser fechado/reaberto
+  // várias vezes).
+  const critico = e.request.mode === "navigate" || e.request.url.includes("app.js");
+  if (critico) {
+    e.respondWith(
+      fetch(e.request, { cache: "no-store" })
+        .then(response => {
+          if (response.ok) caches.open(VERSION).then(c => c.put(e.request, response.clone()));
+          return response;
+        })
+        .catch(() => caches.match(e.request).then(r => r || caches.match("./index.html")))
+    );
     return;
   }
-  // CSS/JS/imagens: cache primeiro, rede como fallback
+  // CSS/imagens: cache primeiro, rede como fallback
   e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
 });

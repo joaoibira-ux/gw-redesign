@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.58";
+const VERSAO_CAIXA = "3.59";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -297,7 +297,11 @@ async function deletar(id) {
     return;
   }
 
-  const ehBaixaContaPagar = (r.origem === "JOAO->BAIXA CTAS A PAGAR" || r.origem === "ANE->BAIXA CTAS A PAGAR") && r.contaPagarId;
+  // Antes checava a origem literal ("...BAIXA CTAS A PAGAR"), mas baixar
+  // uma conta de empréstimo do Horácio agora grava origem ANE->HORACIO/
+  // JOAO->HORACIO (pra abater o crédito dele também) — contaPagarId é o
+  // sinal correto e único: só baixarContaAPagar() grava esse campo.
+  const ehBaixaContaPagar = !!r.contaPagarId;
 
   // Se esse lançamento criou uma conta a pagar nova (empréstimo, "Contas a
   // Pagar" direto, crédito a repassar BBS), desfaz os dois juntos — só se
@@ -832,6 +836,15 @@ function criarCreditoRepassarBBS(data, desc, entrada, comprovante) {
   batch.commit().catch(() => alert("Erro ao criar conta a pagar. Tente novamente."));
 }
 
+// "Horácio"/"Horacio" (com ou sem acento) na descrição da conta — baixar
+// esse tipo de conta deve abater tanto do CEF/Inter quanto do crédito
+// Horácio separado, então a origem do lançamento vira ANE->HORACIO ou
+// JOAO->HORACIO (em vez da genérica BAIXA CTAS A PAGAR) — o cálculo do
+// saldo Horácio (ver render()) já soma "saida" dessas origens específicas.
+function ehDescricaoEmprestimoHoracio(texto) {
+  return /hor[aá]cio/i.test(texto || "");
+}
+
 function baixarContaAPagar(data, desc, saida, origem, comprovante) {
   const { id, conta } = contaPagarSelecionada;
   const numero = String(Object.keys(docsCache).length + 1).padStart(4, "0");
@@ -848,8 +861,13 @@ function baixarContaAPagar(data, desc, saida, origem, comprovante) {
   // caso o lançamento seja excluído em seguida (ver deletar()).
   const eraPrimeiroPagamento = conta.valorOriginal === undefined;
 
+  const origemBaixa = origem || "JOAO->BAIXA CTAS A PAGAR";
+  const origemLancamento = ehDescricaoEmprestimoHoracio(conta.descricao || desc)
+    ? (origemBaixa.startsWith("ANE") ? "ANE->HORACIO" : "JOAO->HORACIO")
+    : origemBaixa;
+
   batch.set(col.doc(), {
-    data, origem: origem || "JOAO->BAIXA CTAS A PAGAR", descricao: desc,
+    data, origem: origemLancamento, descricao: desc,
     entrada: 0, saida,
     contaPagarId: id,
     valorContaPagarAntes: valorAtual,
