@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.59";
+const VERSAO_CAIXA = "3.60";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -429,7 +429,22 @@ document.getElementById("form").addEventListener("submit", async function(e) {
     criarEntradaEmprestimo(data, desc, entrada, comprovante);
   } else if (origem === "JOAO->BAIXA CTAS A PAGAR" || origem === "ANE->BAIXA CTAS A PAGAR") {
     if (!contaPagarSelecionada) { alert("Selecione uma conta a pagar. Selecione a origem novamente."); return; }
-    baixarContaAPagar(data, desc, saida, origem, comprovante);
+    // Espera a transação terminar antes de fechar o formulário — evita
+    // fechar achando que deu certo enquanto ainda está gravando (janela
+    // que já causou baixa duplicada da mesma conta, ver baixarContaAPagar).
+    btnAdd.disabled = true;
+    btnAdd.textContent = "Salvando...";
+    try {
+      await baixarContaAPagar(data, desc, saida, origem, comprovante);
+    } catch (err) {
+      console.error("Erro ao baixar conta a pagar:", err);
+      alert(err.message || "Erro ao baixar conta a pagar. Tente novamente.");
+      btnAdd.disabled = false;
+      btnAdd.textContent = "+ Adicionar";
+      return;
+    }
+    btnAdd.disabled = false;
+    btnAdd.textContent = "+ Adicionar";
   } else if (origem === "ANE->CREDITO A REPASSAR P BBS FOMENTO") {
     criarCreditoRepassarBBS(data, desc, entrada, comprovante);
   } else {
@@ -845,55 +860,69 @@ function ehDescricaoEmprestimoHoracio(texto) {
   return /hor[aá]cio/i.test(texto || "");
 }
 
-function baixarContaAPagar(data, desc, saida, origem, comprovante) {
-  const { id, conta } = contaPagarSelecionada;
-  const numero = String(Object.keys(docsCache).length + 1).padStart(4, "0");
-  const batch = db.batch();
-
-  // Tolerância de arredondamento: valor digitado cobre (ou praticamente
-  // cobre) o que resta -> baixa integral. Menor que isso -> pagamento
-  // parcial, registra no extrato e diminui o valor restante da conta.
-  const valorAtual = conta.valor || 0;
-  const pagamentoIntegral = saida >= valorAtual - 0.005;
+// Transação (não batch) de propósito: lê o estado ATUAL da conta a pagar
+// no servidor e só grava se ela ainda não tiver sido baixada. Achado ao
+// vivo (2026-09-01): "Passagens da Quinzena" de 31/08 foi baixada duas
+// vezes em sequência (picker reaberto/reenviado antes da 1ª baixa
+// propagar) — o objeto `conta` vindo do cache local (contaPagarSelecionada)
+// podia estar desatualizado. Uma transação garante que a checagem
+// "já foi baixada?" e a escrita aconteçam atomicamente, mesmo com cache
+// local defasado ou cliques em sequência rápida.
+async function baixarContaAPagar(data, desc, saida, origem, comprovante) {
+  const { id, conta: contaCache } = contaPagarSelecionada;
   const contaPagarRef = db.collection("contasPagar").doc(id);
   const pagamento = { data, valor: saida, criadoEm: new Date().toISOString() };
-  // Guardados no lançamento pra permitir desfazer exatamente esta baixa
-  // caso o lançamento seja excluído em seguida (ver deletar()).
-  const eraPrimeiroPagamento = conta.valorOriginal === undefined;
 
-  const origemBaixa = origem || "JOAO->BAIXA CTAS A PAGAR";
-  const origemLancamento = ehDescricaoEmprestimoHoracio(conta.descricao || desc)
-    ? (origemBaixa.startsWith("ANE") ? "ANE->HORACIO" : "JOAO->HORACIO")
-    : origemBaixa;
+  await db.runTransaction(async tx => {
+    const snap = await tx.get(contaPagarRef);
+    if (!snap.exists) throw new Error("Essa conta a pagar não existe mais.");
+    const conta = snap.data();
+    if (conta.status === "baixado") {
+      throw new Error("Essa conta já foi baixada (por outro lançamento) — não é possível baixar de novo.");
+    }
 
-  batch.set(col.doc(), {
-    data, origem: origemLancamento, descricao: desc,
-    entrada: 0, saida,
-    contaPagarId: id,
-    valorContaPagarAntes: valorAtual,
-    statusContaPagarAntes: conta.status || "aberto",
-    eraPrimeiroPagamento,
-    pagamentoRegistrado: pagamento,
-    ...(comprovante ? { comprovanteUrl: comprovante.url, comprovanteNomeArquivo: comprovante.nomeArquivo } : {}),
-    criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+    const numero = String(Object.keys(docsCache).length + 1).padStart(4, "0");
+    // Tolerância de arredondamento: valor digitado cobre (ou praticamente
+    // cobre) o que resta -> baixa integral. Menor que isso -> pagamento
+    // parcial, registra no extrato e diminui o valor restante da conta.
+    const valorAtual = conta.valor || 0;
+    const pagamentoIntegral = saida >= valorAtual - 0.005;
+    // Guardados no lançamento pra permitir desfazer exatamente esta baixa
+    // caso o lançamento seja excluído em seguida (ver deletar()).
+    const eraPrimeiroPagamento = conta.valorOriginal === undefined;
+
+    const origemBaixa = origem || "JOAO->BAIXA CTAS A PAGAR";
+    const origemLancamento = ehDescricaoEmprestimoHoracio(conta.descricao || contaCache?.descricao || desc)
+      ? (origemBaixa.startsWith("ANE") ? "ANE->HORACIO" : "JOAO->HORACIO")
+      : origemBaixa;
+
+    tx.set(col.doc(), {
+      data, origem: origemLancamento, descricao: desc,
+      entrada: 0, saida,
+      contaPagarId: id,
+      valorContaPagarAntes: valorAtual,
+      statusContaPagarAntes: conta.status || "aberto",
+      eraPrimeiroPagamento,
+      pagamentoRegistrado: pagamento,
+      ...(comprovante ? { comprovanteUrl: comprovante.url, comprovanteNomeArquivo: comprovante.nomeArquivo } : {}),
+      criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    if (pagamentoIntegral) {
+      tx.update(contaPagarRef, {
+        status: "baixado", dataBaixa: data, numeroBaixa: numero,
+        valor: 0,
+        valorOriginal: conta.valorOriginal !== undefined ? conta.valorOriginal : valorAtual,
+        pagamentos: firebase.firestore.FieldValue.arrayUnion(pagamento)
+      });
+    } else {
+      tx.update(contaPagarRef, {
+        valor: valorAtual - saida,
+        valorOriginal: conta.valorOriginal !== undefined ? conta.valorOriginal : valorAtual,
+        pagamentos: firebase.firestore.FieldValue.arrayUnion(pagamento)
+      });
+    }
   });
-
-  if (pagamentoIntegral) {
-    batch.update(contaPagarRef, {
-      status: "baixado", dataBaixa: data, numeroBaixa: numero,
-      valor: 0,
-      valorOriginal: conta.valorOriginal !== undefined ? conta.valorOriginal : valorAtual,
-      pagamentos: firebase.firestore.FieldValue.arrayUnion(pagamento)
-    });
-  } else {
-    batch.update(contaPagarRef, {
-      valor: valorAtual - saida,
-      valorOriginal: conta.valorOriginal !== undefined ? conta.valorOriginal : valorAtual,
-      pagamentos: firebase.firestore.FieldValue.arrayUnion(pagamento)
-    });
-  }
-
-  batch.commit().catch(() => alert("Erro ao baixar conta a pagar. Tente novamente."));
 }
 
 function toggleForm() {
