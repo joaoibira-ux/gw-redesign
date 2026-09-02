@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.60";
+const VERSAO_CAIXA = "3.61";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -485,7 +485,11 @@ const ORIGEM_GRUPOS = {
     { value: "ANE->HORACIO", label: "HORACIO-Pagamento de Empréstimo (Baixa do Crédito Horácio)" },
     { value: "ANE->JOAO", label: "JOÃO ALBÉRICO - Pagamento de Prólabore (Baixa do Crédito João)" },
     { value: "ANE->EMPRESTIMO", label: "ENTRADA DE EMPRÉSTIMO (Gera Conta a Pagar)" },
-    { value: "ANE->ADIANTAMENTO", label: "ADIANTAMENTO DE SALÁRIO (Debita da Folha)" },
+    // Adiantamento do lado ANE só via baixa de Contas a Pagar agora (a
+    // pedido do João) — a solicitação já vira Contas a Pagar sozinha
+    // (Funcionários > Solicitar Adiantamento), então o lançamento direto
+    // daqui saía sem nenhum registro de solicitação por trás. Lado JOAO
+    // continua com o lançamento direto de propósito (não mudar).
     { value: "ANE->BAIXA CTAS A PAGAR", label: "ANE → BAIXA CTAS A PAGAR" },
     { value: "ANE->BAIXA CTAS A RECEBER", label: "ANE → BAIXA CTAS A RECEBER" }
   ],
