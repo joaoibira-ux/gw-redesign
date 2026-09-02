@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.16";
+const VERSAO = "5.17";
 const VALOR_HORA_PINTOR = 10.94;
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
@@ -1375,6 +1375,17 @@ function adiantTotal(map, nome) {
   const info = map.get((nome || '').normalize('NFC'));
   return info ? info.total : 0;
 }
+// Extrai o nome de "Adiantamento: {nome} — ..." OU "Adiantamento {nome}" (o
+// ":" às vezes é digitado à mão sem ele em lançamentos manuais de Contas a
+// Pagar — precisa aceitar os dois formatos, senão o adiantamento some
+// silenciosamente do total em aberto e nunca é descontado da folha).
+function extrairNomeAdiantamento(descricao) {
+  const desc = descricao || '';
+  const m = desc.match(/^Adiantamento:?\s+(.+)/);
+  if (!m) return null;
+  return m[1].split(/\s*[—–\-]/)[0].trim().normalize('NFC');
+}
+
 async function buscarAdiantamentosMap() {
   const adiantamentosMap = new Map();
   try {
@@ -1384,17 +1395,15 @@ async function buscarAdiantamentosMap() {
     ]);
     lancSnap.docs.forEach(d => {
       const r = d.data();
-      const desc = r.descricao || '';
-      if (!desc.startsWith('Adiantamento: ')) return;
-      const nome = desc.slice('Adiantamento: '.length).split(/\s*[—–\-]/)[0].trim().normalize('NFC');
+      const nome = extrairNomeAdiantamento(r.descricao);
+      if (!nome) return;
       _addAdiantItem(adiantamentosMap, nome, r.saida || 0, r.data, 'Caixa');
     });
     cpSnap.docs.forEach(d => {
       const r = d.data();
       if (r.status !== 'baixado' || r.descontadoDaFolha) return;
-      const desc = r.descricao || '';
-      if (!desc.startsWith('Adiantamento: ')) return;
-      const nome = desc.slice('Adiantamento: '.length).split(/\s*[—–\-]/)[0].trim().normalize('NFC');
+      const nome = extrairNomeAdiantamento(r.descricao);
+      if (!nome) return;
       const valor = r.valorOriginal !== undefined ? r.valorOriginal : r.valor;
       _addAdiantItem(adiantamentosMap, nome, valor || 0, r.data, 'Contas a Pagar');
     });

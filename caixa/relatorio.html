@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-  const VERSAO = "2.04";
+  const VERSAO = "2.05";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1485,13 +1485,22 @@
   // _ultimaFolha: undefined = ainda carregando, null = sem folha aberta, objeto = dados da folha
   let _ultimaFolha = undefined, _diariasSnap = null, _adiantSnap = null;
 
+  // Extrai o nome de "Adiantamento: {nome} — ..." OU "Adiantamento {nome}"
+  // (o ":" às vezes é digitado à mão sem ele em lançamentos manuais de
+  // Contas a Pagar — precisa aceitar os dois formatos, senão o adiantamento
+  // some silenciosamente do total em aberto e nunca é descontado da folha).
+  function extrairNomeAdiantamento(descricao) {
+    const desc = descricao || '';
+    const m = desc.match(/^Adiantamento:?\s+(.+)/);
+    if (!m) return null;
+    return m[1].split(/\s*[—–\-]/)[0].trim().normalize('NFC');
+  }
+
   // Soma no adiantMap os adiantamentos lançados direto no caixa (origem 'Adiantamento').
   function somarAdiantamentosCaixa(lancamentosDocs, adiantMap) {
     lancamentosDocs.forEach(d => {
       const r = d.data();
-      const desc = r.descricao || '';
-      if (!desc.startsWith('Adiantamento: ')) return;
-      const nome = desc.slice('Adiantamento: '.length).split(/\s*[—–\-]/)[0].trim().normalize('NFC');
+      const nome = extrairNomeAdiantamento(r.descricao);
       if (!nome) return;
       adiantMap.set(normNome(nome), (adiantMap.get(normNome(nome)) || 0) + (r.saida || 0));
     });
@@ -1505,9 +1514,7 @@
     contasPagarDocs.forEach(d => {
       const r = d.data();
       if (r.status !== 'baixado' || r.descontadoDaFolha) return;
-      const desc = r.descricao || '';
-      if (!desc.startsWith('Adiantamento: ')) return;
-      const nome = desc.slice('Adiantamento: '.length).split(/\s*[—–\-]/)[0].trim().normalize('NFC');
+      const nome = extrairNomeAdiantamento(r.descricao);
       if (!nome) return;
       const valor = r.valorOriginal !== undefined ? r.valorOriginal : r.valor;
       adiantMap.set(normNome(nome), (adiantMap.get(normNome(nome)) || 0) + (valor || 0));
@@ -2301,8 +2308,7 @@
       // nesse desconto, pra não serem contados de novo numa folha futura.
       cpAdSnap.docs.forEach(doc => {
         const r = doc.data();
-        const desc = r.descricao || '';
-        if (r.status === 'baixado' && !r.descontadoDaFolha && desc.startsWith('Adiantamento: ')) {
+        if (r.status === 'baixado' && !r.descontadoDaFolha && extrairNomeAdiantamento(r.descricao)) {
           batch.update(doc.ref, { descontadoDaFolha: true });
         }
       });

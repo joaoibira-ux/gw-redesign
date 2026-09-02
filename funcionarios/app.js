@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.36";
+const VERSAO = "3.37";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -179,8 +179,11 @@ function inicioDaSemana() {
 // alguém pagar.
 function _somaSeAdiantamentoDoFuncionario(descricao, criadoEm, valor, nomeAlvo, inicioSemana) {
   const desc = descricao || "";
-  if (!desc.startsWith("Adiantamento: ")) return 0;
-  const nome = desc.slice("Adiantamento: ".length).split(/\s*[—–-]/)[0].trim().normalize("NFC");
+  // Aceita "Adiantamento: {nome} — ..." e também "Adiantamento {nome}" (sem
+  // ":", digitado à mão em lançamentos manuais de Contas a Pagar).
+  const m = desc.match(/^Adiantamento:?\s+(.+)/);
+  if (!m) return 0;
+  const nome = m[1].split(/\s*[—–-]/)[0].trim().normalize("NFC");
   if (nome !== nomeAlvo) return 0;
   const dt = criadoEm && criadoEm.toDate ? criadoEm.toDate() : null;
   if (!dt || dt < inicioSemana) return 0;

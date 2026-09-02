@@ -1359,11 +1359,13 @@ async function gerarImagemExtratoFolha(dados) {
 }
 
 // Extrai o nome do funcionário de uma descrição "Adiantamento: {nome} — ..."
-// (mesmo padrão usado em funcionarios/app.js e caixa/relatorio.html).
+// OU "Adiantamento {nome}" sem ":" (digitado à mão em lançamentos manuais de
+// Contas a Pagar — mesmo padrão usado em funcionarios/app.js e caixa/relatorio.html).
 function extrairNomeAdiantamento(descricao) {
   const desc = descricao || "";
-  if (!desc.startsWith("Adiantamento: ")) return null;
-  return desc.slice("Adiantamento: ".length).split(/\s*[—–\-]/)[0].trim();
+  const m = desc.match(/^Adiantamento:?\s+(.+)/);
+  if (!m) return null;
+  return m[1].split(/\s*[—–\-]/)[0].trim();
 }
 
 async function buscarExtratoAdiantamentosFuncionario(nomeFuncionario, apenasPagos) {
@@ -3764,8 +3766,8 @@ exports.avisoContaVencendoHoje = onDocumentCreated(
 );
 
 // Dispara quando uma conta a pagar de adiantamento salarial (descrição
-// começando com "Adiantamento:" — padrão usado tanto na solicitação em
-// Funcionários quanto no lançamento direto pelo Caixa) é baixada
+// começando com "Adiantamento" — padrão usado tanto na solicitação em
+// Funcionários quanto no lançamento direto pelo Caixa, com ou sem ":") é baixada
 // integralmente no Caixa (baixarContaAPagar em caixa/app.js muda o status
 // pra "baixado"). Avisa pra um grupo de destinatários diferente do alerta
 // de vencimento.
@@ -3776,10 +3778,10 @@ exports.avisoPagamentoAdiantamento = onDocumentUpdated(
     const depois = event.data.after.data();
     if (!antes || !depois) return;
     if (antes.status === "baixado" || depois.status !== "baixado") return;
-    if (!depois.descricao || !depois.descricao.startsWith("Adiantamento:")) return;
+    const nomeExtraido = extrairNomeAdiantamento(depois.descricao);
+    if (!nomeExtraido) return;
 
-    const m = /^Adiantamento:\s*(.+?)\s*—/.exec(depois.descricao);
-    const nome = m ? m[1].trim() : depois.descricao;
+    const nome = nomeExtraido;
     const valorPago = depois.valorOriginal !== undefined ? depois.valorOriginal : depois.valor;
 
     const texto = [
