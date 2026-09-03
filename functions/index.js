@@ -3848,13 +3848,14 @@ exports.avisoJurosBbsFomento = onDocumentCreated(
     const valorBruto = Number(bruto.entrada) || 0;
     const juros = Number(c.saida) || 0;
     const creditado = valorBruto - juros;
-    const dataHoje = new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
 
     const texto = [
-      `BBS FOMENTO ${dataHoje}`,
-      `Valor Bruto: ${fmtMoeda(valorBruto)}`,
-      `Juros: ${fmtMoeda(juros)}`,
-      `Valor Creditado: ${fmtMoeda(creditado)}`
+      "OPERACAO BBS FOMENTO",
+      "",
+      `Bruto......: ${fmtMoeda(valorBruto)}`,
+      `Juros.......: ${fmtMoeda(juros)}`,
+      "         ----------------",
+      `Liquido...: ${fmtMoeda(creditado)}`
     ].join("\n");
 
     try {
