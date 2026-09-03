@@ -1568,6 +1568,87 @@ async function gerarImagemExtratoAdiantamentos(dados) {
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
+// Mesmo padrão visual do extrato de adiantamentos (fundo verde escuro,
+// logo GW no topo), só que com Bruto/Juros em duas linhas simples e o
+// Líquido destacado num bloco no final — igual ao card de total do extrato.
+function construirSVGOperacaoBBS(dados, logoBase64) {
+  const LARGURA = 700;
+  const PAD = 44;
+  const ALT_HEADER = 190;
+  const ALT_LINHA = 54;
+  const ESPACO_ANTES_LIQUIDO = 24;
+  const ALT_LIQUIDO = 100;
+  const ALT_FOOTER = 50;
+
+  const ALTURA = ALT_HEADER + ALT_LINHA * 2 + ESPACO_ANTES_LIQUIDO + ALT_LIQUIDO + ALT_FOOTER + PAD;
+  const larguraCard = LARGURA - PAD * 2;
+
+  let y = ALT_HEADER;
+
+  const linhaBruto = `
+    <text x="${PAD + 24}" y="${y + ALT_LINHA / 2 + 6}" font-size="16" font-weight="600" letter-spacing="0.5" fill="#c8e6c9" font-family="Arial, Helvetica, sans-serif">Bruto</text>
+    <text x="${PAD + larguraCard - 24}" y="${y + ALT_LINHA / 2 + 6}" font-size="20" font-weight="700" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${fmtMoeda(dados.bruto)}</text>
+  `;
+  y += ALT_LINHA;
+
+  const linhaJuros = `
+    <line x1="${PAD}" y1="${y}" x2="${PAD + larguraCard}" y2="${y}" stroke="rgba(165,214,167,0.18)" stroke-width="1"/>
+    <text x="${PAD + 24}" y="${y + ALT_LINHA / 2 + 6}" font-size="16" font-weight="600" letter-spacing="0.5" fill="#c8e6c9" font-family="Arial, Helvetica, sans-serif">Juros</text>
+    <text x="${PAD + larguraCard - 24}" y="${y + ALT_LINHA / 2 + 6}" font-size="20" font-weight="700" fill="#ffab40" font-family="Arial, Helvetica, sans-serif" text-anchor="end">− ${fmtMoeda(dados.juros)}</text>
+  `;
+  y += ALT_LINHA + ESPACO_ANTES_LIQUIDO;
+
+  const blocoLiquido = `
+    <rect x="${PAD}" y="${y}" width="${larguraCard}" height="${ALT_LIQUIDO}" rx="16" fill="rgba(105,240,174,0.08)" stroke="rgba(105,240,174,0.35)" stroke-width="1.5"/>
+    <text x="${PAD + 28}" y="${y + ALT_LIQUIDO / 2 - 6}" font-size="14" font-weight="700" letter-spacing="1" fill="#a5d6a7" font-family="Arial, Helvetica, sans-serif">LÍQUIDO</text>
+    <text x="${PAD + larguraCard - 28}" y="${y + ALT_LIQUIDO / 2 + 12}" font-size="30" font-weight="800" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${fmtMoeda(dados.liquido)}</text>
+  `;
+  y += ALT_LIQUIDO;
+
+  const footerY = y + 34;
+  const footer = `
+    <text x="${LARGURA / 2}" y="${footerY}" font-size="11" letter-spacing="1" fill="#5a8a63" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">Sistema GW • Gerado em ${new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</text>
+  `;
+
+  const logoW = 64, logoH = 64 * (1106 / 1422);
+
+  return `
+<svg width="${LARGURA}" height="${ALTURA}" viewBox="0 0 ${LARGURA} ${ALTURA}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#12331f"/>
+      <stop offset="45%" stop-color="#0c2417"/>
+      <stop offset="100%" stop-color="#06120b"/>
+    </linearGradient>
+    <clipPath id="logoClip"><rect x="0" y="0" width="${logoW}" height="${logoH}" rx="10"/></clipPath>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#69f0ae" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#69f0ae" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="${LARGURA}" height="${ALTURA}" fill="url(#bg)"/>
+  <circle cx="${LARGURA / 2}" cy="${40 + logoH / 2}" r="90" fill="url(#glow)"/>
+  <g transform="translate(${LARGURA / 2 - logoW / 2}, 40)">
+    <image href="data:image/png;base64,${logoBase64}" width="${logoW}" height="${logoH}" clip-path="url(#logoClip)"/>
+  </g>
+
+  <text x="${LARGURA / 2}" y="${40 + logoH + 34}" font-size="26" font-weight="800" letter-spacing="3" fill="#f1f8f2" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">GREEN WALL</text>
+  <text x="${LARGURA / 2}" y="${40 + logoH + 58}" font-size="13" font-weight="700" letter-spacing="4" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">OPERAÇÃO BBS FOMENTO</text>
+
+  ${linhaBruto}
+  ${linhaJuros}
+  ${blocoLiquido}
+  ${footer}
+</svg>`;
+}
+
+async function gerarImagemOperacaoBBS(dados) {
+  const logoBase64 = fs.readFileSync(path.join(__dirname, "Logo-gw.png")).toString("base64");
+  const svg = construirSVGOperacaoBBS(dados, logoBase64);
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
 async function executarFerramenta(nome, input, apiKeyValue) {
   if (nome === "listar_funcionarios") {
     const snap = await db.collection("funcionarios").orderBy("nome").get();
@@ -3849,17 +3930,9 @@ exports.avisoJurosBbsFomento = onDocumentCreated(
     const juros = Number(c.saida) || 0;
     const creditado = valorBruto - juros;
 
-    const texto = [
-      "OPERACAO BBS FOMENTO",
-      "",
-      `Bruto......: ${fmtMoeda(valorBruto)}`,
-      `Juros.......: ${fmtMoeda(juros)}`,
-      "         ----------------",
-      `Liquido...: ${fmtMoeda(creditado)}`
-    ].join("\n");
-
     try {
-      await enviarWhatsAppEvolution(texto, evolutionApiKey.value(), ["5581992114764"]);
+      const buffer = await gerarImagemOperacaoBBS({ bruto: valorBruto, juros, liquido: creditado });
+      await enviarImagemEvolution(buffer, "operacao-bbs-fomento.png", "Operação BBS Fomento", evolutionApiKey.value(), ["5581992114764"]);
     } catch (e) {
       logger.error("Erro ao enviar aviso de juros BBS Fomento:", e.message);
       throw e;
