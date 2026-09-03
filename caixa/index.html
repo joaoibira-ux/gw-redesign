@@ -10,7 +10,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <link rel="manifest" href="./manifest.json" />
   <link rel="apple-touch-icon" href="./logo-gw.png.jpeg" />
-  <link rel="stylesheet" href="./style.css?v=34" />
+  <link rel="stylesheet" href="./style.css?v=35" />
   <style>
     html.gw-blocked body > *:not(#aviso-instalacao) { display: none !important; }
     #aviso-instalacao {
@@ -171,7 +171,17 @@
   </div>
 </div>
 
-<script src="./app.js?v=88"></script>
+<div class="modal-overlay" id="comprovante-viewer-overlay">
+  <div class="modal modal-comprovantes">
+    <h3 style="color:#1565c0">Comprovante(s) anexado(s)</h3>
+    <div id="comprovante-viewer-corpo" class="cp-viewer-corpo"></div>
+    <div class="modal-btns">
+      <button class="btn-cancelar" onclick="fecharVisualizadorComprovantes()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<script src="./app.js?v=89"></script>
 <script>
   if (document.documentElement.classList.contains('gw-blocked')) {
     (function() {

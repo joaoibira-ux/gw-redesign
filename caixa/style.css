@@ -178,6 +178,9 @@ input:focus, select:focus {
   line-height: 1;
   text-decoration: none;
   padding: 2px 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
 }
 .card-comprovante-clip:active { opacity: 0.6; }
 .card-comprovante-add {
@@ -203,6 +206,68 @@ input:focus, select:focus {
   cursor: pointer;
 }
 .card-comprovante-del:active { color: #f44336; }
+
+.modal-comprovantes { max-width: 460px; }
+.cp-viewer-corpo {
+  max-height: 65vh;
+  overflow-y: auto;
+  margin-bottom: 14px;
+}
+.cp-viewer-bloco { margin-bottom: 18px; }
+.cp-viewer-bloco:last-child { margin-bottom: 0; }
+.cp-viewer-bloco-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #666;
+}
+.cp-viewer-bloco-header-acoes {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.cp-viewer-abrir {
+  color: #1976d2;
+  text-decoration: none;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.cp-viewer-excluir {
+  background: none;
+  border: none;
+  color: #bbb;
+  font-size: 0.95rem;
+  cursor: pointer;
+  padding: 2px 4px;
+  line-height: 1;
+}
+.cp-viewer-excluir:active { color: #f44336; }
+.cp-viewer-img {
+  width: 100%;
+  border-radius: 8px;
+  display: block;
+}
+.cp-viewer-pdf {
+  width: 100%;
+  height: 360px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+}
+.cp-viewer-add-segundo {
+  width: 100%;
+  background: #f0f4f0;
+  color: #4a7a54;
+  border: 1px dashed #b7ccb9;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cp-viewer-add-segundo:active { background: #dce8dd; }
 .card-meta .numero {
   font-weight: 600;
   color: #aaa;

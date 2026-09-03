@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.61";
+const VERSAO_CAIXA = "3.62";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -39,12 +39,16 @@ async function uploadComprovante(file) {
   return { url: result.data.url, nomeArquivo: file.name };
 }
 
-// Anexa um comprovante a um lançamento JÁ EXISTENTE (que ainda não tinha
-// nenhum) — abre o seletor de arquivo e, ao escolher, sobe e grava direto
-// no documento, sem precisar editar mais nada.
+// Anexa um comprovante a um lançamento JÁ EXISTENTE — abre o seletor de
+// arquivo e, ao escolher, sobe e grava direto no documento. "slot" 1 é o
+// primeiro comprovante (comprovanteUrl), "slot" 2 é o segundo
+// (comprovante2Url) — cada lançamento aceita no máximo 2, o slot 1 nunca
+// fica vazio com o 2 preenchido (ver removerComprovante).
 let _anexarComprovanteAlvoId = null;
-function anexarComprovanteExistente(id) {
+let _anexarComprovanteSlot = 1;
+function anexarComprovanteExistente(id, slot = 1) {
   _anexarComprovanteAlvoId = id;
+  _anexarComprovanteSlot = slot;
   document.getElementById("f-comprovante-existente").click();
 }
 
@@ -52,15 +56,24 @@ document.getElementById("f-comprovante-existente").addEventListener("change", as
   const file = this.files[0];
   this.value = "";
   const id = _anexarComprovanteAlvoId;
+  const slot = _anexarComprovanteSlot;
   _anexarComprovanteAlvoId = null;
+  _anexarComprovanteSlot = 1;
   if (!file || !id) return;
 
   try {
     const comprovante = await uploadComprovante(file);
-    await col.doc(id).update({
-      comprovanteUrl: comprovante.url,
-      comprovanteNomeArquivo: comprovante.nomeArquivo
-    });
+    const campos = slot === 2
+      ? { comprovante2Url: comprovante.url, comprovante2NomeArquivo: comprovante.nomeArquivo }
+      : { comprovanteUrl: comprovante.url, comprovanteNomeArquivo: comprovante.nomeArquivo };
+    await col.doc(id).update(campos);
+
+    // Atualiza o cache local na hora (não espera o onSnapshot) pra poder
+    // reabrir o visualizador já com o novo documento.
+    if (docsCache[id]) Object.assign(docsCache[id], campos);
+    if (document.getElementById("comprovante-viewer-overlay").classList.contains("active")) {
+      abrirVisualizadorComprovantes(id);
+    }
   } catch (err) {
     console.error("Erro ao anexar comprovante:", err);
     alert("Erro ao anexar comprovante: " + (err.code || err.message || "falha desconhecida") + "\n\nTente novamente.");
@@ -69,23 +82,103 @@ document.getElementById("f-comprovante-existente").addEventListener("change", as
 
 const excluirComprovanteFn = firebase.functions().httpsCallable("excluirComprovante");
 
-async function removerComprovante(id) {
+async function removerComprovante(id, slot = 1) {
   const r = docsCache[id];
-  if (!r || !r.comprovanteUrl) return;
+  const url = slot === 2 ? r?.comprovante2Url : r?.comprovanteUrl;
+  if (!r || !url) return;
   const senha = prompt("EXCLUIR COMPROVANTE ANEXADO?\n\n" + r.descricao + "\n\nDigite a senha:");
   if (senha === null) return;
   if (senha !== "6535" && senha !== "4512") { alert("Senha incorreta."); return; }
 
   try {
-    await excluirComprovanteFn({ url: r.comprovanteUrl });
-    await col.doc(id).update({
-      comprovanteUrl: firebase.firestore.FieldValue.delete(),
-      comprovanteNomeArquivo: firebase.firestore.FieldValue.delete()
-    });
+    await excluirComprovanteFn({ url });
+
+    let campos;
+    if (slot === 1 && r.comprovante2Url) {
+      // Promove o 2º documento pro lugar do 1º — o resto da UI assume que,
+      // se existe algum comprovante, ele está sempre no slot 1.
+      campos = {
+        comprovanteUrl: r.comprovante2Url,
+        comprovanteNomeArquivo: r.comprovante2NomeArquivo,
+        comprovante2Url: firebase.firestore.FieldValue.delete(),
+        comprovante2NomeArquivo: firebase.firestore.FieldValue.delete()
+      };
+    } else if (slot === 1) {
+      campos = {
+        comprovanteUrl: firebase.firestore.FieldValue.delete(),
+        comprovanteNomeArquivo: firebase.firestore.FieldValue.delete()
+      };
+    } else {
+      campos = {
+        comprovante2Url: firebase.firestore.FieldValue.delete(),
+        comprovante2NomeArquivo: firebase.firestore.FieldValue.delete()
+      };
+    }
+    await col.doc(id).update(campos);
+
+    if (slot === 1 && r.comprovante2Url) {
+      r.comprovanteUrl = r.comprovante2Url;
+      r.comprovanteNomeArquivo = r.comprovante2NomeArquivo;
+      delete r.comprovante2Url;
+      delete r.comprovante2NomeArquivo;
+    } else if (slot === 1) {
+      delete r.comprovanteUrl;
+      delete r.comprovanteNomeArquivo;
+    } else {
+      delete r.comprovante2Url;
+      delete r.comprovante2NomeArquivo;
+    }
+
+    const overlay = document.getElementById("comprovante-viewer-overlay");
+    if (overlay.classList.contains("active")) {
+      if (r.comprovanteUrl) abrirVisualizadorComprovantes(id); else fecharVisualizadorComprovantes();
+    }
   } catch (err) {
     console.error("Erro ao excluir comprovante:", err);
     alert("Erro ao excluir comprovante: " + (err.code || err.message || "falha desconhecida"));
   }
+}
+
+function _comprovanteEhPdf(nomeArquivo) {
+  return /\.pdf$/i.test(nomeArquivo || "");
+}
+
+function _blocoVisualizadorComprovante(url, nomeArquivo, slot, docId) {
+  const visual = _comprovanteEhPdf(nomeArquivo)
+    ? `<iframe src="${escHtml(url)}" class="cp-viewer-pdf"></iframe>`
+    : `<img src="${escHtml(url)}" class="cp-viewer-img" alt="Comprovante ${slot}">`;
+  return `
+    <div class="cp-viewer-bloco">
+      <div class="cp-viewer-bloco-header">
+        <span>Documento ${slot}</span>
+        <div class="cp-viewer-bloco-header-acoes">
+          <a href="${escHtml(url)}" target="_blank" rel="noopener" class="cp-viewer-abrir">Abrir</a>
+          <button type="button" class="cp-viewer-excluir" onclick="removerComprovante('${docId}', ${slot})" title="Excluir esse documento">🗑</button>
+        </div>
+      </div>
+      ${visual}
+    </div>`;
+}
+
+// Mostra os comprovantes do lançamento numa única tela — quando há 2, os
+// dois aparecem juntos (empilhados) em vez de abrir um por vez em aba nova.
+function abrirVisualizadorComprovantes(id) {
+  const r = docsCache[id];
+  if (!r || !r.comprovanteUrl) return;
+
+  let html = _blocoVisualizadorComprovante(r.comprovanteUrl, r.comprovanteNomeArquivo, 1, id);
+  if (r.comprovante2Url) {
+    html += _blocoVisualizadorComprovante(r.comprovante2Url, r.comprovante2NomeArquivo, 2, id);
+  } else {
+    html += `<button type="button" class="cp-viewer-add-segundo" onclick="anexarComprovanteExistente('${id}', 2)">+ Anexar 2º documento</button>`;
+  }
+
+  document.getElementById("comprovante-viewer-corpo").innerHTML = html;
+  document.getElementById("comprovante-viewer-overlay").classList.add("active");
+}
+
+function fecharVisualizadorComprovantes() {
+  document.getElementById("comprovante-viewer-overlay").classList.remove("active");
 }
 
 function fmtMoeda(v) {
@@ -266,8 +359,7 @@ function render(docs) {
           <span>${escHtml(r.data)}</span>
           <span class="badge${isCredito ? ' credito-prolabore' : ''}">${escHtml(r.origem)}</span>
           ${r.comprovanteUrl
-            ? `<a href="${escHtml(r.comprovanteUrl)}" target="_blank" rel="noopener" class="card-comprovante-clip" onclick="event.stopPropagation()" title="Ver comprovante anexado">📎</a>
-               <button type="button" class="card-comprovante-del" onclick="event.stopPropagation();removerComprovante('${doc.id}')" title="Excluir comprovante">✕</button>`
+            ? `<button type="button" class="card-comprovante-clip" onclick="event.stopPropagation();abrirVisualizadorComprovantes('${doc.id}')" title="Ver comprovante(s) anexado(s)">📎${r.comprovante2Url ? '²' : ''}</button>`
             : `<button type="button" class="card-comprovante-add" onclick="event.stopPropagation();anexarComprovanteExistente('${doc.id}')" title="Anexar comprovante">📎 Anexar</button>`}
         </div>
       </div>`;
