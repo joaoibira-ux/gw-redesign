@@ -24,6 +24,14 @@ const EVOLUTION_DESTINATARIOS = ["5581992114764", "5581988310203"];
 const EVOLUTION_DESTINATARIOS_ADIANTAMENTO = ["5581992114764", "5581993697990"];
 const EVOLUTION_DESTINATARIOS_REFEICOES = ["5581992114764", "5581991725267"];
 const EVOLUTION_DESTINATARIOS_PONTO = ["5581992114764", "5581993697990"];
+// LIGADO em 2026-09-04: WhatsApp da GW fora do ar (restrição da sessão do
+// dispositivo vinculado, ver evolution_api_vm.md) — enquanto durar,
+// enviarWhatsAppEvolution/enviarImagemEvolution redirecionam tudo pro
+// Telegram do João (mesmo bot já usado pelo relatório do caixa) em vez de
+// tentar a Evolution API, incluindo no texto/legenda pra quem era a mensagem
+// original, pra ele encaminhar manualmente. Desligar (voltar a "false")
+// assim que o WhatsApp for confirmado funcionando de novo.
+const WHATSAPP_INDISPONIVEL = true;
 // Número da própria instância "gw" (é o WhatsApp pessoal do João, pareado
 // como aparelho vinculado — não um número de bot dedicado). O agente via
 // WhatsApp só responde na conversa "Mensagens para você mesmo" desse número.
@@ -563,6 +571,20 @@ async function enviarDocumentoTelegram(buffer, filename, caption) {
   if (!resp.ok || !result || !result.ok) {
     console.error("Erro ao enviar documento Telegram:", resp.status, JSON.stringify(result).slice(0, 500));
     throw new Error("Falha ao enviar documento pelo Telegram: " + (result?.description || `status ${resp.status}`));
+  }
+  return result;
+}
+
+async function enviarTextoTelegram(texto) {
+  const resp = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: texto })
+  });
+  const result = await resp.json().catch(() => null);
+  if (!resp.ok || !result || !result.ok) {
+    console.error("Erro ao enviar texto Telegram:", resp.status, JSON.stringify(result).slice(0, 500));
+    throw new Error("Falha ao enviar mensagem pelo Telegram: " + (result?.description || `status ${resp.status}`));
   }
   return result;
 }
@@ -3721,6 +3743,11 @@ function linhaContaPagar(c) {
 // mesmo assim e só lança erro no final (evita 1 número quebrado silenciar
 // o aviso pros demais).
 async function enviarWhatsAppEvolution(texto, apiKeyValue, destinatarios = EVOLUTION_DESTINATARIOS) {
+  if (WHATSAPP_INDISPONIVEL) {
+    const textoComDestino = `📤 Enviar por WhatsApp para: ${destinatarios.join(", ")}\n\n${texto}`;
+    await enviarTextoTelegram(textoComDestino);
+    return;
+  }
   const erros = [];
   for (const numero of destinatarios) {
     const resp = await fetch(`${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
@@ -3745,6 +3772,11 @@ async function enviarWhatsAppEvolution(texto, apiKeyValue, destinatarios = EVOLU
 // sendMedia em vez de sendText). "buffer" é o PNG já pronto (ex: retorno de
 // gerarImagemExtrato).
 async function enviarImagemEvolution(buffer, filename, caption, apiKeyValue, destinatarios = EVOLUTION_DESTINATARIOS) {
+  if (WHATSAPP_INDISPONIVEL) {
+    const legendaComDestino = `${caption || ""}\n\n📤 Enviar por WhatsApp para: ${destinatarios.join(", ")}`;
+    await enviarFotoTelegram(buffer, filename, legendaComDestino);
+    return;
+  }
   const mediaBase64 = buffer.toString("base64");
   const erros = [];
   for (const numero of destinatarios) {
