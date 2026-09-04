@@ -24,14 +24,13 @@ const EVOLUTION_DESTINATARIOS = ["5581992114764", "5581988310203"];
 const EVOLUTION_DESTINATARIOS_ADIANTAMENTO = ["5581992114764", "5581993697990"];
 const EVOLUTION_DESTINATARIOS_REFEICOES = ["5581992114764", "5581991725267"];
 const EVOLUTION_DESTINATARIOS_PONTO = ["5581992114764", "5581993697990"];
-// LIGADO em 2026-09-04: WhatsApp da GW fora do ar (restrição da sessão do
-// dispositivo vinculado, ver evolution_api_vm.md) — enquanto durar,
-// enviarWhatsAppEvolution/enviarImagemEvolution redirecionam tudo pro
-// Telegram do João (mesmo bot já usado pelo relatório do caixa) em vez de
-// tentar a Evolution API, incluindo no texto/legenda pra quem era a mensagem
-// original, pra ele encaminhar manualmente. Desligar (voltar a "false")
-// assim que o WhatsApp for confirmado funcionando de novo.
-const WHATSAPP_INDISPONIVEL = true;
+// DESLIGADO em 2026-09-04: WhatsApp voltou a funcionar depois de parear a
+// instância "gw" com um número novo (558192247015) — o número antigo
+// (558199356399) tinha entrado numa restrição que aceitava conexão mas
+// nunca entregava mensagem, mesmo com sessão 100% nova (ver
+// evolution_api_vm.md). Se cair de novo, reativar (true) redireciona tudo
+// pro Telegram até resolver.
+const WHATSAPP_INDISPONIVEL = false;
 // Número da própria instância "gw" (é o WhatsApp pessoal do João, pareado
 // como aparelho vinculado — não um número de bot dedicado). O agente via
 // WhatsApp só responde na conversa "Mensagens para você mesmo" desse número.
