@@ -3952,6 +3952,13 @@ exports.avisoJurosBbsFomento = onDocumentCreated(
 exports.avisoRegistroEntrada = onDocumentCreated(
   { document: "pontos/{pontoId}", secrets: [evolutionApiKey] },
   async (event) => {
+    // SUSPENSO em 2026-09-04: suspeita de que a rajada de confirmações de
+    // ponto (vários funcionários batendo entrada quase juntos, ~6h20) esteja
+    // sobrecarregando a sessão do WhatsApp na Evolution API e causando a
+    // desconexão diária "device_removed" (ver evolution_api_vm.md). Reativar
+    // só depois de confirmar se o problema para de acontecer sem isso.
+    return;
+    // eslint-disable-next-line no-unreachable
     const p = event.data?.data();
     if (!p || p.tipo !== "entrada" || !p.funcionarioId) return;
 
