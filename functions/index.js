@@ -174,6 +174,17 @@ const TOOLS_GW = [
     }
   },
   {
+    name: "extrato_refeicoes_nomes_imagem",
+    description: "Gera e envia pelo Telegram a imagem do relatório de refeições de UM dia específico, no mesmo leiaute do relatório automático diário (nome de cada funcionário listado sob CAFÉ DA MANHÃ e ALMOÇO, não só a contagem). Use quando o usuário pedir o relatório de refeições 'com nome de quem comeu' ou de um dia específico (ex: 'manda as refeições de ontem', 'o relatório de refeições de hoje') — diferente de extrato_refeicoes_imagem, que é pra um PERÍODO e mostra só contagem/custo por dia, sem nomes.",
+    input_schema: {
+      type: "object",
+      properties: {
+        data: { type: "string", description: "Data do relatório, formato YYYY-MM-DD" }
+      },
+      required: ["data"]
+    }
+  },
+  {
     name: "extrato_ponto_individual_imagem",
     description: "Gera o extrato de ponto (entrada, saída e horas trabalhadas por dia) de UM funcionário específico num período, como imagem PNG estilizada com a logo da GW (mesmo estilo visual do extrato_refeicoes_imagem) e envia pelo Telegram. Marca automaticamente como FALTA qualquer dia em que outros funcionários bateram ponto e esse não (dias sem ninguém trabalhando, como fim de semana, não contam falta). Saídas fechadas automaticamente pelo sistema às 14h (funcionário esqueceu de bater saída) aparecem marcadas com *, não como horário real. Use listar_funcionarios antes para obter o funcionarioId correto — NUNCA invente um id. Use quando o usuário pedir o relatório/espelho de ponto de uma pessoa específica num período, em imagem ou pelo Telegram.",
     input_schema: {
@@ -1853,6 +1864,33 @@ async function executarFerramenta(nome, input, apiKeyValue) {
       mensagem: "Imagem do extrato de refeições gerada e enviada pelo Telegram com sucesso.",
       totais: dados.totais,
       periodosJaPagos: dados.periodosJaPagos
+    };
+  }
+
+  // Mesmo leiaute nominal do relatório automático diário (relatorioRefeicoesHoje
+  // — nome de cada funcionário sob CAFÉ DA MANHÃ/ALMOÇO, não só a contagem
+  // como em extrato_refeicoes_imagem), mas pra UM dia à escolha (não só hoje).
+  // Pedido pelo João pra conseguir mandar o relatório de dias específicos
+  // pro Telegram enquanto o WhatsApp automático está fora do ar.
+  if (nome === "extrato_refeicoes_nomes_imagem") {
+    const dados = await calcularRefeicoesHojeComNomes(input.data);
+    try {
+      const buffer = await gerarImagemRefeicoesHoje(dados);
+      await enviarFotoTelegram(
+        buffer,
+        `refeicoes-${input.data}.png`,
+        `Refeições — ${input.data.split("-").reverse().join("/")}`
+      );
+    } catch (err) {
+      console.error(err);
+      return { sucesso: false, erro: "falha_geracao_ou_envio", mensagem: err.message };
+    }
+
+    return {
+      sucesso: true,
+      mensagem: "Imagem do relatório de refeições (com nomes) gerada e enviada pelo Telegram com sucesso.",
+      cafe: dados.cafeNomes.length,
+      almoco: dados.almocoNomes.length
     };
   }
 
