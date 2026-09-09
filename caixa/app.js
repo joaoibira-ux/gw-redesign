@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.62";
+const VERSAO_CAIXA = "3.63";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -910,6 +910,14 @@ function criarEntradaEmprestimo(data, desc, entrada, comprovante) {
   const batch = db.batch();
   const contaPagarRef = db.collection("contasPagar").doc();
 
+  // Nome do registro no Contas a Pagar: "{DESCRIÇÃO} EMPRESTIMO N. {numero}",
+  // exceto quando é BBS Fomento — aí não repete "EMPRESTIMO" (a descrição já
+  // deixa isso claro, ex: "BBS FOMENTO N. 0402" em vez de "BBS FOMENTO
+  // EMPRESTIMO N. 0402").
+  const nomeUpper = (desc || "").trim().toUpperCase();
+  const ehBBS = /BBS/.test(nomeUpper);
+  const descricaoContaPagar = ehBBS ? `${nomeUpper} N. ${numero}` : `${nomeUpper} EMPRESTIMO N. ${numero}`;
+
   batch.set(col.doc(), {
     data, origem: "ANE->EMPRESTIMO", descricao: desc,
     entrada, saida: 0,
@@ -919,7 +927,7 @@ function criarEntradaEmprestimo(data, desc, entrada, comprovante) {
   });
 
   batch.set(contaPagarRef, {
-    numero, data: vencimento.trim(), descricao: desc, valor: entrada, status: "aberto",
+    numero, data: vencimento.trim(), descricao: descricaoContaPagar, valor: entrada, status: "aberto",
     criadoEm: firebase.firestore.FieldValue.serverTimestamp()
   });
 
