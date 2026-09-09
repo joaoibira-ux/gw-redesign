@@ -322,7 +322,7 @@ const FIREBASE_CONFIG = {
 };
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 const MATCH_THRESHOLD = 0.55;
-const VERSAO          = '2.14';
+const VERSAO          = '2.15';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let db;
@@ -426,11 +426,15 @@ function mostrarErroLocalizacao(msg) {
   showScreen('s-loc-error');
 }
 
+// "accuracy" (metros de incerteza que o próprio GPS reporta) vai junto pro
+// registro do ponto — não impede localização falsificada, mas cria rastro:
+// apps de GPS falso costumam devolver um valor "redondo demais" (ex:
+// exatamente 5, 10, 20) em vez da variação real que um GPS de celular tem.
 function getPosicao() {
   return new Promise((res, rej) => {
-    if (!navigator.geolocation) { res({ lat: 0, lng: 0 }); return; }
+    if (!navigator.geolocation) { res({ lat: 0, lng: 0, accuracy: null }); return; }
     navigator.geolocation.getCurrentPosition(
-      p => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      p => res({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy }),
       rej,
       { timeout: 10000, maximumAge: 60000 }
     );
