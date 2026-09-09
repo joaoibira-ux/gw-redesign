@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.37";
+const VERSAO = "3.38";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -99,7 +99,7 @@ let faceStream = null;
 let pendingFaceDescriptor = null;
 let pendingFotoThumb = null;
 
-// PIN 2912 (tela de login) = cadastro simplificado: só Nome, Face, Cargo, Admissão, Telefone, Obs.
+// PIN 2912 (tela de login) = cadastro simplificado: só Nome, Face, Cargo, Admissão, Telefone, CPF, Obs.
 const CADASTRO_SIMPLIFICADO = sessionStorage.getItem('gw_auth') === 'cadastro';
 
 function aplicarModoSimplificado() {
@@ -476,6 +476,8 @@ function validarFormulario() {
   if (!v("f-cargo"))          erros.push("Cargo");
   data(v("f-admissao"), "Admissão (DD/MM/AAAA)", erros);
   if (!editando && !v("f-telefone"))       erros.push("Telefone");
+  const cpf = v("f-cpf");
+  if ((!editando || cpf) && !validarCPF(cpf)) erros.push("CPF inválido");
   if (simplificado) return erros;
   const cargoValidacao = v("f-cargo");
   const diariaAtiva = !ehPorProducao(cargoValidacao) && document.getElementById("f-por-diaria").checked;
@@ -488,8 +490,6 @@ function validarFormulario() {
   if (!editando && !v("f-nomemae"))        erros.push("Nome da Mãe");
   if (!editando && !rb("instrucao"))       erros.push("Grau de Instrução");
   if (!editando && !rb("instrucao_status"))erros.push("Grau de Instrução (Completo/Incompleto/Cursando)");
-  const cpf = v("f-cpf");
-  if ((!editando || cpf) && !validarCPF(cpf)) erros.push("CPF inválido");
   if (!editando && !v("f-rg"))             erros.push("Identidade (RG)");
   if (!editando && !v("f-orgaoemissor"))   erros.push("Órgão Emissor");
   if (!editando && !v("f-ufrg"))           erros.push("UF Identidade");
