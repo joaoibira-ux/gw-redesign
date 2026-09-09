@@ -1390,6 +1390,110 @@ async function gerarImagemExtratoFolha(dados) {
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
+// Recibo de pagamento (Proventos/Descontos/Líquido) — mesma estrutura de
+// dados que folha/app.js usa pro recibo individual em tela (montarReciboPessoa:
+// proventos/descontos como [{label, valor}], liquido = número), só que
+// renderizado em SVG no servidor em vez de html2canvas no navegador, pra
+// poder ser gerado em lote (todos os funcionários de uma folha) e mandado
+// pro Telegram sem precisar abrir a tela do Recibo pra cada um.
+function construirSVGRecibo(dados, logoBase64) {
+  const LARGURA = 700;
+  const PAD = 44;
+  const ALT_HEADER = 190;
+  const ALT_TITULO_SECAO = 36;
+  const ALT_LINHA = 40;
+  const ALT_SUBTOTAL = 34;
+  const ESPACO_ENTRE_SECOES = 16;
+  const ALT_LIQUIDO = 90;
+  const ALT_FOOTER = 50;
+
+  const larguraCard = LARGURA - PAD * 2;
+  const totalProv = dados.proventos.reduce((a, p) => a + p.valor, 0);
+  const totalDesc = dados.descontos.reduce((a, p) => a + p.valor, 0);
+
+  const altSecaoProv = ALT_TITULO_SECAO + dados.proventos.length * ALT_LINHA + ALT_SUBTOTAL;
+  const altSecaoDesc = dados.descontos.length ? (ALT_TITULO_SECAO + dados.descontos.length * ALT_LINHA + ALT_SUBTOTAL + ESPACO_ENTRE_SECOES) : 0;
+  const ALTURA = ALT_HEADER + altSecaoProv + altSecaoDesc + ESPACO_ENTRE_SECOES + ALT_LIQUIDO + ALT_FOOTER + PAD;
+
+  let y = ALT_HEADER;
+
+  function montarSecao(titulo, itens, total, cor, neg) {
+    let svg = `<text x="${PAD}" y="${y + 22}" font-size="14" font-weight="700" letter-spacing="1" fill="${cor}" font-family="Arial, Helvetica, sans-serif">${escXml(titulo)}</text>`;
+    y += ALT_TITULO_SECAO;
+    itens.forEach((it, i) => {
+      const bg = i % 2 === 0 ? "rgba(255,255,255,0.035)" : "transparent";
+      svg += `
+        <rect x="${PAD}" y="${y}" width="${larguraCard}" height="${ALT_LINHA}" fill="${bg}" rx="8"/>
+        <text x="${PAD + 16}" y="${y + ALT_LINHA / 2 + 5}" font-size="15" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif">${escXml(it.label)}</text>
+        <text x="${PAD + larguraCard - 16}" y="${y + ALT_LINHA / 2 + 5}" font-size="15" font-weight="600" fill="${neg ? '#ff8a65' : '#c8e6c9'}" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${neg ? '− ' : ''}${fmtMoeda(it.valor)}</text>
+      `;
+      y += ALT_LINHA;
+    });
+    svg += `
+      <line x1="${PAD}" y1="${y + 6}" x2="${PAD + larguraCard}" y2="${y + 6}" stroke="rgba(165,214,167,0.2)" stroke-width="1"/>
+      <text x="${PAD}" y="${y + ALT_SUBTOTAL / 2 + 12}" font-size="13" font-weight="700" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif">Total ${escXml(titulo)}</text>
+      <text x="${PAD + larguraCard}" y="${y + ALT_SUBTOTAL / 2 + 12}" font-size="15" font-weight="700" fill="${cor}" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${neg ? '− ' : ''}${fmtMoeda(total)}</text>
+    `;
+    y += ALT_SUBTOTAL;
+    return svg;
+  }
+
+  const secaoProventos = montarSecao("Proventos", dados.proventos, totalProv, "#69f0ae", false);
+  y += ESPACO_ENTRE_SECOES;
+  const secaoDescontos = dados.descontos.length ? montarSecao("Descontos", dados.descontos, totalDesc, "#ff8a65", true) : "";
+  if (dados.descontos.length) y += ESPACO_ENTRE_SECOES;
+
+  const blocoLiquido = `
+    <rect x="${PAD}" y="${y}" width="${larguraCard}" height="${ALT_LIQUIDO}" rx="16" fill="rgba(105,240,174,0.08)" stroke="rgba(105,240,174,0.35)" stroke-width="1.5"/>
+    <text x="${PAD + 28}" y="${y + ALT_LIQUIDO / 2 - 6}" font-size="14" font-weight="700" letter-spacing="1" fill="#a5d6a7" font-family="Arial, Helvetica, sans-serif">LÍQUIDO A RECEBER</text>
+    <text x="${PAD + larguraCard - 28}" y="${y + ALT_LIQUIDO / 2 + 14}" font-size="28" font-weight="800" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${fmtMoeda(dados.liquido)}</text>
+  `;
+  y += ALT_LIQUIDO;
+
+  const footerY = y + 34;
+  const footer = `
+    <text x="${LARGURA / 2}" y="${footerY}" font-size="11" letter-spacing="1" fill="#5a8a63" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">Recibo de Pagamento • Sistema GW • ${escXml(dados.data || "")}</text>
+  `;
+
+  const logoW = 64, logoH = 64 * (1106 / 1422);
+
+  return `
+<svg width="${LARGURA}" height="${ALTURA}" viewBox="0 0 ${LARGURA} ${ALTURA}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#12331f"/>
+      <stop offset="45%" stop-color="#0c2417"/>
+      <stop offset="100%" stop-color="#06120b"/>
+    </linearGradient>
+    <clipPath id="logoClip"><rect x="0" y="0" width="${logoW}" height="${logoH}" rx="10"/></clipPath>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#69f0ae" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#69f0ae" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="${LARGURA}" height="${ALTURA}" fill="url(#bg)"/>
+  <circle cx="${LARGURA / 2}" cy="${40 + logoH / 2}" r="90" fill="url(#glow)"/>
+  <g transform="translate(${LARGURA / 2 - logoW / 2}, 40)">
+    <image href="data:image/png;base64,${logoBase64}" width="${logoW}" height="${logoH}" clip-path="url(#logoClip)"/>
+  </g>
+
+  <text x="${LARGURA / 2}" y="${40 + logoH + 34}" font-size="24" font-weight="800" letter-spacing="2" fill="#f1f8f2" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">${escXml((dados.nome || "").toUpperCase())}</text>
+  <text x="${LARGURA / 2}" y="${40 + logoH + 58}" font-size="13" font-weight="700" letter-spacing="3" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">${escXml((dados.cargo || "").toUpperCase())}${dados.cargo ? " • " : ""}RECIBO DE PAGAMENTO</text>
+
+  ${secaoProventos}
+  ${secaoDescontos}
+  ${blocoLiquido}
+  ${footer}
+</svg>`;
+}
+
+async function gerarImagemRecibo(dados) {
+  const logoBase64 = fs.readFileSync(path.join(__dirname, "Logo-gw.png")).toString("base64");
+  const svg = construirSVGRecibo(dados, logoBase64);
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
 // Extrai o nome do funcionário de uma descrição "Adiantamento: {nome} — ..."
 // OU "Adiantamento {nome}" sem ":" (digitado à mão em lançamentos manuais de
 // Contas a Pagar — mesmo padrão usado em funcionarios/app.js e caixa/relatorio.html).
@@ -3876,6 +3980,40 @@ exports.enviarReciboWhatsApp = onCall(
       throw new HttpsError("internal", `Falha ao enviar imagem: status ${resp.status}`);
     }
     return { enviado: true };
+  }
+);
+
+// Chamada por caixa/relatorio.html logo após fechar a folha (fecharMedicaoFolha)
+// — recebe um recibo já calculado por funcionário (mesma estrutura
+// proventos/descontos/liquido do recibo individual em folha/app.js, só que
+// os valores vêm de lá prontos porque o fechamento já os calculou; aqui só
+// gera a imagem e manda) e envia a imagem de cada um pro Telegram, tudo de
+// uma vez. Pedido do João: nenhum recibo individual sai por WhatsApp aqui,
+// só a cópia interna pro Telegram — o envio por WhatsApp pro próprio
+// funcionário continua manual, pela tela de Recibo em Folha.
+exports.enviarRecibosFolhaTelegram = onCall(
+  { cors: true, invoker: "public", timeoutSeconds: 120 },
+  async (request) => {
+    const { recibos } = request.data || {};
+    if (!Array.isArray(recibos) || recibos.length === 0) {
+      throw new HttpsError("invalid-argument", "recibos deve ser uma lista não vazia.");
+    }
+
+    let enviados = 0;
+    const erros = [];
+    for (const r of recibos) {
+      if (!r || !r.nome || !Array.isArray(r.proventos)) continue;
+      try {
+        const buffer = await gerarImagemRecibo(r);
+        await enviarFotoTelegram(buffer, `recibo-${r.nome}.png`, `Recibo — ${r.nome}${r.cargo ? " (" + r.cargo + ")" : ""}`);
+        enviados++;
+      } catch (err) {
+        logger.error("[enviarRecibosFolhaTelegram] falha num recibo", { nome: r.nome, erro: err.message });
+        erros.push({ nome: r.nome, erro: err.message });
+      }
+    }
+
+    return { enviados, total: recibos.length, erros };
   }
 );
 

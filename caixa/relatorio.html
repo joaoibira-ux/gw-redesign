@@ -689,8 +689,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.05";
+  const VERSAO = "2.07";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1761,12 +1762,13 @@
   // 'concluido', zera diárias e passagens, converte adiantamentos (mesmas
   // baixas que o pagamento da folha fazia direto no caixa) — só que, em vez
   // de lançar a saída direto no caixa, gera contas a pagar (folha e
-  // passagens separadas) com vencimento no fim da quinzena atual (dia 15,
-  // ou o último dia do mês na quinzena 16-fim).
-  function fimQuinzenaAtual() {
+  // passagens separadas) com vencimento na próxima sexta-feira após o
+  // fechamento (revertido em 2026-09-09 — tinha passado por "fim da
+  // quinzena atual" numa mudança anterior, mas a regra combinada é essa).
+  function proximaSexta() {
     const hoje = new Date();
-    if (hoje.getDate() <= 15) return new Date(hoje.getFullYear(), hoje.getMonth(), 15);
-    return new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+    const diasAteSexta = ((5 - hoje.getDay()) + 7) % 7 || 7;
+    return new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + diasAteSexta);
   }
 
   function fmtDataBR(d) {
@@ -1778,8 +1780,7 @@
   // preciso ter em caixa nos próximos 3 e 7 dias: soma as contas a pagar já
   // abertas (vencimento em 'data') com o que a Folha, as Passagens e as
   // Refeições vão gerar quando fechadas (mesmo cálculo de fecharMedicaoFolha,
-  // usando fimQuinzenaAtual() como data de vencimento projetada — dia 15 ou
-  // o último dia do mês, conforme a quinzena atual).
+  // usando proximaSexta() como data de vencimento projetada).
   let _contasPagarSnap = null;
 
   // Mesmos valores/cortes usados em functions/index.js (calcularExtratoRefeicoes)
@@ -1952,7 +1953,7 @@
     if (!el || _ultimaFolha === undefined || !_contasPagarSnap) return;
 
     const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-    const dataFechamento = fimQuinzenaAtual(); dataFechamento.setHours(0, 0, 0, 0);
+    const dataFechamento = proximaSexta(); dataFechamento.setHours(0, 0, 0, 0);
 
     const itens = [];
     const totalFolha = calcularTotalFolhaAberta();
@@ -2188,30 +2189,54 @@
       const descontosMapFechamento = montarDescontosMap(funcSnap, folha);
 
       let totalBruto = 0, totalInssFechamento = 0, totalPassagensFechamento = 0, totalAdiant = 0;
+      const recibosParaTelegram = [];
       grupos.forEach(g => {
         const temProd = !g.isEncarregado && funcTemProducaoLocal(g.funcionario?.cargo, g.funcionario?.nome);
         const temDia  = !g.isEncarregado && funcTemDiariaLocal(g.funcionario?.cargo, g.funcionario?.nome);
         let bruto = g.subtotal || 0;
+        const proventos = [];
         if (g.isEncarregado) {
           const quinzena = (g.itens || []).find(i => i.servico === 'Quinzena 50%');
-          if (quinzena) bruto = Number(quinzena.valor || 0) + 5 * nServTotal;
+          bruto = quinzena ? Number(quinzena.valor || 0) + 5 * nServTotal : 0;
+          if (bruto > 0) proventos.push({ label: 'Quinzena', valor: bruto });
         } else {
           bruto = 0;
           if (temProd) {
             const key = g.funcionario.id || g.funcionario.nome;
             const info = porFuncProducao.get(key) || porFuncProducao.get(normNome(g.funcionario.nome));
-            bruto += info ? info.total : 0;
+            const valorProd = info ? info.total : 0;
+            if (valorProd > 0) proventos.push({ label: 'Produção', valor: valorProd });
+            bruto += valorProd;
           }
         }
         if (g.isEncarregado || temDia) {
           const diaria = diariaPorFunc.get(normNome(g.funcionario.nome));
-          if (diaria) bruto += diaria.total;
+          if (diaria && diaria.total > 0) {
+            proventos.push({ label: 'Diária', valor: diaria.total });
+            bruto += diaria.total;
+          }
         }
         const descFechamento = descontosMapFechamento.get(g.funcionario?.id) ?? descontosMapFechamento.get(normNome(g.funcionario?.nome)) ?? { inss: 0, passagens: 0 };
+        const adiantPessoa = adiantMap.get(normNome(g.funcionario.nome)) || 0;
         totalBruto     += bruto;
         totalInssFechamento      += descFechamento.inss;
         totalPassagensFechamento += descFechamento.passagens;
-        totalAdiant += adiantMap.get(normNome(g.funcionario.nome)) || 0;
+        totalAdiant += adiantPessoa;
+
+        if (bruto > 0) {
+          const descontos = [];
+          if (descFechamento.inss > 0)      descontos.push({ label: 'INSS',        valor: descFechamento.inss });
+          if (descFechamento.passagens > 0) descontos.push({ label: 'Passagens',   valor: descFechamento.passagens });
+          if (adiantPessoa > 0)             descontos.push({ label: 'Adiantamento', valor: adiantPessoa });
+          recibosParaTelegram.push({
+            nome: g.funcionario.nome,
+            cargo: g.funcionario.cargo || '',
+            data: fmtDataBR(new Date()),
+            proventos,
+            descontos,
+            liquido: bruto - descFechamento.inss - descFechamento.passagens - adiantPessoa
+          });
+        }
       });
       const totalFolha = totalBruto - totalInssFechamento - totalPassagensFechamento - totalAdiant;
 
@@ -2237,7 +2262,7 @@
         return;
       }
 
-      const dataVencimento = fmtDataBR(fimQuinzenaAtual());
+      const dataVencimento = fmtDataBR(proximaSexta());
       const resumo = `Folha: R$ ${fmt(totalFolha)}\nPassagens: R$ ${fmt(totalPassagens)}\n\nVão ser criadas contas a pagar com vencimento em ${dataVencimento}.\nOs serviços em medição serão marcados como concluídos, e as diárias/passagens zeradas.`;
       if (!confirm('Fechar Medição/Folha?\n\n' + resumo)) return;
 
@@ -2320,6 +2345,18 @@
       });
 
       await batch.commit();
+
+      // Envio dos recibos pro Telegram é "melhor esforço" — não deve fazer
+      // o fechamento (já commitado) parecer ter falhado se o Telegram der
+      // erro por qualquer motivo.
+      try {
+        if (recibosParaTelegram.length) {
+          await firebase.functions().httpsCallable('enviarRecibosFolhaTelegram')({ recibos: recibosParaTelegram });
+        }
+      } catch (erroTelegram) {
+        console.error('Erro ao enviar recibos pro Telegram:', erroTelegram);
+      }
+
       alert('Fechado com sucesso! Contas a pagar geradas para ' + dataVencimento + '.');
     } catch (e) {
       console.error(e);
