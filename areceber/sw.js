@@ -1,8 +1,8 @@
-const VERSION = "areceber-v6";
+const VERSION = "areceber-v7";
 const ASSETS = [
   "./index.html",
   "./style.css?v=1",
-  "./app.js?v=3",
+  "./app.js?v=4",
   "./manifest.json",
   "./Logo-gw.png"
 ];

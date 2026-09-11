@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "1.4";
+const VERSAO = "1.5";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -67,6 +67,16 @@ function cardHtml(id, c, baixado) {
     </div>`;
 }
 
+// Ordena por data e, no empate (ex: várias retenções todas vencendo
+// 31/12/2027), por descrição em ordem alfabética — assim registros como
+// "Retenção 5% Paradigma Bm02..Bm12" ficam na ordem certa entre si em vez
+// de na ordem em que foram criados.
+function compararContas(a, b) {
+  const diffData = parseDataBR(a.data().data) - parseDataBR(b.data().data);
+  if (diffData !== 0) return diffData;
+  return (a.data().descricao || "").localeCompare(b.data().descricao || "", "pt-BR");
+}
+
 // A lista principal só mostra contas em aberto — as baixadas ficam na tela
 // separada (botão "Recebidos" no cabeçalho), mesmo processo já usado em
 // Contas a Pagar (tela "Pagos"), pra não poluir o que ainda precisa de atenção.
@@ -82,8 +92,7 @@ function render(docs) {
   });
   document.getElementById("tot-aberto").textContent = fmtMoeda(totalAberto);
 
-  const abertos = docs.filter(doc => doc.data().status !== "baixado")
-    .sort((a, b) => parseDataBR(a.data().data) - parseDataBR(b.data().data));
+  const abertos = docs.filter(doc => doc.data().status !== "baixado").sort(compararContas);
   lista.innerHTML = abertos.length === 0
     ? '<p class="empty">Nenhuma conta em aberto.</p>'
     : abertos.map(doc => cardHtml(doc.id, doc.data(), false)).join("");
@@ -94,8 +103,7 @@ function render(docs) {
 function renderRecebidos(docs) {
   const lista = document.getElementById("lista-recebidos");
   if (!lista) return;
-  const recebidos = docs.filter(doc => doc.data().status === "baixado")
-    .sort((a, b) => parseDataBR(a.data().data) - parseDataBR(b.data().data));
+  const recebidos = docs.filter(doc => doc.data().status === "baixado").sort(compararContas);
   lista.innerHTML = recebidos.length === 0
     ? '<p class="empty">Nenhuma conta recebida ainda.</p>'
     : recebidos.map(doc => cardHtml(doc.id, doc.data(), true)).join("");
