@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.64";
+const VERSAO_CAIXA = "3.65";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -277,10 +277,13 @@ function render(docs) {
         horacioSaidas += r.saida || 0;
       } else if (r.origem === "ANE->EMPRESTIMO") {
         cefE += r.entrada || 0;
-      } else if (r.origem === "ANE->RETENCAO PARADIGMA 5%") {
-        cefS += r.saida || 0;
-      } else if (r.origem === "JOAO->RETENCAO PARADIGMA 5%") {
-        interS += r.saida || 0;
+      } else if (r.origem === "ANE->RETENCAO PARADIGMA 5%" || r.origem === "JOAO->RETENCAO PARADIGMA 5%") {
+        // Removida do dropdown em 2026-09-11 (a pedido do João), mas mantida
+        // aqui pra continuar contando corretamente os 3 lançamentos antigos
+        // que já usam essa origem (maio/junho de 2026) — sem isso o saldo
+        // CEF/INTER ficaria errado pra trás.
+        if (r.origem === "ANE->RETENCAO PARADIGMA 5%") cefS += r.saida || 0;
+        else interS += r.saida || 0;
       } else if (r.origem === "ANE->ADIANTAMENTO" || r.origem === "ANE->ANTECIPACAO") {
         cefS += r.saida || 0;
       } else if (r.origem === "JOAO->ADIANTAMENTO" || r.origem === "JOAO->ANTECIPACAO") {
@@ -588,7 +591,6 @@ const ORIGEM_GRUPOS = {
   "JOAO": [
     { value: "JOAO", label: "JOAO (Geral)" },
     { value: "JOAO->HORACIO", label: "JOÃO → HORÁCIO" },
-    { value: "JOAO->RETENCAO PARADIGMA 5%", label: "JOAO → RETENÇÃO PARADIGMA 5%" },
     { value: "JOAO->CREDITO DE PROLABORE", label: "JOAO → CRÉDITO DE PRÓ-LABORE" },
     { value: "JOAO->JOAO", label: "JOÃO → JOÃO" },
     { value: "JOAO->CTAS A RECEBER", label: "JOÃO → CTAS A RECEBER" },
@@ -654,8 +656,6 @@ document.getElementById("f-origem").addEventListener("change", function() {
     desc.value = "Pró-labore JOAO: CEF -> JOAO";
   } else if (this.value === "JOAO->HORACIO") {
     desc.value = "Transferência Pix: INTER -> HORÁCIO";
-  } else if (this.value === "JOAO->RETENCAO PARADIGMA 5%") {
-    desc.value = "Retenção 5% Paradigma";
   } else if (this.value === "JOAO->CREDITO DE PROLABORE") {
     desc.value = "Crédito Pró-labore: João Albérico";
   } else if (this.value === "JOAO->JOAO") {

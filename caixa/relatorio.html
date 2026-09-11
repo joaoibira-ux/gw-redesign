@@ -613,8 +613,6 @@
           <option value="ANE->HORACIO">ANE → HORACIO</option>
           <option value="JOAO->HORACIO">JOÃO → HORÁCIO</option>
           <option value="ANE->EMPRESTIMO">ANE → ENTRADA DE EMPRÉSTIMO</option>
-          <option value="ANE->RETENCAO PARADIGMA 5%">ANE → RETENÇÃO PARADIGMA 5%</option>
-          <option value="JOAO->RETENCAO PARADIGMA 5%">JOAO → RETENÇÃO PARADIGMA 5%</option>
           <option value="JOAO->JOAO">JOÃO → JOÃO</option>
           <option value="JOAO->CREDITO DE PROLABORE">JOAO → CRÉDITO DE PRÓ-LABORE</option>
         </select>
@@ -691,7 +689,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.07";
+  const VERSAO = "2.08";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1050,10 +1048,12 @@
       } else if (r.origem === "JOAO->HORACIO") {
         interS        += r.saida || 0;
         horacioSaidas += r.saida || 0;
-      } else if (r.origem === "ANE->RETENCAO PARADIGMA 5%") {
-        cefS      += r.saida || 0;
-      } else if (r.origem === "JOAO->RETENCAO PARADIGMA 5%") {
-        interS    += r.saida || 0;
+      } else if (r.origem === "ANE->RETENCAO PARADIGMA 5%" || r.origem === "JOAO->RETENCAO PARADIGMA 5%") {
+        // Removida do dropdown em 2026-09-11 (a pedido do João), mantida
+        // aqui só pra continuar contando certo os 3 lançamentos antigos
+        // que já usam essa origem (maio/junho de 2026).
+        if (r.origem === "ANE->RETENCAO PARADIGMA 5%") cefS += r.saida || 0;
+        else interS += r.saida || 0;
       } else if (r.origem === "ANE->HORACIO") {
         cefS          += r.saida || 0;
         horacioSaidas += r.saida || 0;
