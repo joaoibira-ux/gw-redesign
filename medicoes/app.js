@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.6";
+const VERSAO = "3.7";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -307,6 +307,10 @@ function salvarRevisao() {
     }));
 
   const valorNotaFiscal = parseMoeda(document.getElementById("rv-notafiscal").value);
+  // Boletins de Tratamento de Superfície (nome começa com "Bmt") não têm
+  // retenção da Paradigma — mesmo critério já usado em functions/index.js
+  // (ehBmt) pra separar esse tipo de boletim do resto.
+  const semRetencao = /^bmt/i.test(nome);
 
   col.add({
     nome,
@@ -314,6 +318,7 @@ function salvarRevisao() {
     valor: parseMoeda(document.getElementById("rv-valor").value),
     descontos: parseMoeda(document.getElementById("rv-descontos").value),
     valorNotaFiscal,
+    semRetencao,
     itens,
     imagemUrl: currentImagemUrl || null,
     criadoEm: firebase.firestore.FieldValue.serverTimestamp()
@@ -329,11 +334,12 @@ function salvarRevisao() {
   // Vencimento da conta do BM: dia quinzenal (15/30) mais próximo a partir
   // da data do registro. Vencimento da retenção: sempre a data fixa da
   // Paradigma (não calculada — não tem previsão real de liberação ainda).
-  // Só no registro de medição nova, não em edição de uma já existente, pra
-  // não duplicar o lançamento.
+  // Bmt (semRetencao): a NF inteira vai pro "Medição", sem segunda conta de
+  // retenção nenhuma. Só no registro de medição nova, não em edição de uma
+  // já existente, pra não duplicar o lançamento.
   if (valorNotaFiscal > 0) {
-    const valorLiquido  = Math.round(valorNotaFiscal * 0.95 * 100) / 100;
-    const valorRetencao = Math.round((valorNotaFiscal - valorLiquido) * 100) / 100;
+    const valorLiquido  = semRetencao ? valorNotaFiscal : Math.round(valorNotaFiscal * 0.95 * 100) / 100;
+    const valorRetencao = semRetencao ? 0 : Math.round((valorNotaFiscal - valorLiquido) * 100) / 100;
 
     colReceber.add({
       data: proximoDiaQuinzenal(data),
