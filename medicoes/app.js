@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.5";
+const VERSAO = "3.6";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -383,11 +383,14 @@ function abrirDetalhe(id) {
 
   // Valores computados — em cima do Valor da NF (valorNotaFiscal), não do
   // Medido bruto: quando há desconto, os dois divergem, e é sobre a NF que
-  // a retenção de 5% e o A Receber realmente incidem.
+  // a retenção de 5% e o A Receber realmente incidem. "semRetencao" é uma
+  // exceção pontual (ex: Bm01, que não teve retenção aplicada de verdade) —
+  // quando marcada, a NF inteira vai pro A Receber e não entra na
+  // retenção nem na acumulada.
   const valorNF = m.valorNotaFiscal || 0;
-  const retencao = valorNF * 0.05;
-  const aReceber = valorNF * 0.95;
-  const retencaoAcum = docsAte.reduce((s, d) => s + (d.valorNotaFiscal || 0) * 0.05, 0);
+  const retencao = m.semRetencao ? 0 : valorNF * 0.05;
+  const aReceber = m.semRetencao ? valorNF : valorNF * 0.95;
+  const retencaoAcum = docsAte.reduce((s, d) => s + (d.semRetencao ? 0 : (d.valorNotaFiscal || 0) * 0.05), 0);
 
   document.getElementById("dt-info-grid").innerHTML = `
     <div class="dt-info-item">
