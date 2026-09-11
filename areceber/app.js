@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "1.3";
+const VERSAO = "1.4";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -27,6 +27,15 @@ function fmtMoeda(v) {
 function parseMoeda(s) {
   const v = parseFloat(String(s).replace(/[^\d,]/g, "").replace(",", "."));
   return isNaN(v) ? 0 : v;
+}
+
+// "data" é salva como string DD/MM/AAAA — ordenar direto essa string não
+// bate com ordem cronológica (ex: "05/01/2027" viria antes de "31/12/2026"),
+// por isso converte pra Date antes de comparar.
+function parseDataBR(s) {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s || "");
+  if (!m) return new Date(0);
+  return new Date(+m[3], +m[2] - 1, +m[1]);
 }
 
 function hoje() {
@@ -73,7 +82,8 @@ function render(docs) {
   });
   document.getElementById("tot-aberto").textContent = fmtMoeda(totalAberto);
 
-  const abertos = docs.filter(doc => doc.data().status !== "baixado");
+  const abertos = docs.filter(doc => doc.data().status !== "baixado")
+    .sort((a, b) => parseDataBR(a.data().data) - parseDataBR(b.data().data));
   lista.innerHTML = abertos.length === 0
     ? '<p class="empty">Nenhuma conta em aberto.</p>'
     : abertos.map(doc => cardHtml(doc.id, doc.data(), false)).join("");
@@ -84,7 +94,8 @@ function render(docs) {
 function renderRecebidos(docs) {
   const lista = document.getElementById("lista-recebidos");
   if (!lista) return;
-  const recebidos = docs.filter(doc => doc.data().status === "baixado");
+  const recebidos = docs.filter(doc => doc.data().status === "baixado")
+    .sort((a, b) => parseDataBR(a.data().data) - parseDataBR(b.data().data));
   lista.innerHTML = recebidos.length === 0
     ? '<p class="empty">Nenhuma conta recebida ainda.</p>'
     : recebidos.map(doc => cardHtml(doc.id, doc.data(), true)).join("");
