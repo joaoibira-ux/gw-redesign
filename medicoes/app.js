@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.4";
+const VERSAO = "3.5";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -280,8 +280,9 @@ function proximoDiaQuinzenal(dataStr) {
 
 // A Paradigma só libera a retenção de garantia bem mais adiante — enquanto
 // não tem uma data real prevista, fica com essa data fixa (o João pediu
-// especificamente esse valor, não é um cálculo).
-const DATA_RETENCAO_PARADIGMA = "30/06/2027";
+// especificamente esse valor, não é um cálculo). Atualizado em 2026-09-11
+// de 30/06/2027 para 31/12/2027 (a pedido do João).
+const DATA_RETENCAO_PARADIGMA = "31/12/2027";
 
 function salvarRevisao() {
   const nome = document.getElementById("rv-nome").value.trim();
