@@ -4357,3 +4357,70 @@ exports.alertaPontoEmAberto = onSchedule(
     logger.info(`[alertaPontoEmAberto] enviado: ${naoBateram.length} funcionário(s) sem ponto`);
   }
 );
+
+// Pedido do João (2026-09-10): além do resumo pro responsável (acima, às
+// 10h), cobra CADA funcionário que ainda não bateu ponto às 9h30,
+// diretamente no WhatsApp dele. As mensagens são mandadas uma de cada vez
+// com um intervalo aleatório de 1 a 3 minutos entre elas (não tudo de uma
+// rajada só) — suspeita levantada depois do incidente de conexão de
+// 2026-09-04 é que uma rajada de mensagens quase simultâneas pode ter sido
+// o que deixou a sessão do WhatsApp malvista pro sistema anti-abuso do
+// WhatsApp (ver evolution_api_vm.md). timeoutSeconds alto porque a função
+// fica ativa esperando entre um envio e outro.
+exports.lembretePontoIndividual = onSchedule(
+  { schedule: "30 9 * * 1-6", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey], timeoutSeconds: 1800 },
+  async () => {
+    const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const dataInicio = new Date(hojeISO + "T00:00:00-03:00");
+    const dataFim = new Date(hojeISO + "T23:59:59-03:00");
+
+    const [funcSnap, pontosSnap] = await Promise.all([
+      db.collection("funcionarios").get(),
+      db.collection("pontos")
+        .where("tipo", "==", "entrada")
+        .where("timestamp", ">=", dataInicio)
+        .where("timestamp", "<=", dataFim)
+        .get()
+    ]);
+
+    const funcAtivos = funcSnap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(f => f.ativo !== false);
+
+    const idsComEntrada = new Set();
+    const nomesComEntrada = new Set();
+    pontosSnap.docs.forEach(d => {
+      const p = d.data();
+      if (p.funcionarioId) idsComEntrada.add(p.funcionarioId);
+      if (p.funcionarioNome) nomesComEntrada.add(p.funcionarioNome);
+    });
+
+    const naoBateram = funcAtivos.filter(f => !idsComEntrada.has(f.id) && !nomesComEntrada.has(f.nome));
+    if (naoBateram.length === 0) return;
+
+    let enviados = 0;
+    for (let i = 0; i < naoBateram.length; i++) {
+      const f = naoBateram[i];
+      const numero = formatarNumeroWhatsApp(f.telefone);
+      if (!numero) {
+        logger.warn("[lembretePontoIndividual] sem telefone cadastrado", { funcionario: f.nome });
+        continue;
+      }
+      const primeiroNome = (f.nome || "").trim().split(/\s+/)[0] || "";
+      const texto = `Olá${primeiroNome ? " " + primeiroNome : ""}, aqui é o Sistema GW. Notamos que você ainda não registrou sua entrada no ponto hoje. Por favor, registre assim que possível.`;
+      try {
+        await enviarWhatsAppEvolution(texto, evolutionApiKey.value(), [numero]);
+        enviados++;
+      } catch (e) {
+        logger.error("[lembretePontoIndividual] falha ao enviar", { funcionario: f.nome, erro: e.message });
+      }
+
+      if (i < naoBateram.length - 1) {
+        const delayMs = (1 + Math.random() * 2) * 60 * 1000; // 1 a 3 minutos
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
+
+    logger.info(`[lembretePontoIndividual] enviado individualmente pra ${enviados} de ${naoBateram.length} funcionário(s) sem ponto`);
+  }
+);
