@@ -4357,30 +4357,47 @@ exports.alertaPontoEmAberto = onSchedule(
   }
 );
 
-// Pedido do João (2026-09-10): além do resumo pro responsável (acima, às
-// 10h), cobra CADA funcionário que ainda não bateu ponto às 9h30,
-// diretamente no WhatsApp dele. As mensagens são mandadas uma de cada vez
-// com um intervalo aleatório de 1 a 3 minutos entre elas (não tudo de uma
-// rajada só) — suspeita levantada depois do incidente de conexão de
-// 2026-09-04 é que uma rajada de mensagens quase simultâneas pode ter sido
-// o que deixou a sessão do WhatsApp malvista pro sistema anti-abuso do
-// WhatsApp (ver evolution_api_vm.md). timeoutSeconds alto porque a função
-// fica ativa esperando entre um envio e outro.
+// Feriados nacionais (fixos + móveis, calculados a partir da Páscoa) que a
+// GW observa. Ajustar manualmente aqui se a empresa trocar algum feriado
+// por outro dia específico (o João avisou que isso acontece).
+const FERIADOS_GW = [
+  "2026-01-01", "2026-02-16", "2026-02-17", "2026-04-03", "2026-04-21",
+  "2026-05-01", "2026-06-04", "2026-09-07", "2026-10-12", "2026-11-02",
+  "2026-11-15", "2026-11-20", "2026-12-25",
+  "2027-01-01", "2027-02-08", "2027-02-09", "2027-03-26", "2027-04-21",
+  "2027-05-01", "2027-05-27", "2027-09-07", "2027-10-12", "2027-11-02",
+  "2027-11-15", "2027-11-20", "2027-12-25"
+];
+
+// Variantes do texto do lembrete — manda uma diferente a cada envio (não
+// sempre o mesmo texto pra números diferentes), reduz mais um pouco o
+// padrão "mensagem em massa idêntica" que o WhatsApp vigia.
+const VARIANTES_LEMBRETE_PONTO = [
+  nome => `Olá${nome ? " " + nome : ""}, aqui é da GW. Notamos que você ainda não registrou sua entrada no ponto hoje. Por favor, registre assim que possível.`,
+  nome => `Oi${nome ? " " + nome : ""}! Vimos que sua entrada no ponto ainda não foi registrada hoje. Pode bater assim que der?`,
+  nome => `${nome ? nome + ", tudo bem? " : ""}Aqui é da GW — seu ponto de entrada de hoje ainda não apareceu no sistema. Registre quando puder.`,
+  nome => `Bom dia${nome ? ", " + nome : ""}! Só um lembrete da GW: sua entrada no ponto ainda está em aberto hoje.`
+];
+
+// Pedido do João (2026-09-10, ajustado em 2026-09-12 depois de um incidente
+// real de restrição da conta): além do resumo pro responsável
+// (alertaPontoEmAberto, 10h), cobra CADA funcionário que ainda não bateu
+// ponto às 9h30, diretamente no WhatsApp dele — mas só em dia de expediente
+// normal. Dois travas de segurança adicionadas depois que essa function
+// mandou mensagem pra 13 dos 14 funcionários num sábado e a conta levou uma
+// restrição oficial do WhatsApp por "atividade em massa" 21min depois:
+// (1) não roda em feriado (fins de semana já saem pelo cron "1-5");
+// (2) se tiver mais de 5 faltantes de uma vez, é sinal de dia sem
+// expediente (feriado trocado, evento etc.) e não de gente esquecendo o
+// ponto — nesse caso não manda nada a ninguém, só avisa o João pelo
+// Telegram. Quando manda de verdade, é um de cada vez com intervalo
+// aleatório de 1 a 3 minutos entre eles, texto variando a cada envio.
 exports.lembretePontoIndividual = onSchedule(
-  { schedule: "30 9 * * 1-6", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey], timeoutSeconds: 1800 },
+  { schedule: "30 9 * * 1-5", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey], timeoutSeconds: 1800 },
   async () => {
-    // SUSPENSO em 2026-09-12: rodou hoje (sábado) e mandou mensagem pra 13
-    // dos 14 funcionários de uma vez (quase ninguém trabalha sábado) — a
-    // conexão do WhatsApp caiu (device_removed) 21 minutos depois, no meio
-    // dessa sequência de envios. Mesmo padrão suspeito do incidente de
-    // 2026-09-04 que já tinha derrubado avisoRegistroEntrada: mandar
-    // mensagem pra muitos números diferentes num intervalo curto, mesmo
-    // com 1-3min de espera entre eles. Ver evolution_api_vm.md. Reativar só
-    // depois de um jeito mais seguro de escalonar (dias diferentes, grupo
-    // menor por vez, etc.) — não reverter isso sem repensar o design.
-    return;
-    // eslint-disable-next-line no-unreachable
     const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    if (FERIADOS_GW.includes(hojeISO)) return;
+
     const dataInicio = new Date(hojeISO + "T00:00:00-03:00");
     const dataFim = new Date(hojeISO + "T23:59:59-03:00");
 
@@ -4408,6 +4425,13 @@ exports.lembretePontoIndividual = onSchedule(
     const naoBateram = funcAtivos.filter(f => !idsComEntrada.has(f.id) && !nomesComEntrada.has(f.nome));
     if (naoBateram.length === 0) return;
 
+    if (naoBateram.length > 5) {
+      const nomes = naoBateram.map(f => f.nome).join(", ");
+      await enviarTextoTelegram(`⚠️ GW: ${naoBateram.length} funcionários sem ponto hoje (mais de 5) — parece dia sem expediente, não mandei lembrete individual pra ninguém.\n\nFaltantes: ${nomes}`);
+      logger.info(`[lembretePontoIndividual] ${naoBateram.length} faltantes (>5) — pulado, só avisei o João`);
+      return;
+    }
+
     let enviados = 0;
     for (let i = 0; i < naoBateram.length; i++) {
       const f = naoBateram[i];
@@ -4417,7 +4441,8 @@ exports.lembretePontoIndividual = onSchedule(
         continue;
       }
       const primeiroNome = (f.nome || "").trim().split(/\s+/)[0] || "";
-      const texto = `Olá${primeiroNome ? " " + primeiroNome : ""}, aqui é o Sistema GW. Notamos que você ainda não registrou sua entrada no ponto hoje. Por favor, registre assim que possível.`;
+      const variante = VARIANTES_LEMBRETE_PONTO[Math.floor(Math.random() * VARIANTES_LEMBRETE_PONTO.length)];
+      const texto = variante(primeiroNome);
       try {
         await enviarWhatsAppEvolution(texto, evolutionApiKey.value(), [numero]);
         enviados++;
