@@ -24,13 +24,12 @@ const EVOLUTION_DESTINATARIOS = ["5581992114764", "5581988310203"];
 const EVOLUTION_DESTINATARIOS_ADIANTAMENTO = ["5581992114764", "5581993697990"];
 const EVOLUTION_DESTINATARIOS_REFEICOES = ["5581992114764", "5581991725267"];
 const EVOLUTION_DESTINATARIOS_PONTO = ["5581992114764", "5581993697990"];
-// DESLIGADO em 2026-09-04: WhatsApp voltou a funcionar depois de parear a
-// instância "gw" com um número novo (558192247015) — o número antigo
-// (558199356399) tinha entrado numa restrição que aceitava conexão mas
-// nunca entregava mensagem, mesmo com sessão 100% nova (ver
-// evolution_api_vm.md). Se cair de novo, reativar (true) redireciona tudo
-// pro Telegram até resolver.
-const WHATSAPP_INDISPONIVEL = false;
+// LIGADO de novo em 2026-09-12: WhatsApp caiu outra vez (device_removed),
+// dessa vez com evidência forte de causa — lembretePontoIndividual mandou
+// mensagem pra 13 funcionários seguidos e a conexão caiu 21min depois, no
+// meio da sequência (já suspensa, ver comentário lá). Enquanto não
+// reconectar, redireciona tudo pro Telegram. Ver evolution_api_vm.md.
+const WHATSAPP_INDISPONIVEL = true;
 // Número da própria instância "gw" (é o WhatsApp pessoal do João, pareado
 // como aparelho vinculado — não um número de bot dedicado). O agente via
 // WhatsApp só responde na conversa "Mensagens para você mesmo" desse número.
@@ -4370,6 +4369,17 @@ exports.alertaPontoEmAberto = onSchedule(
 exports.lembretePontoIndividual = onSchedule(
   { schedule: "30 9 * * 1-6", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey], timeoutSeconds: 1800 },
   async () => {
+    // SUSPENSO em 2026-09-12: rodou hoje (sábado) e mandou mensagem pra 13
+    // dos 14 funcionários de uma vez (quase ninguém trabalha sábado) — a
+    // conexão do WhatsApp caiu (device_removed) 21 minutos depois, no meio
+    // dessa sequência de envios. Mesmo padrão suspeito do incidente de
+    // 2026-09-04 que já tinha derrubado avisoRegistroEntrada: mandar
+    // mensagem pra muitos números diferentes num intervalo curto, mesmo
+    // com 1-3min de espera entre eles. Ver evolution_api_vm.md. Reativar só
+    // depois de um jeito mais seguro de escalonar (dias diferentes, grupo
+    // menor por vez, etc.) — não reverter isso sem repensar o design.
+    return;
+    // eslint-disable-next-line no-unreachable
     const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
     const dataInicio = new Date(hojeISO + "T00:00:00-03:00");
     const dataFim = new Date(hojeISO + "T23:59:59-03:00");
