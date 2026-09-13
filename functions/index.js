@@ -24,12 +24,13 @@ const EVOLUTION_DESTINATARIOS = ["5581992114764", "5581988310203"];
 const EVOLUTION_DESTINATARIOS_ADIANTAMENTO = ["5581992114764", "5581993697990"];
 const EVOLUTION_DESTINATARIOS_REFEICOES = ["5581992114764", "5581991725267"];
 const EVOLUTION_DESTINATARIOS_PONTO = ["5581992114764", "5581993697990"];
-// LIGADO de novo em 2026-09-12: WhatsApp caiu outra vez (device_removed),
-// dessa vez com evidência forte de causa — lembretePontoIndividual mandou
-// mensagem pra 13 funcionários seguidos e a conexão caiu 21min depois, no
-// meio da sequência (já suspensa, ver comentário lá). Enquanto não
-// reconectar, redireciona tudo pro Telegram. Ver evolution_api_vm.md.
-const WHATSAPP_INDISPONIVEL = true;
+// DESLIGADO em 2026-09-13: WhatsApp reconectado depois da restrição
+// temporária de 2026-09-12 (confirmada oficialmente pelo próprio app,
+// "atividade em massa", 4h30 de bloqueio) ter expirado sozinha. Causa
+// tratada: lembretePontoIndividual reativada com travas (só dias úteis,
+// pula feriado, não manda nada se >5 faltantes de uma vez). Se cair de
+// novo, reativar (true) redireciona tudo pro Telegram até resolver.
+const WHATSAPP_INDISPONIVEL = false;
 // Número da própria instância "gw" (é o WhatsApp pessoal do João, pareado
 // como aparelho vinculado — não um número de bot dedicado). O agente via
 // WhatsApp só responde na conversa "Mensagens para você mesmo" desse número.
