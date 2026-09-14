@@ -185,7 +185,7 @@ const TOOLS_GW = [
   },
   {
     name: "extrato_ponto_individual_imagem",
-    description: "Gera o extrato de ponto (entrada, saída e horas trabalhadas por dia) de UM funcionário específico num período, como imagem PNG estilizada com a logo da GW (mesmo estilo visual do extrato_refeicoes_imagem) e envia pelo Telegram. Marca automaticamente como FALTA qualquer dia em que outros funcionários bateram ponto e esse não (dias sem ninguém trabalhando, como fim de semana, não contam falta). Saídas fechadas automaticamente pelo sistema às 14h (funcionário esqueceu de bater saída) aparecem marcadas com *, não como horário real. Use listar_funcionarios antes para obter o funcionarioId correto — NUNCA invente um id. Use quando o usuário pedir o relatório/espelho de ponto de uma pessoa específica num período, em imagem ou pelo Telegram.",
+    description: "Gera o extrato de ponto (entrada, saída e horas trabalhadas por dia) de UM funcionário específico num período, como imagem PNG estilizada com a logo da GW (mesmo estilo visual do extrato_refeicoes_imagem) e envia pelo Telegram. Marca automaticamente como FALTA qualquer dia em que outros funcionários bateram ponto e esse não (dias sem ninguém trabalhando, como fim de semana, não contam falta). Saídas fechadas automaticamente pelo sistema às 12h (funcionário esqueceu de bater saída) aparecem marcadas com *, não como horário real. Use listar_funcionarios antes para obter o funcionarioId correto — NUNCA invente um id. Use quando o usuário pedir o relatório/espelho de ponto de uma pessoa específica num período, em imagem ou pelo Telegram.",
     input_schema: {
       type: "object",
       properties: {
@@ -1010,7 +1010,7 @@ function fmtHorasMin(decimalHoras) {
 // duas entradas/saídas no mesmo dia) e soma só os intervalos já fechados.
 // Uma entrada sem saída correspondente marca o dia como "incompleto" —
 // nunca chuta quantas horas o funcionário ainda ia trabalhar. Saídas
-// geradas pelo fechamento automático do ponto (index.html fecha, às 14h,
+// geradas pelo fechamento automático do ponto (index.html fecha, às 12h,
 // entradas esquecidas sem saída — flag "fechamentoAutomatico") são
 // marcadas como tal, pra não parecerem um horário real batido pela pessoa.
 //
@@ -1198,7 +1198,7 @@ function construirSVGExtratoPonto(dados, logoBase64) {
 
   const legendaY = totaisY + totaisAltura + 26;
   const legenda = dados.algumSaidaAuto ? `
-    <text x="${PAD}" y="${legendaY}" font-size="11" fill="#ffb74d" font-family="Arial, Helvetica, sans-serif">* saída fechada automaticamente às 14h — sem registro manual nesse dia</text>
+    <text x="${PAD}" y="${legendaY}" font-size="11" fill="#ffb74d" font-family="Arial, Helvetica, sans-serif">* saída fechada automaticamente às 12h — sem registro manual nesse dia</text>
   ` : "";
 
   const footerY = legendaY + ALT_LEGENDA + 8;
