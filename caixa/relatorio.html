@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.11";
+  const VERSAO = "2.12";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1297,7 +1297,7 @@
   db.collection('locais').onSnapshot(snap => { _locaisSnap = snap; renderPrevisaoMedicao(); });
   db.collection('servicos').onSnapshot(snap => { _servicosSnap = snap; renderPrevisaoMedicao(); });
 
-  // ── Faltas da quinzena anterior (descontam das Passagens) ──────────────
+  // ── Faltas da quinzena que está terminando hoje (descontam das Passagens) ──
   // Regra: cada funcionário deve bater ponto pelo menos 5 dias (segunda a
   // sábado) por semana. 4 registros = 1 falta, 3 = 2 faltas (padrão
   // 5-registros), e assim por diante. 6 registros = 1 crédito de falta, que
@@ -1305,14 +1305,26 @@
   // compensar uma falta futura. Uma semana segunda-sábado conta pra quinzena
   // em que cai o sábado dela (fecha o ciclo de trabalho). Usa normNome
   // (definida mais abaixo, hoisted) pra casar nomes igual ao resto do arquivo.
-  function limitesQuinzenaAnterior(hoje) {
+  //
+  // Pedido do João (2026-09-15): fechar Passagens é sempre um pagamento
+  // ANTECIPADO pros dias úteis da PRÓXIMA quinzena (ex: fechando hoje 15/09,
+  // paga os dias úteis de 16 a 30/09), descontado pelas faltas da quinzena
+  // que está terminando agora (01 a 15/09) — não mais da quinzena anterior a
+  // essa (que ficava defasada um ciclo inteiro).
+  function limitesQuinzenaAtual(hoje) {
     const ano = hoje.getFullYear(), mes = hoje.getMonth();
-    if (hoje.getDate() <= 15) {
-      // quinzena atual = 1-15 deste mês -> anterior = 16-fim do mês passado
-      return { inicio: new Date(ano, mes - 1, 16), fim: new Date(ano, mes, 0) };
-    }
-    // quinzena atual = 16-fim deste mês -> anterior = 1-15 deste mês
-    return { inicio: new Date(ano, mes, 1), fim: new Date(ano, mes, 15) };
+    if (hoje.getDate() <= 15) return { inicio: new Date(ano, mes, 1), fim: new Date(ano, mes, 15) };
+    return { inicio: new Date(ano, mes, 16), fim: new Date(ano, mes + 1, 0) };
+  }
+
+  // Próxima quinzena (a que está sendo paga antecipadamente): dias úteis de
+  // amanhã até o fim do período de 15 dias seguinte.
+  function limitesProximaQuinzena(hoje) {
+    const { fim } = limitesQuinzenaAtual(hoje);
+    const inicio = new Date(fim); inicio.setDate(inicio.getDate() + 1);
+    const ano = inicio.getFullYear(), mes = inicio.getMonth();
+    const fimProxima = inicio.getDate() === 1 ? new Date(ano, mes, 15) : new Date(ano, mes + 1, 0);
+    return { inicio, fim: fimProxima };
   }
 
   function segundaDaSemanaDe(date) {
@@ -1331,7 +1343,7 @@
     return new Date(Number(ano), Number(mo) - 1, Number(d));
   }
 
-  // Retorna Map: funcionarioId (ou nome normalizado, se não achar id) -> { faltas, creditos } ganhos na quinzena anterior.
+  // Retorna Map: funcionarioId (ou nome normalizado, se não achar id) -> { faltas, creditos } ganhos na quinzena atual (que termina hoje).
   //
   // Bug real encontrado em 2026-09-15: antes, o casamento ponto<->funcionário
   // era só por nome normalizado. Quando o cadastro de um funcionário é
@@ -1342,8 +1354,8 @@
   // aparecia com falta total (5/5) mesmo tendo trabalhado normal. Agora casa
   // primeiro por funcionarioId (sempre gravado e estável, não muda com
   // renomeação), só cai pro nome como último recurso.
-  async function calcularFaltasQuinzenaAnterior(hoje) {
-    const { inicio: qIni, fim: qFim } = limitesQuinzenaAnterior(hoje);
+  async function calcularFaltasQuinzenaAtual(hoje) {
+    const { inicio: qIni, fim: qFim } = limitesQuinzenaAtual(hoje);
     // Janela de busca com folga de 1 semana pra cada lado, pra pegar a
     // semana cujo sábado cai bem no início/fim da quinzena.
     const buscaIni = new Date(qIni); buscaIni.setDate(buscaIni.getDate() - 7);
@@ -1415,9 +1427,9 @@
     return resultado;
   }
 
-  // Combina as faltas/créditos ganhos na quinzena anterior com o saldo de
+  // Combina as faltas/créditos ganhos na quinzena atual com o saldo de
   // crédito já acumulado do funcionário — não grava nada, só calcula.
-  // Casa primeiro por funcionarioId (chave usada em calcularFaltasQuinzenaAnterior),
+  // Casa primeiro por funcionarioId (chave usada em calcularFaltasQuinzenaAtual),
   // com o nome normalizado como último recurso (registros muito antigos sem id).
   function combinarFaltasComCredito(faltasMap, funcionarioId, nomeFuncionario, creditoSalvo) {
     const fc = faltasMap.get(funcionarioId) || faltasMap.get(normNome(nomeFuncionario)) || { faltas: 0, creditos: 0 };
@@ -1430,10 +1442,10 @@
   // Carregado uma vez (dados de ponto já fechados no passado, não precisa de
   // listener ao vivo) — re-renderiza a prévia de passagens quando terminar.
   let _faltasMap = new Map();
-  calcularFaltasQuinzenaAnterior(new Date()).then(map => {
+  calcularFaltasQuinzenaAtual(new Date()).then(map => {
     _faltasMap = map;
     if (_funcionariosSnap) renderPrevisaoPassagens(_funcionariosSnap);
-  }).catch(e => console.error('Falha ao calcular faltas da quinzena anterior:', e));
+  }).catch(e => console.error('Falha ao calcular faltas da quinzena atual:', e));
 
   // ── Passagens da Quinzena ──
   function renderPrevisaoPassagens(snap) {
@@ -1447,7 +1459,7 @@
       const valor = Number(f.passagens || 0);
       if (valor <= 0) return;
       const { faltasLiquidas } = combinarFaltasComCredito(_faltasMap, d.id, f.nome, f.creditoFaltas || 0);
-      const descontoFaltas = faltasLiquidas * (valor / 10);
+      const descontoFaltas = Math.min(valor, faltasLiquidas * (valor / 10));
       const liquido = valor - descontoFaltas;
       total += valor;
       totalDescontoFaltas += descontoFaltas;
@@ -1960,7 +1972,7 @@
       const bruto = Number(f.passagens || 0);
       if (bruto <= 0) return;
       const { faltasLiquidas } = combinarFaltasComCredito(_faltasMap, d.id, f.nome, f.creditoFaltas || 0);
-      total += bruto - faltasLiquidas * (bruto / 10);
+      total += Math.max(0, bruto - faltasLiquidas * (bruto / 10));
     });
     return total;
   }
@@ -2257,13 +2269,14 @@
       });
       const totalFolha = totalBruto - totalInssFechamento - totalPassagensFechamento - totalAdiant;
 
-      // Total das passagens da quinzena, descontando faltas líquidas da
-      // quinzena anterior (após compensar com o crédito acumulado) — ver
-      // calcularFaltasQuinzenaAnterior/combinarFaltasComCredito, mais acima.
+      // Total das passagens (pagamento antecipado da próxima quinzena),
+      // descontando faltas líquidas da quinzena atual, que está terminando
+      // hoje (após compensar com o crédito acumulado) — ver
+      // calcularFaltasQuinzenaAtual/combinarFaltasComCredito, mais acima.
       // Quem ainda não bateu entrada hoje até a hora do fechamento também
       // entra como falta de hoje (ver buscarEntradaHojeSet, mais abaixo).
       const [faltasMap, entradaHoje] = await Promise.all([
-        calcularFaltasQuinzenaAnterior(new Date()),
+        calcularFaltasQuinzenaAtual(new Date()),
         buscarEntradaHojeSet()
       ]);
       let totalPassagens = 0;
@@ -2276,7 +2289,7 @@
         const { faltasLiquidas, creditoRestante } = combinarFaltasComCredito(faltasMap, d.id, f.nome, f.creditoFaltas || 0);
         const bateuHoje = entradaHoje.ids.has(d.id) || entradaHoje.nomes.has(normNome(f.nome));
         const faltaHoje = (!entradaHoje.ehDomingo && !bateuHoje) ? 1 : 0;
-        const liquido = bruto - (faltasLiquidas + faltaHoje) * (bruto / 10);
+        const liquido = Math.max(0, bruto - (faltasLiquidas + faltaHoje) * (bruto / 10));
         totalPassagens += liquido;
         passagensPorFunc[d.id] = { bruto, liquido, creditoRestante };
       });
@@ -2286,8 +2299,10 @@
         return;
       }
 
+      const { inicio: proxIni, fim: proxFim } = limitesProximaQuinzena(new Date());
+      const periodoLabel = `${fmtDataBR(proxIni)} a ${fmtDataBR(proxFim)}`;
       const dataVencimento = fmtDataBR(proximaSexta());
-      const resumo = `Folha: R$ ${fmt(totalFolha)}\nPassagens: R$ ${fmt(totalPassagens)}\n\nVão ser criadas contas a pagar com vencimento em ${dataVencimento}.\nOs serviços em medição serão marcados como concluídos, e as diárias/passagens zeradas.`;
+      const resumo = `Folha: R$ ${fmt(totalFolha)}\nPassagens (pagamento antecipado, dias úteis de ${periodoLabel}): R$ ${fmt(totalPassagens)}\n\nVão ser criadas contas a pagar com vencimento em ${dataVencimento}.\nOs serviços em medição serão marcados como concluídos, e as diárias/passagens zeradas.`;
       if (!confirm('Fechar Medição/Folha?\n\n' + resumo)) return;
 
       btn.textContent = '📸 Enviando mapa...';
@@ -2304,7 +2319,7 @@
       }
       if (totalPassagens > 0) {
         batch.set(db.collection('contasPagar').doc(), {
-          data: dataVencimento, descricao: 'Passagens da Quinzena', valor: totalPassagens,
+          data: dataVencimento, descricao: `Passagens da Quinzena (${periodoLabel})`, valor: totalPassagens,
           status: 'aberto', criadoEm: firebase.firestore.FieldValue.serverTimestamp()
         });
       }
@@ -2432,7 +2447,7 @@
         db.collection('funcionarios').get(),
         buscarEntradaHojeSet()
       ]);
-      const faltasMap = await calcularFaltasQuinzenaAnterior(new Date());
+      const faltasMap = await calcularFaltasQuinzenaAtual(new Date());
 
       let totalPassagens = 0;
       const passagensPorFunc = {}; // id -> { liquido, creditoRestante }
@@ -2444,7 +2459,7 @@
         const { faltasLiquidas, creditoRestante } = combinarFaltasComCredito(faltasMap, d.id, f.nome, f.creditoFaltas || 0);
         const bateuHoje = entradaHoje.ids.has(d.id) || entradaHoje.nomes.has(normNome(f.nome));
         const faltaHoje = (!entradaHoje.ehDomingo && !bateuHoje) ? 1 : 0;
-        const liquido = bruto - (faltasLiquidas + faltaHoje) * (bruto / 10);
+        const liquido = Math.max(0, bruto - (faltasLiquidas + faltaHoje) * (bruto / 10));
         totalPassagens += liquido;
         passagensPorFunc[d.id] = { liquido, creditoRestante };
       });
@@ -2454,15 +2469,17 @@
         return;
       }
 
+      const { inicio: proxIni, fim: proxFim } = limitesProximaQuinzena(new Date());
+      const periodoLabel = `${fmtDataBR(proxIni)} a ${fmtDataBR(proxFim)}`;
       const dataVencimento = fmtDataBR(proximaSexta());
-      const resumo = `Passagens: R$ ${fmt(totalPassagens)}\n\nVai ser criada uma conta a pagar com vencimento em ${dataVencimento}.\nAs passagens serão zeradas (a Folha continua aberta, sem ser fechada).\nQuem ainda não bateu entrada hoje entra como falta de hoje.`;
+      const resumo = `Passagens (pagamento antecipado, dias úteis de ${periodoLabel}): R$ ${fmt(totalPassagens)}\n\nVai ser criada uma conta a pagar com vencimento em ${dataVencimento}.\nAs passagens serão zeradas (a Folha continua aberta, sem ser fechada).\nQuem ainda não bateu entrada hoje entra como falta de hoje.`;
       if (!confirm('Fechar Passagens da Quinzena?\n\n' + resumo)) return;
 
       btn.textContent = '⏳ Fechando...';
       const batch = db.batch();
 
       batch.set(db.collection('contasPagar').doc(), {
-        data: dataVencimento, descricao: 'Passagens da Quinzena', valor: totalPassagens,
+        data: dataVencimento, descricao: `Passagens da Quinzena (${periodoLabel})`, valor: totalPassagens,
         status: 'aberto', criadoEm: firebase.firestore.FieldValue.serverTimestamp()
       });
 
