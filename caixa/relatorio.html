@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.10";
+  const VERSAO = "2.11";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1331,7 +1331,17 @@
     return new Date(Number(ano), Number(mo) - 1, Number(d));
   }
 
-  // Retorna Map: nome normalizado -> { faltas, creditos } ganhos na quinzena anterior.
+  // Retorna Map: funcionarioId (ou nome normalizado, se não achar id) -> { faltas, creditos } ganhos na quinzena anterior.
+  //
+  // Bug real encontrado em 2026-09-15: antes, o casamento ponto<->funcionário
+  // era só por nome normalizado. Quando o cadastro de um funcionário é
+  // renomeado (ex: "Marcos Cauann" -> "Marcos Cauann Ramalho Trajano de
+  // Souza"), os pontos batidos ANTES da troca continuam com o nome antigo
+  // gravado (funcionarioNome é uma cópia congelada no momento do ponto) — a
+  // busca por nome atual nunca encontrava esses registros, então a pessoa
+  // aparecia com falta total (5/5) mesmo tendo trabalhado normal. Agora casa
+  // primeiro por funcionarioId (sempre gravado e estável, não muda com
+  // renomeação), só cai pro nome como último recurso.
   async function calcularFaltasQuinzenaAnterior(hoje) {
     const { inicio: qIni, fim: qFim } = limitesQuinzenaAnterior(hoje);
     // Janela de busca com folga de 1 semana pra cada lado, pra pegar a
@@ -1347,8 +1357,13 @@
       db.collection('funcionarios').get()
     ]);
 
+    // Nome normalizado (como está HOJE no cadastro) -> id, só pra servir de
+    // fallback quando um ponto antigo não tiver funcionarioId gravado.
+    const idPorNomeAtual = new Map();
+    funcSnap.docs.forEach(fd => idPorNomeAtual.set(normNome(fd.data().nome), fd.id));
+
     // Dias únicos com registro, agrupados por (funcionário, semana).
-    const diasPorSemana = new Map(); // key: nome|segundaISO -> { nome, dias: Set }
+    const diasPorSemana = new Map(); // key: chave|segundaISO -> { chave, dias: Set }
     snap.docs.forEach(doc => {
       const r = doc.data();
       if (!r.timestamp) return;
@@ -1357,9 +1372,9 @@
       const segunda = segundaDaSemanaDe(ts);
       const sabado = new Date(segunda); sabado.setDate(sabado.getDate() + 5);
       if (sabado < qIni || sabado > qFim) return; // semana não pertence a essa quinzena
-      const nome = normNome(r.funcionarioNome);
-      const key = `${nome}|${segunda.toISOString().slice(0, 10)}`;
-      if (!diasPorSemana.has(key)) diasPorSemana.set(key, { nome, dias: new Set() });
+      const chave = r.funcionarioId || idPorNomeAtual.get(normNome(r.funcionarioNome)) || normNome(r.funcionarioNome);
+      const key = `${chave}|${segunda.toISOString().slice(0, 10)}`;
+      if (!diasPorSemana.has(key)) diasPorSemana.set(key, { chave, dias: new Set() });
       diasPorSemana.get(key).dias.add(ts.toDateString());
     });
 
@@ -1381,30 +1396,31 @@
       const f = fd.data();
       if (f.ativo === false) return;
       const admissao = parseDataBRparaDate(f.admissao);
-      const nome = normNome(f.nome);
       segundasDaQuinzena.forEach(seg => {
         const sabado = new Date(seg); sabado.setDate(sabado.getDate() + 5);
         if (admissao && sabado < admissao) return; // ainda não tinha sido admitido nessa semana
-        const key = `${nome}|${seg.toISOString().slice(0, 10)}`;
-        if (!diasPorSemana.has(key)) diasPorSemana.set(key, { nome, dias: new Set() });
+        const key = `${fd.id}|${seg.toISOString().slice(0, 10)}`;
+        if (!diasPorSemana.has(key)) diasPorSemana.set(key, { chave: fd.id, dias: new Set() });
       });
     });
 
     const resultado = new Map();
-    diasPorSemana.forEach(({ nome, dias }) => {
+    diasPorSemana.forEach(({ chave, dias }) => {
       const n = dias.size;
-      const atual = resultado.get(nome) || { faltas: 0, creditos: 0 };
+      const atual = resultado.get(chave) || { faltas: 0, creditos: 0 };
       if (n >= 6) atual.creditos += (n - 5);
       else if (n < 5) atual.faltas += (5 - n);
-      resultado.set(nome, atual);
+      resultado.set(chave, atual);
     });
     return resultado;
   }
 
   // Combina as faltas/créditos ganhos na quinzena anterior com o saldo de
   // crédito já acumulado do funcionário — não grava nada, só calcula.
-  function combinarFaltasComCredito(faltasMap, nomeFuncionario, creditoSalvo) {
-    const fc = faltasMap.get(normNome(nomeFuncionario)) || { faltas: 0, creditos: 0 };
+  // Casa primeiro por funcionarioId (chave usada em calcularFaltasQuinzenaAnterior),
+  // com o nome normalizado como último recurso (registros muito antigos sem id).
+  function combinarFaltasComCredito(faltasMap, funcionarioId, nomeFuncionario, creditoSalvo) {
+    const fc = faltasMap.get(funcionarioId) || faltasMap.get(normNome(nomeFuncionario)) || { faltas: 0, creditos: 0 };
     const creditoDisponivel = (creditoSalvo || 0) + fc.creditos;
     const faltasLiquidas = Math.max(0, fc.faltas - creditoDisponivel);
     const creditoRestante = Math.max(0, creditoDisponivel - fc.faltas);
@@ -1430,7 +1446,7 @@
       if (f.ativo === false) return;
       const valor = Number(f.passagens || 0);
       if (valor <= 0) return;
-      const { faltasLiquidas } = combinarFaltasComCredito(_faltasMap, f.nome, f.creditoFaltas || 0);
+      const { faltasLiquidas } = combinarFaltasComCredito(_faltasMap, d.id, f.nome, f.creditoFaltas || 0);
       const descontoFaltas = faltasLiquidas * (valor / 10);
       const liquido = valor - descontoFaltas;
       total += valor;
@@ -1943,7 +1959,7 @@
       if (f.ativo === false) return;
       const bruto = Number(f.passagens || 0);
       if (bruto <= 0) return;
-      const { faltasLiquidas } = combinarFaltasComCredito(_faltasMap, f.nome, f.creditoFaltas || 0);
+      const { faltasLiquidas } = combinarFaltasComCredito(_faltasMap, d.id, f.nome, f.creditoFaltas || 0);
       total += bruto - faltasLiquidas * (bruto / 10);
     });
     return total;
@@ -2257,7 +2273,7 @@
         if (f.ativo === false) return;
         const bruto = Number(f.passagens || 0);
         if (bruto <= 0) return;
-        const { faltasLiquidas, creditoRestante } = combinarFaltasComCredito(faltasMap, f.nome, f.creditoFaltas || 0);
+        const { faltasLiquidas, creditoRestante } = combinarFaltasComCredito(faltasMap, d.id, f.nome, f.creditoFaltas || 0);
         const bateuHoje = entradaHoje.ids.has(d.id) || entradaHoje.nomes.has(normNome(f.nome));
         const faltaHoje = (!entradaHoje.ehDomingo && !bateuHoje) ? 1 : 0;
         const liquido = bruto - (faltasLiquidas + faltaHoje) * (bruto / 10);
@@ -2425,7 +2441,7 @@
         if (f.ativo === false) return;
         const bruto = Number(f.passagens || 0);
         if (bruto <= 0) return;
-        const { faltasLiquidas, creditoRestante } = combinarFaltasComCredito(faltasMap, f.nome, f.creditoFaltas || 0);
+        const { faltasLiquidas, creditoRestante } = combinarFaltasComCredito(faltasMap, d.id, f.nome, f.creditoFaltas || 0);
         const bateuHoje = entradaHoje.ids.has(d.id) || entradaHoje.nomes.has(normNome(f.nome));
         const faltaHoje = (!entradaHoje.ehDomingo && !bateuHoje) ? 1 : 0;
         const liquido = bruto - (faltasLiquidas + faltaHoje) * (bruto / 10);
