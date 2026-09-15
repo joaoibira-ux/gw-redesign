@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.21";
+const VERSAO = "5.22";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -367,6 +367,7 @@ function filtrarDiariaConflitanteComProducaoPintor() {
 async function sincronizarDiariasAjudantesPorPonto() {
   try {
     const hoje = new Date();
+    const hojeSemHora = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
     const ano = hoje.getFullYear(), mes = hoje.getMonth();
     const quinzenaInicio = new Date(ano, mes, hoje.getDate() <= 15 ? 1 : 16);
     const quinzenaFim    = hoje.getDate() <= 15 ? new Date(ano, mes, 15) : new Date(ano, mes + 1, 0);
@@ -410,7 +411,8 @@ async function sincronizarDiariasAjudantesPorPonto() {
       .filter(f => f.ativo !== false && ehAjudanteDiaria(f));
     if (!ajudantes.length) return;
 
-    // funcionarioId -> Map(diaKey -> { entrada, saida })
+    // funcionarioId -> Map(diaKey -> { entrada: Date|null, saida: Date|null })
+    // (entrada = mais cedo do dia, saída = mais tarde do dia, se houver mais de um registro)
     const registrosPorFunc = new Map();
     snapPontos.docs.forEach(doc => {
       const d = doc.data();
@@ -419,10 +421,10 @@ async function sincronizarDiariasAjudantesPorPonto() {
       const diaKey = `${dt.getFullYear()}-${dt.getMonth()}-${dt.getDate()}`;
       if (!registrosPorFunc.has(d.funcionarioId)) registrosPorFunc.set(d.funcionarioId, new Map());
       const dias = registrosPorFunc.get(d.funcionarioId);
-      if (!dias.has(diaKey)) dias.set(diaKey, { entrada: false, saida: false });
+      if (!dias.has(diaKey)) dias.set(diaKey, { entrada: null, saida: null });
       const info = dias.get(diaKey);
-      if (d.tipo === 'entrada') info.entrada = true;
-      if (d.tipo === 'saida')   info.saida   = true;
+      if (d.tipo === 'entrada' && (!info.entrada || dt < info.entrada)) info.entrada = dt;
+      if (d.tipo === 'saida'   && (!info.saida   || dt > info.saida))   info.saida   = dt;
     });
 
     function trabalhou(funcionarioId, date) {
@@ -433,16 +435,56 @@ async function sincronizarDiariasAjudantesPorPonto() {
       return !!(info && info.entrada && info.saida);
     }
 
+    // Horas realmente trabalhadas no dia, contadas a partir das 7:00 (chegar
+    // antes não soma hora extra) até a saída registrada. null = sem
+    // entrada+saída no ponto nesse dia (não deu pra apurar).
+    function horasTrabalhadasDia(funcionarioId, date) {
+      const dias = registrosPorFunc.get(funcionarioId);
+      if (!dias) return null;
+      const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+      const info = dias.get(key);
+      if (!info || !info.entrada || !info.saida) return null;
+      const pisoEntrada = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 7, 0, 0);
+      const entradaEfetiva = info.entrada > pisoEntrada ? info.entrada : pisoEntrada;
+      const horas = (info.saida - entradaEfetiva) / 3600000;
+      return horas > 0 ? horas : 0;
+    }
+
     function diasNoMes(a, m) { return new Date(a, m + 1, 0).getDate(); }
     function valorDiaria(func, date) { return (func.salario || 0) / diasNoMes(date.getFullYear(), date.getMonth()); }
     function fmtDiaMes(date) { return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}`; }
 
-    for (const func of ajudantes) {
-      const novosDias = new Map(); // localId ('dd/mm') → valor
+    // Pedido do João (2026-09-15): a partir de hoje, diária de ajudante deixa
+    // de ser valor cheio fixo por dia trabalhado e passa a ser proporcional
+    // às horas realmente batidas no ponto: valor_hora = diária/8 (dias
+    // normais) ou diária/7 (sextas), multiplicado pelas horas do dia
+    // (limitado a 8h/7h — hora extra não é paga aqui). Dias ANTES de hoje que
+    // ainda não tinham diária lançada continuam pela regra antiga (valor
+    // cheio se bateu entrada+saída) — não mexe em nada já apurado.
+    function valorDiariaPorHoras(func, date, horas) {
+      const divisor = date.getDay() === 5 ? 7 : 8; // sexta = 7, resto (seg-qui e sáb) = 8
+      const horasPagas = Math.min(horas, divisor);
+      return Math.round((valorDiaria(func, date) / divisor) * horasPagas * 100) / 100;
+    }
 
-      // 1. Dias da quinzena com entrada+saída no ponto
+    for (const func of ajudantes) {
+      const novosDias = new Map(); // localId ('dd/mm') → { valor, horas? }
+
+      // 1. Dias da quinzena (domingo fica de fora, é tratado à parte no bônus semanal)
       for (let d = new Date(quinzenaInicio); d <= quinzenaFim; d.setDate(d.getDate() + 1)) {
-        if (trabalhou(func.id, d)) novosDias.set(fmtDiaMes(d), valorDiaria(func, d));
+        if (d.getDay() === 0) continue;
+
+        if (d < hojeSemHora) {
+          // Dia já passado: regra antiga, valor cheio se bateu entrada+saída
+          if (trabalhou(func.id, d)) novosDias.set(fmtDiaMes(d), { valor: valorDiaria(func, d) });
+          continue;
+        }
+
+        // Hoje em diante: valor proporcional às horas batidas no ponto
+        const horas = horasTrabalhadasDia(func.id, d);
+        if (horas !== null && horas > 0) {
+          novosDias.set(fmtDiaMes(d), { valor: valorDiariaPorHoras(func, d, horas), horas: Math.round(horas * 10) / 10 });
+        }
       }
 
       // 2. Bônus semanal — avaliado em cada segunda-feira dentro da quinzena
@@ -454,6 +496,23 @@ async function sincronizarDiariasAjudantesPorPonto() {
         const sabado          = new Date(segunda); sabado.setDate(sabado.getDate() - 2);   // sábado da semana passada
         const segundaAnterior = new Date(segunda); segundaAnterior.setDate(segundaAnterior.getDate() - 7);
 
+        if (domingo >= hojeSemHora) {
+          // Regra nova: domingo só entra como Repouso Remunerado (valor
+          // cheio) se o total de horas batidas de segunda a sábado daquela
+          // semana for >= 44. Sábado em si já foi tratado no passo 1 (por
+          // horas, como qualquer outro dia) — aqui só decide o domingo.
+          let totalHorasSemana = 0;
+          for (let i = 0; i < 6; i++) { // 0=segunda ... 5=sábado
+            const dia = new Date(segundaAnterior); dia.setDate(dia.getDate() + i);
+            totalHorasSemana += horasTrabalhadasDia(func.id, dia) || 0;
+          }
+          if (totalHorasSemana >= 44) {
+            novosDias.set(fmtDiaMes(domingo), { valor: valorDiaria(func, domingo) });
+          }
+          continue;
+        }
+
+        // Regra antiga (semana toda antes de hoje — não mexe em nada já apurado)
         let diasUteisTrabalhados = 0; // segunda a sexta (0..4) da semana passada
         let sabadoTrabalhado = false;
         for (let i = 0; i < 6; i++) { // 0=segunda ... 5=sábado, da semana passada
@@ -469,7 +528,7 @@ async function sincronizarDiariasAjudantesPorPonto() {
         const faltasSemana    = 5 - diasUteisTrabalhados;
         const sabadoGarantido = faltasSemana <= 2;
         if (sabadoGarantido || sabadoTrabalhado) {
-          novosDias.set(fmtDiaMes(sabado), valorDiaria(func, sabado));
+          novosDias.set(fmtDiaMes(sabado), { valor: valorDiaria(func, sabado) });
         }
 
         // Domingo só entra com base na presença real (sábado garantido não conta):
@@ -477,7 +536,7 @@ async function sincronizarDiariasAjudantesPorPonto() {
         // de verdade (compensando falta) → 2 diárias.
         const totalRealTrabalhado = diasUteisTrabalhados + (sabadoTrabalhado ? 1 : 0);
         if (totalRealTrabalhado >= 5) {
-          novosDias.set(fmtDiaMes(domingo), (sabadoTrabalhado ? 2 : 1) * valorDiaria(func, domingo));
+          novosDias.set(fmtDiaMes(domingo), { valor: (sabadoTrabalhado ? 2 : 1) * valorDiaria(func, domingo) });
         }
       }
 
@@ -490,8 +549,11 @@ async function sincronizarDiariasAjudantesPorPonto() {
       const chavesAtuais = new Set(diasAtuais.map(dd => (dd.localId || '').replace(' ½', '').trim()));
 
       const diasParaAdicionar = [];
-      novosDias.forEach((valor, localId) => {
-        if (!chavesAtuais.has(localId)) diasParaAdicionar.push({ localId, valor });
+      novosDias.forEach((info, localId) => {
+        if (chavesAtuais.has(localId)) return;
+        const item = { localId, valor: info.valor };
+        if (info.horas) item.horas = info.horas;
+        diasParaAdicionar.push(item);
       });
       if (!diasParaAdicionar.length) continue;
 
