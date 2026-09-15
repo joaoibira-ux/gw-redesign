@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.09";
+  const VERSAO = "2.10";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -2244,7 +2244,12 @@
       // Total das passagens da quinzena, descontando faltas líquidas da
       // quinzena anterior (após compensar com o crédito acumulado) — ver
       // calcularFaltasQuinzenaAnterior/combinarFaltasComCredito, mais acima.
-      const faltasMap = await calcularFaltasQuinzenaAnterior(new Date());
+      // Quem ainda não bateu entrada hoje até a hora do fechamento também
+      // entra como falta de hoje (ver buscarEntradaHojeSet, mais abaixo).
+      const [faltasMap, entradaHoje] = await Promise.all([
+        calcularFaltasQuinzenaAnterior(new Date()),
+        buscarEntradaHojeSet()
+      ]);
       let totalPassagens = 0;
       const passagensPorFunc = {}; // id -> { bruto, liquido, creditoRestante }
       funcSnap.docs.forEach(d => {
@@ -2253,7 +2258,9 @@
         const bruto = Number(f.passagens || 0);
         if (bruto <= 0) return;
         const { faltasLiquidas, creditoRestante } = combinarFaltasComCredito(faltasMap, f.nome, f.creditoFaltas || 0);
-        const liquido = bruto - faltasLiquidas * (bruto / 10);
+        const bateuHoje = entradaHoje.ids.has(d.id) || entradaHoje.nomes.has(normNome(f.nome));
+        const faltaHoje = (!entradaHoje.ehDomingo && !bateuHoje) ? 1 : 0;
+        const liquido = bruto - (faltasLiquidas + faltaHoje) * (bruto / 10);
         totalPassagens += liquido;
         passagensPorFunc[d.id] = { bruto, liquido, creditoRestante };
       });
@@ -2368,6 +2375,30 @@
     }
   }
 
+  // Quem já bateu entrada hoje (até o momento do fechamento). Usado só na
+  // hora de fechar Passagens (pedido do João, 2026-09-15): quem fecha no
+  // próprio dia sem ter batido ponto ainda fica marcado como falta de hoje,
+  // mesmo sem esperar o dia virar "quinzena anterior" pra contar. Não mexe
+  // no crédito de faltas acumulado — é um desconto direto, só desse
+  // fechamento (se reclamar depois, corrige manualmente).
+  async function buscarEntradaHojeSet() {
+    const hoje = new Date();
+    const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+    const fimExclusivo = new Date(inicio); fimExclusivo.setDate(fimExclusivo.getDate() + 1);
+    const snap = await db.collection('pontos')
+      .where('tipo', '==', 'entrada')
+      .where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(inicio))
+      .where('timestamp', '<',  firebase.firestore.Timestamp.fromDate(fimExclusivo))
+      .get();
+    const ids = new Set(), nomes = new Set();
+    snap.docs.forEach(doc => {
+      const p = doc.data();
+      if (p.funcionarioId)   ids.add(p.funcionarioId);
+      if (p.funcionarioNome) nomes.add(normNome(p.funcionarioNome));
+    });
+    return { ids, nomes, ehDomingo: hoje.getDay() === 0 };
+  }
+
   // Pedido do João (2026-09-15): fechar só as Passagens da Quinzena sem
   // precisar fechar a Folha junto — mesmo cálculo de faltas/crédito que
   // fecharMedicaoFolha usa pra Passagens, mas sem tocar em folhas/diárias/
@@ -2381,7 +2412,10 @@
     btn.textContent = '⏳ Calculando...';
 
     try {
-      const funcSnap = await db.collection('funcionarios').get();
+      const [funcSnap, entradaHoje] = await Promise.all([
+        db.collection('funcionarios').get(),
+        buscarEntradaHojeSet()
+      ]);
       const faltasMap = await calcularFaltasQuinzenaAnterior(new Date());
 
       let totalPassagens = 0;
@@ -2392,7 +2426,9 @@
         const bruto = Number(f.passagens || 0);
         if (bruto <= 0) return;
         const { faltasLiquidas, creditoRestante } = combinarFaltasComCredito(faltasMap, f.nome, f.creditoFaltas || 0);
-        const liquido = bruto - faltasLiquidas * (bruto / 10);
+        const bateuHoje = entradaHoje.ids.has(d.id) || entradaHoje.nomes.has(normNome(f.nome));
+        const faltaHoje = (!entradaHoje.ehDomingo && !bateuHoje) ? 1 : 0;
+        const liquido = bruto - (faltasLiquidas + faltaHoje) * (bruto / 10);
         totalPassagens += liquido;
         passagensPorFunc[d.id] = { liquido, creditoRestante };
       });
@@ -2403,7 +2439,7 @@
       }
 
       const dataVencimento = fmtDataBR(proximaSexta());
-      const resumo = `Passagens: R$ ${fmt(totalPassagens)}\n\nVai ser criada uma conta a pagar com vencimento em ${dataVencimento}.\nAs passagens serão zeradas (a Folha continua aberta, sem ser fechada).`;
+      const resumo = `Passagens: R$ ${fmt(totalPassagens)}\n\nVai ser criada uma conta a pagar com vencimento em ${dataVencimento}.\nAs passagens serão zeradas (a Folha continua aberta, sem ser fechada).\nQuem ainda não bateu entrada hoje entra como falta de hoje.`;
       if (!confirm('Fechar Passagens da Quinzena?\n\n' + resumo)) return;
 
       btn.textContent = '⏳ Fechando...';
