@@ -3050,7 +3050,7 @@ exports.excluirComprovante = onCall(
 // puro pro Claude (não imagem) — a maioria dos boletos gerados por banco tem
 // texto embutido no PDF, não são digitalizados/escaneados.
 function montarPromptBoleto(textoPdf) {
-  return `O texto abaixo foi extraído de um boleto bancário brasileiro em PDF (via extração de texto bruto — pode vir com espaçamento estranho, colunas misturadas ou quebras de linha fora do lugar, isso é normal e não indica erro).
+  return `O texto abaixo foi extraído de um boleto bancário brasileiro em PDF, ou de uma guia de pagamento tipo GPS/INSS (via extração de texto bruto — pode vir com espaçamento estranho, colunas misturadas ou quebras de linha fora do lugar, isso é normal e não indica erro).
 
 Extraia 3 campos:
 
@@ -3060,15 +3060,17 @@ Extraia 3 campos:
 
 3. "vencimento": a data de vencimento, formato DD/MM/AAAA.
 
-DICA (opcional, só use se ajudar): boletos brasileiros têm uma "linha digitável" de 47-48 dígitos, onde os últimos ~14 dígitos do último campo codificam de forma determinística um fator de vencimento (dias corridos desde 07/10/1997) e o valor em centavos. Se localizar essa linha claramente no texto, pode usar como checagem cruzada — mas é só um bônus: se não tiver certeza de como decodificá-la, ignore e confie nos campos escritos por extenso no boleto.
+CASO ESPECIAL — Guia da Previdência Social (GPS/INSS): esse tipo de documento não tem "beneficiário" no sentido tradicional (o pagamento é sempre pro INSS/governo, nunca uma empresa/pessoa). Reconheça pelos termos "GPS", "Guia da Previdência Social", "INSS", "Código de Pagamento", "NIT/PIS/PASEP" ou "Competência". Nesse caso use como "descricao" algo como "INSS — Competência MM/AAAA" (a competência é o mês/ano de referência da contribuição, geralmente perto do código de pagamento) — se a competência não estiver visível, use só "INSS - Guia da Previdência Social". O "valor" é o valor total da guia (some principal + multa/juros se vierem separados e o total não aparecer pronto); o "vencimento" é a data limite de pagamento normal.
+
+DICA (opcional, só use se ajudar): boletos brasileiros têm uma "linha digitável" de 47-48 dígitos, onde os últimos ~14 dígitos do último campo codificam de forma determinística um fator de vencimento (dias corridos desde 07/10/1997) e o valor em centavos. Se localizar essa linha claramente no texto, pode usar como checagem cruzada — mas é só um bônus: se não tiver certeza de como decodificá-la, ignore e confie nos campos escritos por extenso no boleto/guia.
 
 Retorne APENAS um objeto JSON (sem texto antes ou depois, sem markdown), neste formato exato:
 {"descricao":"Nome do Beneficiário Ltda - NF 1234","valor":1150.00,"vencimento":"20/08/2026"}
 
-Se o texto não parecer ser de um boleto, ou os campos essenciais (valor/vencimento) não puderem ser identificados com confiança razoável, retorne exatamente:
+Se o texto não parecer ser de um boleto nem de uma guia de pagamento (GPS/INSS), ou os campos essenciais (valor/vencimento) não puderem ser identificados com confiança razoável, retorne exatamente:
 {"descricao":null,"valor":null,"vencimento":null}
 
-TEXTO DO BOLETO:
+TEXTO DO BOLETO/GUIA:
 """
 ${textoPdf.slice(0, 6000)}
 """`;
@@ -3163,7 +3165,7 @@ boletoNomeArquivo: "${nomeArquivo}"`;
 // ruído de foto real (borrão, reflexo, ângulo, iluminação), diferente do
 // texto limpo extraído de um PDF nativo.
 function montarPromptBoletoImagem() {
-  return `A imagem em anexo é a foto de um documento financeiro brasileiro (boleto, comprovante ou nota de cobrança), tirada com celular — pode ter ângulo torto, reflexo, sombra ou partes desfocadas, isso é normal.
+  return `A imagem em anexo é a foto de um documento financeiro brasileiro (boleto, comprovante, nota de cobrança, ou guia de pagamento tipo GPS/INSS), tirada com celular — pode ter ângulo torto, reflexo, sombra ou partes desfocadas, isso é normal.
 
 Extraia 3 campos:
 
@@ -3172,6 +3174,8 @@ Extraia 3 campos:
 2. "valor": o "Valor do Documento" (valor total a pagar). Use ponto como separador decimal, sem "R$" e sem separador de milhar. Não confunda com valores de desconto, juros, multa ou "(=) Valor Cobrado" a menos que seja a única informação de valor disponível.
 
 3. "vencimento": a data de vencimento, formato DD/MM/AAAA.
+
+CASO ESPECIAL — Guia da Previdência Social (GPS/INSS): esse tipo de documento não tem "beneficiário" no sentido tradicional (o pagamento é sempre pro INSS/governo, nunca uma empresa/pessoa). Reconheça pelos termos "GPS", "Guia da Previdência Social", "INSS", "Código de Pagamento", "NIT/PIS/PASEP" ou "Competência". Nesse caso use como "descricao" algo como "INSS — Competência MM/AAAA" (a competência é o mês/ano de referência da contribuição, geralmente perto do código de pagamento) — se a competência não estiver visível, use só "INSS - Guia da Previdência Social". O "valor" é o valor total da guia; o "vencimento" é a data limite de pagamento normal.
 
 Retorne APENAS um objeto JSON (sem texto antes ou depois, sem markdown), neste formato exato:
 {"descricao":"Nome do Beneficiário Ltda - NF 1234","valor":1150.00,"vencimento":"20/08/2026"}
