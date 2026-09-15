@@ -10,13 +10,13 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.19";
+const VERSAO = "5.20";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
 // valor só protege quem tenta INSERIR um dia novo além do limite; dias já
 // gravados antes do limite existir/mudar nunca são removidos automaticamente.
-let _cfgGeral = { limiteAjudantesDiaria: 2, limitePintoresDiaria: 2, pinCompleto: "2248" };
+let _cfgGeral = { limiteAjudantesDiaria: 2, limitePintoresDiaria: 2 };
 db.collection('configuracoes').doc('geral').onSnapshot(snap => {
   if (snap.exists) _cfgGeral = { ..._cfgGeral, ...snap.data() };
 });
@@ -512,11 +512,13 @@ const MESES_CAL = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho'
 const DOW_CAL   = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 
 function abrirCalendario(func) {
-  // Só a senha do PIN Completo (Configurações, padrão 2248) dá acesso ao
-  // calendário de diárias — pedida uma vez ao abrir, não a cada dia clicado.
-  const senha = prompt('Senha de autorização pra acessar o calendário de diárias:');
-  if (senha === null) return;
-  if (senha !== _cfgGeral.pinCompleto) { alert('Senha incorreta.'); return; }
+  // Só quem entrou no sistema com o PIN Completo acessa o calendário de
+  // diárias — sem pedir senha de novo aqui, só nem mostra o calendário pra
+  // quem entrou com qualquer outro PIN (Parcial/Restrito/Limitado/Cadastro).
+  if (sessionStorage.getItem('gw_auth') !== 'completo') {
+    alert('Acesso restrito. Somente com o PIN Completo é possível acessar o calendário de diárias.');
+    return;
+  }
 
   diasSelecionados  = new Map();
   diasPreCarregados = new Set();
