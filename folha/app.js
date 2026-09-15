@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.20";
+const VERSAO = "5.21";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -512,13 +512,10 @@ const MESES_CAL = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho'
 const DOW_CAL   = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 
 function abrirCalendario(func) {
-  // Só quem entrou no sistema com o PIN Completo acessa o calendário de
-  // diárias — sem pedir senha de novo aqui, só nem mostra o calendário pra
-  // quem entrou com qualquer outro PIN (Parcial/Restrito/Limitado/Cadastro).
-  if (sessionStorage.getItem('gw_auth') !== 'completo') {
-    alert('Acesso restrito. Somente com o PIN Completo é possível acessar o calendário de diárias.');
-    return;
-  }
+  // Segunda trava (a principal é em selecionarFuncionario, que nem deixa
+  // chegar até aqui sem PIN Completo) — se algum outro caminho tentar abrir
+  // o calendário mesmo assim, não mostra nada, sem alerta nenhum.
+  if (sessionStorage.getItem('gw_auth') !== 'completo') return;
 
   diasSelecionados  = new Map();
   diasPreCarregados = new Set();
@@ -767,6 +764,17 @@ function selecionarFuncionario(func) {
   document.getElementById('func-atual').textContent = func.nome;
   atualizarBtnOk();
   const cargo = (func.cargo || '').toLowerCase();
+
+  // Sem o PIN Completo, a opção de diária não aparece em lugar nenhum —
+  // nem modal perguntando "diária ou produção", nem calendário: vai direto
+  // pra tela de produção (mapa), como se o funcionário só tivesse esse modo.
+  if (sessionStorage.getItem('gw_auth') !== 'completo') {
+    modoDiariaHoras = false;
+    mostrarView('view-mapa');
+    _aplicarPendingClick();
+    return;
+  }
+
   if (ehAjudanteDiaria(func) && ehAjudanteProducao(func)) {
     // Ajudante com os dois modos marcados no cadastro — pergunta qual tipo
     // de lançamento é essa entrada, antes de decidir entre diária ou mapa.
