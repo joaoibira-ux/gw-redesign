@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.38";
+const VERSAO = "3.39";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -101,6 +101,8 @@ let pendingFotoThumb = null;
 
 // PIN 2912 (tela de login) = cadastro simplificado: só Nome, Face, Cargo, Admissão, Telefone, CPF, Obs.
 const CADASTRO_SIMPLIFICADO = sessionStorage.getItem('gw_auth') === 'cadastro';
+// PIN 2248 (completo) pode liberar adiantamento acima do limite semanal (Adiantamentos).
+const PIN_COMPLETO = sessionStorage.getItem('gw_auth') === 'completo';
 
 function aplicarModoSimplificado() {
   const display = CADASTRO_SIMPLIFICADO ? "none" : "";
@@ -242,6 +244,7 @@ function renderAdiantCorpo(usado) {
   }
 
   const resta = Math.max(0, limite - usado);
+  const podeSolicitar = resta > 0 || PIN_COMPLETO;
   document.getElementById("adiant-corpo").innerHTML = `
     <div class="adiant-resumo">
       <div class="adiant-linha"><span>Já usado essa semana</span><strong>${fmtMoeda(usado)}</strong></div>
@@ -250,13 +253,13 @@ function renderAdiantCorpo(usado) {
         <span>${resta <= 0 ? 'Limite atingido' : 'Resta disponível'}</span><strong>${fmtMoeda(resta)}</strong>
       </div>
     </div>
-    ${resta > 0 ? `
+    ${podeSolicitar ? `
       <button type="button" id="adiant-btn-solicitar" class="btn-solicitar" onclick="mostrarFormSolicitar(${resta})">+ Solicitar novo adiantamento</button>
       <div id="adiant-form-solicitar" style="display:none">
-        <input id="adiant-valor-input" class="modal-input" type="text" inputmode="decimal" placeholder="Valor (R$, até ${fmtMoeda(resta)})" />
+        <input id="adiant-valor-input" class="modal-input" type="text" inputmode="decimal" placeholder="${resta > 0 ? `Valor (R$, até ${fmtMoeda(resta)})` : 'Valor (R$) — acima do limite, liberado por PIN completo'}" />
         <div id="adiant-solicitar-erro" class="modal-erro"></div>
         <button type="button" id="adiant-btn-confirmar" class="btn-save" style="width:100%" onclick="confirmarSolicitar()">Confirmar solicitação</button>
-      </div>` : ''}`;
+      </div>` : `<p class="adiant-aviso">Limite semanal atingido. Só o PIN completo pode liberar valor acima do limite.</p>`}`;
 }
 
 function mostrarFormSolicitar(resta) {
@@ -282,8 +285,9 @@ async function confirmarSolicitar() {
   const btn    = document.getElementById("adiant-btn-confirmar");
 
   const valor = parseMoeda(inp.value);
+  const acimaDoLimite = valor > resta + 0.005;
   if (!valor || valor <= 0) { erroEl.textContent = "Informe um valor maior que zero."; return; }
-  if (valor > resta + 0.005) { erroEl.textContent = `Valor acima do disponível (${fmtMoeda(resta)}).`; return; }
+  if (acimaDoLimite && !PIN_COMPLETO) { erroEl.textContent = `Valor acima do disponível (${fmtMoeda(resta)}).`; return; }
 
   erroEl.textContent = "";
   _solicitandoAdiantamento = true;
@@ -291,7 +295,7 @@ async function confirmarSolicitar() {
   try {
     await db.collection("contasPagar").add({
       data: hoje(),
-      descricao: "Adiantamento: " + f.nome + " — Solicitado em Funcionários",
+      descricao: "Adiantamento: " + f.nome + " — Solicitado em Funcionários" + (acimaDoLimite ? " — Acima do limite semanal (liberado por PIN completo)" : ""),
       valor,
       status: "aberto",
       criadoEm: firebase.firestore.FieldValue.serverTimestamp(),
