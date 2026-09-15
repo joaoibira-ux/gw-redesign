@@ -585,6 +585,7 @@
     <div class="header-btns">
       <button class="btn-pesquisa" onclick="abrirPesquisa()">🔍 Pesquisar</button>
       <button class="btn-fechar-medicao" id="btn-fechar-medicao" onclick="fecharMedicaoFolha()">📑 Fechar/Medição</button>
+      <button class="btn-fechar-medicao" id="btn-fechar-passagens" onclick="fecharPassagens()">🎫 Fechar Passagens</button>
       <button class="btn-telegram" onclick="enviarTelegram(this)">📸 Telegram</button>
       <button class="btn-print" onclick="window.print()">🖨 Imprimir</button>
     </div>
@@ -689,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.08";
+  const VERSAO = "2.09";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -2361,6 +2362,69 @@
     } catch (e) {
       console.error(e);
       alert('Erro ao fechar: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+    }
+  }
+
+  // Pedido do João (2026-09-15): fechar só as Passagens da Quinzena sem
+  // precisar fechar a Folha junto — mesmo cálculo de faltas/crédito que
+  // fecharMedicaoFolha usa pra Passagens, mas sem tocar em folhas/diárias/
+  // serviços. Se depois a Folha for fechada normalmente, ela recalcula as
+  // passagens do zero (funcionarios.passagens já estará zerado pra quem já
+  // fechou por aqui, então não duplica).
+  async function fecharPassagens() {
+    const btn = document.getElementById('btn-fechar-passagens');
+    const textoOriginal = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Calculando...';
+
+    try {
+      const funcSnap = await db.collection('funcionarios').get();
+      const faltasMap = await calcularFaltasQuinzenaAnterior(new Date());
+
+      let totalPassagens = 0;
+      const passagensPorFunc = {}; // id -> { liquido, creditoRestante }
+      funcSnap.docs.forEach(d => {
+        const f = d.data();
+        if (f.ativo === false) return;
+        const bruto = Number(f.passagens || 0);
+        if (bruto <= 0) return;
+        const { faltasLiquidas, creditoRestante } = combinarFaltasComCredito(faltasMap, f.nome, f.creditoFaltas || 0);
+        const liquido = bruto - faltasLiquidas * (bruto / 10);
+        totalPassagens += liquido;
+        passagensPorFunc[d.id] = { liquido, creditoRestante };
+      });
+
+      if (totalPassagens <= 0) {
+        alert('Nada a fechar: passagens estão zeradas.');
+        return;
+      }
+
+      const dataVencimento = fmtDataBR(proximaSexta());
+      const resumo = `Passagens: R$ ${fmt(totalPassagens)}\n\nVai ser criada uma conta a pagar com vencimento em ${dataVencimento}.\nAs passagens serão zeradas (a Folha continua aberta, sem ser fechada).`;
+      if (!confirm('Fechar Passagens da Quinzena?\n\n' + resumo)) return;
+
+      btn.textContent = '⏳ Fechando...';
+      const batch = db.batch();
+
+      batch.set(db.collection('contasPagar').doc(), {
+        data: dataVencimento, descricao: 'Passagens da Quinzena', valor: totalPassagens,
+        status: 'aberto', criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      Object.entries(passagensPorFunc).forEach(([id, { liquido, creditoRestante }]) => {
+        batch.update(db.collection('funcionarios').doc(id), {
+          passagens: 0, passagensUltimoPago: liquido, creditoFaltas: creditoRestante
+        });
+      });
+
+      await batch.commit();
+      alert('Passagens fechadas com sucesso! Conta a pagar gerada para ' + dataVencimento + '.');
+    } catch (e) {
+      console.error(e);
+      alert('Erro ao fechar passagens: ' + e.message);
     } finally {
       btn.disabled = false;
       btn.textContent = textoOriginal;
