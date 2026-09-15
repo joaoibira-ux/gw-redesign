@@ -1,4 +1,4 @@
-const VERSAO = "1.10";
+const VERSAO = "1.11";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp({
@@ -33,6 +33,8 @@ const DEFAULTS = {
   valorCafe:          0,
   valorAlmoco:        0,
   limiteAdiantamentoSemanal: 0,
+  limiteAjudantesDiaria: 2,
+  limitePintoresDiaria: 2,
 };
 
 let cfg = { ...DEFAULTS };
@@ -81,6 +83,10 @@ function renderizar() {
 
     <div class="secao-titulo">💵 Adiantamentos</div>
     ${item("Limite semanal por funcionário", fmtMoeda(cfg.limiteAdiantamentoSemanal), "limiteAdiantamentoSemanal", false)}
+
+    <div class="secao-titulo">📅 Diárias</div>
+    ${item("Máximo de ajudantes por dia", cfg.limiteAjudantesDiaria, "limiteAjudantesDiaria", false)}
+    ${item("Máximo de pintores por dia", cfg.limitePintoresDiaria, "limitePintoresDiaria", false)}
 
     <div class="secao-titulo">📅 Despesas Recorrentes (lançadas no Contas a Pagar todo dia 01)</div>
     ${recorrentes.length
@@ -157,12 +163,15 @@ function item(label, valor, campo, oculto) {
 // ── Modal ─────────────────────────────────────────────────────
 const CAMPOS_MOEDA   = ["salarioEncarregado", "salarioAjudante", "valorCafe", "valorAlmoco", "limiteAdiantamentoSemanal"];
 const CAMPOS_SENHAS  = ["senhaExcluir", "senhaAlterarBanco", "pinCompleto", "pinParcial", "pinRestrito", "pinLimitado"];
+const CAMPOS_INTEIRO = ["limiteAjudantesDiaria", "limitePintoresDiaria"];
 const LABELS = {
   salarioEncarregado: "Salário Encarregado (R$)",
   salarioAjudante:    "Salário Ajudante (R$)",
   valorCafe:          "Valor do Café (R$)",
   valorAlmoco:        "Valor do Almoço (R$)",
   limiteAdiantamentoSemanal: "Limite semanal de adiantamento, por funcionário (R$)",
+  limiteAjudantesDiaria: "Máximo de ajudantes por diária, no mesmo dia",
+  limitePintoresDiaria:  "Máximo de pintores por diária, no mesmo dia",
   senhaExcluir:       "Nova senha — Excluir / Ativar",
   senhaAlterarBanco:  "Nova senha — Alterar Banco",
   pinCompleto:        "Novo PIN Completo (4 dígitos)",
@@ -175,15 +184,17 @@ let _campoAtual = null;
 
 function abrirModal(campo) {
   _campoAtual = campo;
-  const ehSenha = CAMPOS_SENHAS.includes(campo);
-  const ehMoeda = CAMPOS_MOEDA.includes(campo);
+  const ehSenha   = CAMPOS_SENHAS.includes(campo);
+  const ehMoeda   = CAMPOS_MOEDA.includes(campo);
+  const ehInteiro = CAMPOS_INTEIRO.includes(campo);
 
   document.getElementById("modal-titulo").textContent = LABELS[campo] || campo;
   const inp = document.getElementById("modal-input");
   inp.type = ehSenha ? "password" : "text";
-  inp.inputMode = ehMoeda ? "decimal" : "text";
+  inp.inputMode = ehMoeda ? "decimal" : ehInteiro ? "numeric" : "text";
   inp.placeholder = ehMoeda ? "0,00" : "";
-  inp.value = ehMoeda ? Number(cfg[campo] || 0).toFixed(2).replace(".", ",") : "";
+  inp.value = ehMoeda ? Number(cfg[campo] || 0).toFixed(2).replace(".", ",")
+    : ehInteiro ? String(cfg[campo] ?? DEFAULTS[campo]) : "";
 
   document.getElementById("modal-senha").value = "";
   document.getElementById("modal-erro").textContent = "";
@@ -218,6 +229,9 @@ function salvarModal() {
   if (CAMPOS_MOEDA.includes(campo)) {
     valor = parseFloat(rawVal.replace(",", "."));
     if (isNaN(valor) || valor < 0) { erroEl.textContent = "Valor inválido."; return; }
+  } else if (CAMPOS_INTEIRO.includes(campo)) {
+    valor = parseInt(rawVal, 10);
+    if (isNaN(valor) || valor < 1) { erroEl.textContent = "Informe um número inteiro maior que zero."; return; }
   } else {
     valor = rawVal;
     if (valor.length < 4) { erroEl.textContent = "Mínimo de 4 caracteres."; return; }

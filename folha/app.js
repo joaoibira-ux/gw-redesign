@@ -10,8 +10,16 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.17";
+const VERSAO = "5.18";
 const VALOR_HORA_PINTOR = 10.94;
+
+// Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
+// valor só protege quem tenta INSERIR um dia novo além do limite; dias já
+// gravados antes do limite existir/mudar nunca são removidos automaticamente.
+let _cfgGeral = { limiteAjudantesDiaria: 2, limitePintoresDiaria: 2 };
+db.collection('configuracoes').doc('geral').onSnapshot(snap => {
+  if (snap.exists) _cfgGeral = { ..._cfgGeral, ...snap.data() };
+});
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
 // ── Loading overlay ───────────────────────────────────────────
@@ -579,10 +587,38 @@ function renderCalendario() {
   document.getElementById('cal-grid').innerHTML = html;
 }
 
+// Conta, entre os OUTROS funcionários (exclui quem está sendo editado agora
+// — os dias dele estão em diasSelecionados, não em _diariasCache até salvar),
+// quantos já têm diária registrada nesse mesmo dia, filtrando por categoria
+// (cargoAlvo: 'ajudante' ou 'pintor' — pintor cobre Pintor/Raspador).
+function contarDiariasNoDia(key, cargoAlvo, excluirFuncKey) {
+  const [, mes, dia] = key.split('-');
+  const alvoLocalId = `${dia}/${mes}`;
+  let count = 0;
+  _diariasCache.forEach(doc => {
+    const fKey = doc.funcionarioId || doc.funcionarioNome;
+    if (fKey === excluirFuncKey) return;
+    const cargoDoc = (doc.cargo || '').toLowerCase();
+    const ehAlvo = cargoAlvo === 'ajudante'
+      ? cargoDoc.includes('ajudante')
+      : (cargoDoc.includes('pintor') || cargoDoc.includes('raspador'));
+    if (!ehAlvo) return;
+    const temDia = (doc.dias || []).some(d => (d.localId || '').replace(' ½', '').trim() === alvoLocalId);
+    if (temDia) count++;
+  });
+  return count;
+}
+
 function toggleDia(key) {
   if (modoDiariaHoras) {
     const jaSelecionado = diasSelecionados.has(key);
     if (!jaSelecionado) {
+      const funcKey = funcionarioAtual.id || funcionarioAtual.nome;
+      const limite  = _cfgGeral.limitePintoresDiaria;
+      if (contarDiariasNoDia(key, 'pintor', funcKey) >= limite) {
+        alert(`Limite de ${limite} pintor(es) por diária já atingido nesse dia.\n\nAjuste o limite em Configurações se precisar liberar mais.`);
+        return;
+      }
       const horasStr = prompt('Quantas horas trabalhadas neste dia?');
       if (horasStr === null) return;
       const horas = parseFloat(horasStr.replace(',', '.'));
@@ -606,6 +642,12 @@ function toggleDia(key) {
   }
   const state = diasSelecionados.get(key);
   if (!state) {
+    const funcKey = funcionarioAtual.id || funcionarioAtual.nome;
+    const limite  = _cfgGeral.limiteAjudantesDiaria;
+    if (contarDiariasNoDia(key, 'ajudante', funcKey) >= limite) {
+      alert(`Limite de ${limite} ajudante(s) por diária já atingido nesse dia.\n\nAjuste o limite em Configurações se precisar liberar mais.`);
+      return;
+    }
     diasSelecionados.set(key, 'full');
   } else if (state === 'full') {
     diasSelecionados.set(key, 'half');
