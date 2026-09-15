@@ -533,6 +533,17 @@
             <div id="dd-ponto-hoje" class="dd-card-scroll"></div>
           </div>
         </div>
+
+        <div class="dd-row2">
+          <div class="dd-card">
+            <div class="dd-card-header"><span class="dd-card-header-title">Ranking de Produção — Pintores (mês atual)</span></div>
+            <div id="dd-ranking-pintores" class="dd-card-scroll"></div>
+          </div>
+          <div class="dd-card">
+            <div class="dd-card-header"><span class="dd-card-header-title">Ranking de Produção — Serviços (mês atual)</span></div>
+            <div id="dd-ranking-servicos" class="dd-card-scroll"></div>
+          </div>
+        </div>
       </div>
     </main>
   </div>
@@ -740,7 +751,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '6.55';
+    const VERSAO = '6.56';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -1163,6 +1174,48 @@
         if (s.status === 'concluido') servConcluidos++;
       }));
       const pctServicos = servTotal > 0 ? Math.round((servConcluidos / servTotal) * 100) : 0;
+
+      // ── Ranking de produção (mês atual) — por Pintor e por Serviço ──
+      // Só considera serviços já CONCLUÍDOS (com valorPago já calculado no
+      // fechamento da folha), filtrando pela data de pagamento (mesmo campo
+      // "dataPagamento" usado tanto pelo fechamento em caixa/relatorio.html
+      // quanto pelo registro manual em locais/app.js) — não tenta recalcular
+      // valor de serviços ainda "em_pagamento" (isso exigiria duplicar a
+      // tabela de preços/categoria aqui também).
+      const cargoPorChave = {};
+      func.forEach(f => {
+        if (f.id) cargoPorChave[f.id] = f.cargo || '';
+        if (f.nome) cargoPorChave[f.nome] = f.cargo || '';
+      });
+      const rankPintores = new Map(); // nome -> total
+      const rankServicos = new Map(); // nome do serviço -> total
+      locais.forEach(l => (l.servicos || []).forEach(s => {
+        if (s.status !== 'concluido') return;
+        const dataPag = ddParseData(s.dataPagamento);
+        if (!dataPag || dataPag < inicioMes) return;
+        const valor = Number(s.valorPago) || 0;
+        if (valor <= 0) return;
+
+        rankServicos.set(s.nome, (rankServicos.get(s.nome) || 0) + valor);
+
+        const exec = s.executor || {};
+        const cargo = (exec.cargo || cargoPorChave[exec.id] || cargoPorChave[exec.nome] || '').toLowerCase();
+        if (exec.nome && cargo.includes('pintor')) {
+          rankPintores.set(exec.nome, (rankPintores.get(exec.nome) || 0) + valor);
+        }
+      }));
+
+      const rankingHtml = (map, vazio) => {
+        const itens = [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+        if (!itens.length) return `<p style="color:#888;padding:8px 0;">${vazio}</p>`;
+        return itens.map(([nome, valor], i) => `
+          <div class="dd-lista-item">
+            <span class="dd-lista-sub">${i + 1}º · ${ddEscHtml(nome)}</span>
+            <span class="dd-lista-valor" style="color:#4acf54;">${ddFmtMoeda(valor)}</span>
+          </div>`).join('');
+      };
+      document.getElementById('dd-ranking-pintores').innerHTML = rankingHtml(rankPintores, 'Nenhuma produção de pintor concluída neste mês ainda.');
+      document.getElementById('dd-ranking-servicos').innerHTML = rankingHtml(rankServicos, 'Nenhum serviço concluído neste mês ainda.');
 
       const medicoesComData = medicoes.map(m => ({ ...m, _data: ddParseData(m.data) }));
       const medicoesMes = medicoesComData.filter(m => m._data && m._data >= inicioMes);
