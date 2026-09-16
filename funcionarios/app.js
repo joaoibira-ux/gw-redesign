@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.39";
+const VERSAO = "3.40";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -172,6 +172,26 @@ function inicioDaSemana() {
   return new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - diffSegunda, 0, 0, 0, 0);
 }
 
+// Normaliza pra comparação tolerante: minúsculo e sem acento.
+function _normNomeAdiant(s) {
+  return (s || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+
+// Nome do adiantamento bate com o do funcionário-alvo: exato primeiro e,
+// se não bater, tolerante (todas as palavras do nome do adiantamento
+// presentes no nome atual do funcionário) — o nome gravado no adiantamento
+// é uma cópia congelada de quando foi lançado; se o cadastro for depois
+// expandido pro nome completo (ex: "Jonas Santos" -> "Jonas Andrade dos
+// Santos"), a comparação exata nunca mais bate e o "já usado essa semana"
+// fica subcontado, deixando passar solicitação acima do limite real (mesmo
+// bug encontrado e corrigido em caixa/relatorio.html em 2026-09-16).
+function _nomeAdiantBate(nome, nomeAlvo) {
+  if (nome === nomeAlvo) return true;
+  const palavrasNome  = _normNomeAdiant(nome).split(/\s+/).filter(Boolean);
+  const palavrasAlvo  = new Set(_normNomeAdiant(nomeAlvo).split(/\s+/).filter(Boolean));
+  return palavrasNome.length > 0 && palavrasNome.every(p => palavrasAlvo.has(p));
+}
+
 // Extrai o nome de "Adiantamento: {nome} — ..." (mesma convenção de
 // folha/app.js) e soma o valor se for do funcionário-alvo e dentro da
 // semana atual. Usado tanto pra lançamentos de caixa (adiantamento pago na
@@ -186,7 +206,7 @@ function _somaSeAdiantamentoDoFuncionario(descricao, criadoEm, valor, nomeAlvo, 
   const m = desc.match(/^Adiantamento:?\s+(.+)/);
   if (!m) return 0;
   const nome = m[1].split(/\s*[—–-]/)[0].trim().normalize("NFC");
-  if (nome !== nomeAlvo) return 0;
+  if (!_nomeAdiantBate(nome, nomeAlvo)) return 0;
   const dt = criadoEm && criadoEm.toDate ? criadoEm.toDate() : null;
   if (!dt || dt < inicioSemana) return 0;
   return Number(valor || 0);
