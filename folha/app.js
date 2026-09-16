@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.22";
+const VERSAO = "5.23";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -1474,27 +1474,47 @@ async function salvarFolha(silencioso = false, completarAjudantes = true) {
   }
 }
 
-// Soma os adiantamentos ainda em aberto de cada funcionário — tanto os
+// Junta os adiantamentos ainda em aberto de cada funcionário — tanto os
 // lançados direto no caixa (origem 'Adiantamento', ainda não renomeado pra
 // 'Antecipacao' quando uma folha desconta) quanto os solicitados em
 // Funcionários e pagos via Contas a Pagar (baixados, ainda sem
 // descontadoDaFolha). Mesmo critério usado em caixa/relatorio.html — sem a
 // segunda parte, um adiantamento pago via Contas a Pagar nunca aparecia
 // aqui, mesmo já tendo sido desembolsado pro funcionário.
-// Cada entrada do Map agora é { total, itens: [{data, valor, origem}] } em
-// vez de só o total somado — pra dar pra listar os adiantamentos um a um
-// no detalhe do comprovante, não só o valor descontado no total.
-function _addAdiantItem(map, nome, valor, data, origem) {
-  if (!nome || !valor) return;
-  const atual = map.get(nome) || { total: 0, itens: [] };
-  atual.total += valor;
-  atual.itens.push({ data: data || '', valor, origem });
-  map.set(nome, atual);
+//
+// Retorna uma LISTA plana (não mais um Map por nome — ver
+// buscarAdiantamentoDoFuncionario, mesmo motivo/correção aplicada em
+// caixa/relatorio.html em 2026-09-16): o nome digitado no adiantamento é
+// uma cópia congelada de quando foi lançado, e casar por nome exato (ou até
+// tolerante, mas indexado por nome) deixava de achar o funcionário sempre
+// que o cadastro era renomeado depois — o adiantamento ficava fora do
+// comprovante e da folha sem avisar ninguém.
+async function buscarAdiantamentosMap() {
+  const adiantLista = [];
+  try {
+    const [lancSnap, cpSnap] = await Promise.all([
+      db.collection('lancamentos').where('origem', 'in', ['ANE->ADIANTAMENTO', 'JOAO->ADIANTAMENTO']).get(),
+      db.collection('contasPagar').get()
+    ]);
+    lancSnap.docs.forEach(d => {
+      const r = d.data();
+      const nome = extrairNomeAdiantamento(r.descricao);
+      if (!nome || !r.saida) return;
+      adiantLista.push({ nome, valor: r.saida, data: r.data || '', origem: 'Caixa', cpf: r.funcionarioCpf || '' });
+    });
+    cpSnap.docs.forEach(d => {
+      const r = d.data();
+      if (r.status !== 'baixado' || r.descontadoDaFolha) return;
+      const nome = extrairNomeAdiantamento(r.descricao);
+      if (!nome) return;
+      const valor = r.valorOriginal !== undefined ? r.valorOriginal : r.valor;
+      if (!valor) return;
+      adiantLista.push({ nome, valor, data: r.data || '', origem: 'Contas a Pagar', cpf: r.funcionarioCpf || '' });
+    });
+  } catch (e) {}
+  return adiantLista;
 }
-function adiantTotal(map, nome) {
-  const info = map.get((nome || '').normalize('NFC'));
-  return info ? info.total : 0;
-}
+
 // Extrai o nome de "Adiantamento: {nome} — ..." OU "Adiantamento {nome}" (o
 // ":" às vezes é digitado à mão sem ele em lançamentos manuais de Contas a
 // Pagar — precisa aceitar os dois formatos, senão o adiantamento some
@@ -1506,29 +1526,54 @@ function extrairNomeAdiantamento(descricao) {
   return m[1].split(/\s*[—–\-]/)[0].trim().normalize('NFC');
 }
 
-async function buscarAdiantamentosMap() {
-  const adiantamentosMap = new Map();
-  try {
-    const [lancSnap, cpSnap] = await Promise.all([
-      db.collection('lancamentos').where('origem', 'in', ['ANE->ADIANTAMENTO', 'JOAO->ADIANTAMENTO']).get(),
-      db.collection('contasPagar').get()
-    ]);
-    lancSnap.docs.forEach(d => {
-      const r = d.data();
-      const nome = extrairNomeAdiantamento(r.descricao);
-      if (!nome) return;
-      _addAdiantItem(adiantamentosMap, nome, r.saida || 0, r.data, 'Caixa');
-    });
-    cpSnap.docs.forEach(d => {
-      const r = d.data();
-      if (r.status !== 'baixado' || r.descontadoDaFolha) return;
-      const nome = extrairNomeAdiantamento(r.descricao);
-      if (!nome) return;
-      const valor = r.valorOriginal !== undefined ? r.valorOriginal : r.valor;
-      _addAdiantItem(adiantamentosMap, nome, valor || 0, r.data, 'Contas a Pagar');
-    });
-  } catch (e) {}
-  return adiantamentosMap;
+// Tokeniza um nome pra comparação por palavra: minúsculo, sem acento, uma
+// palavra por elemento. Mesma função (e mesmo motivo) de
+// caixa/relatorio.html — não dá pra usar normNome() por aí porque esse
+// arquivo nem tem uma função assim; aqui é escrita direto certa desde o
+// início, preservando espaço pra dar pra separar em palavras de verdade.
+function tokenizarNome(s) {
+  return (s || '').trim().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .split(/\s+/).filter(Boolean);
+}
+
+// Junta em {total, itens} os adiantamentos de um funcionário — prioridade:
+// 1) CPF (pedido do João, 2026-09-16): o identificador de verdade, nunca
+//    muda nem com renomeação nem com demissão/recontratação. Uma entrada
+//    COM cpf gravado só soma se bater exato com o CPF do funcionário-alvo
+//    (resolvido via _todosFunc pelo id) — nunca cai pro nome, evita casar
+//    com a pessoa errada por coincidência.
+// 2) Nome tolerante nos dois sentidos, só pra entradas SEM CPF gravado
+//    (lançadas antes dessa correção): o menor conjunto de palavras precisa
+//    estar inteiramente contido no outro, não importa de qual lado (o
+//    adiantamento ou o grupo da folha) o nome ficou desatualizado.
+function buscarAdiantamentoDoFuncionario(adiantLista, func) {
+  const f = (_todosFunc || []).find(x => x.id === func?.id);
+  const cpfAlvo = (f?.cpf || '').replace(/\D/g, '');
+  const palavrasFunc = new Set(tokenizarNome(func?.nome));
+  const itens = [];
+  let total = 0;
+  (adiantLista || []).forEach(({ nome, valor, data, origem, cpf }) => {
+    const cpfEntrada = (cpf || '').replace(/\D/g, '');
+    let bate = false;
+    if (cpfEntrada) {
+      bate = !!cpfAlvo && cpfEntrada === cpfAlvo;
+    } else if (palavrasFunc.size) {
+      const palavrasNome = new Set(tokenizarNome(nome));
+      if (palavrasNome.size) {
+        const [menor, maior] = palavrasNome.size <= palavrasFunc.size
+          ? [palavrasNome, palavrasFunc] : [palavrasFunc, palavrasNome];
+        bate = [...menor].every(p => maior.has(p));
+      }
+    }
+    if (!bate) return;
+    total += valor;
+    itens.push({ data, valor, origem });
+  });
+  return { total, itens };
+}
+function adiantTotal(adiantLista, func) {
+  return buscarAdiantamentoDoFuncionario(adiantLista, func).total;
 }
 
 // ── Botão Relatório/Resumo → salva + mostra comprovante ───────────────────
@@ -1543,19 +1588,19 @@ async function fecharFolha() {
   const pagamentos = [];
   const gruposData = [];
   if (encarregadoCache) {
-    pagamentos.push({ nome: encarregadoCache.nome, cargo: encarregadoCache.cargo || 'encarregado', valor: valorEncarregado });
+    pagamentos.push({ id: encarregadoCache.id, nome: encarregadoCache.nome, cargo: encarregadoCache.cargo || 'encarregado', valor: valorEncarregado });
   }
   [...grupos.values()].forEach(g => {
     const subtotal = g.itens.reduce((a, e) => a + Number(e.valor), 0);
-    pagamentos.push({ nome: g.funcionario.nome, cargo: g.funcionario.cargo || '', valor: subtotal });
+    pagamentos.push({ id: g.funcionario.id, nome: g.funcionario.nome, cargo: g.funcionario.cargo || '', valor: subtotal });
     gruposData.push({ funcionario: g.funcionario, itens: g.itens });
   });
 
-  const adiantamentosMap = await buscarAdiantamentosMap();
+  const adiantLista = await buscarAdiantamentosMap();
 
   entradas = [];
   atualizarHeader();
-  mostrarComprovante(gruposData, encarregadoCache, valorEncarregado, nServMapa, totalGeral, pagamentos, adiantamentosMap);
+  mostrarComprovante(gruposData, encarregadoCache, valorEncarregado, nServMapa, totalGeral, pagamentos, adiantLista);
 }
 
 // Converte "DD/MM/AAAA" num Date local (meia-noite) — mesma convenção usada
@@ -1572,12 +1617,29 @@ function parseDataBRparaDate(s) {
 // Bruto ou Salário de Referência, conforme o cargo) — mesmo cálculo e mesma
 // regra de caixa/relatorio.html: só na quinzena 16-fim do mês, proporcional
 // aos dias efetivamente admitido dentro do período pra quem entrou no meio.
-function calcularDescontosFixos(nome) {
+// Casa por id primeiro (estável, não muda com renomeação) e só cai pro nome
+// tolerante se o id não vier preenchido (achado real em 2026-09-16: essa
+// função exigia nome idêntico — case e acento inclusive — pra achar o
+// funcionário; qualquer nome congelado desatualizado zerava o desconto
+// silenciosamente).
+function calcularDescontosFixos(func) {
   const CARGOS_POR_PRODUCAO_REL = ['PINTOR', 'RASPADOR'];
   const hoje = new Date();
   if (hoje.getDate() < 16) return { inss: 0, passagens: 0 };
 
-  const f = (_todosFunc || []).find(x => (x.nome || '').normalize('NFC') === (nome || '').normalize('NFC'));
+  let f = (_todosFunc || []).find(x => x.id === func?.id);
+  if (!f) {
+    const palavrasAlvo = new Set(tokenizarNome(func?.nome));
+    if (palavrasAlvo.size) {
+      f = (_todosFunc || []).find(x => {
+        const palavrasX = new Set(tokenizarNome(x.nome));
+        if (!palavrasX.size) return false;
+        const [menor, maior] = palavrasX.size <= palavrasAlvo.size
+          ? [palavrasX, palavrasAlvo] : [palavrasAlvo, palavrasX];
+        return [...menor].every(p => maior.has(p));
+      });
+    }
+  }
   if (!f) return { inss: 0, passagens: 0 };
 
   const periodoIni = new Date(hoje.getFullYear(), hoje.getMonth(), 16);
@@ -1601,17 +1663,17 @@ function calcularDescontosFixos(nome) {
   return { inss: base * pct / 100 * fator, passagens: f.isentoPassagens ? 0 : base * 0.06 * fator };
 }
 
-function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pagamentos, adiantamentosMap = new Map()) {
+function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pagamentos, adiantLista = []) {
 
   const hoje = new Date().toLocaleDateString('pt-BR');
 
   let totalDeducoes = 0;
   const detalhes = []; // um item por pessoa — corpo mostrado no clique (abrirDetalheComprovante)
 
-  const adiantItensOrdenados = nome => {
-    const info = adiantamentosMap.get((nome || '').normalize('NFC'));
-    if (!info || !info.itens.length) return [];
-    return [...info.itens].sort((a, b) => {
+  const adiantItensOrdenados = func => {
+    const { itens } = buscarAdiantamentoDoFuncionario(adiantLista, func);
+    if (!itens.length) return [];
+    return [...itens].sort((a, b) => {
       const da = parseDataBRparaDate(a.data), db_ = parseDataBRparaDate(b.data);
       if (!da && !db_) return 0;
       if (!da) return 1; // sem data conhecida vai pro fim
@@ -1677,8 +1739,8 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
   if (encData) {
     const quinzena  = (encData.salario || 0) / 2;
     const bonus     = 5 * nServ;
-    const adiantEnc = adiantTotal(adiantamentosMap, encData.nome);
-    const { inss: inssEnc, passagens: passagensEnc } = calcularDescontosFixos(encData.nome);
+    const adiantEnc = adiantTotal(adiantLista, encData);
+    const { inss: inssEnc, passagens: passagensEnc } = calcularDescontosFixos(encData);
     const totalDeducEnc = adiantEnc + inssEnc + passagensEnc;
     const liquidoEnc = valorEnc - totalDeducEnc;
     totalDeducoes += totalDeducEnc;
@@ -1686,7 +1748,7 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
     const descontosEnc = [];
     if (inssEnc > 0) descontosEnc.push({ label: 'INSS', valor: inssEnc });
     if (passagensEnc > 0) descontosEnc.push({ label: 'Passagens', valor: passagensEnc });
-    adiantItensOrdenados(encData.nome).forEach(it => descontosEnc.push({
+    adiantItensOrdenados(encData).forEach(it => descontosEnc.push({
       label: 'Adiantamento', valor: it.valor,
       meta: [it.data, it.origem].filter(Boolean).join(' · ')
     }));
@@ -1708,8 +1770,8 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
   }
   const gruposHtml = gruposData.map(g => {
     const sub    = g.itens.reduce((a, e) => a + Number(e.valor), 0);
-    const adiant = adiantTotal(adiantamentosMap, g.funcionario.nome);
-    const { inss, passagens } = calcularDescontosFixos(g.funcionario.nome);
+    const adiant = adiantTotal(adiantLista, g.funcionario);
+    const { inss, passagens } = calcularDescontosFixos(g.funcionario);
     const totalDeduc = adiant + inss + passagens;
     const liquido = sub - totalDeduc;
     totalDeducoes += totalDeduc;
@@ -1724,7 +1786,7 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
     const descontosPessoa = [];
     if (inss > 0) descontosPessoa.push({ label: 'INSS', valor: inss });
     if (passagens > 0) descontosPessoa.push({ label: 'Passagens', valor: passagens });
-    adiantItensOrdenados(g.funcionario.nome).forEach(it => descontosPessoa.push({
+    adiantItensOrdenados(g.funcionario).forEach(it => descontosPessoa.push({
       label: 'Adiantamento', valor: it.valor,
       meta: [it.data, it.origem].filter(Boolean).join(' · ')
     }));
@@ -1749,10 +1811,10 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
 
   // Ajusta pagamentos para tela de sucesso (desconta adiantamento + INSS + passagens por funcionário)
   const pagamentosAjustados = pagamentos.map(p => {
-    const { inss, passagens } = calcularDescontosFixos(p.nome);
+    const { inss, passagens } = calcularDescontosFixos(p);
     return {
       ...p,
-      valor: p.valor - adiantTotal(adiantamentosMap, p.nome) - inss - passagens
+      valor: p.valor - adiantTotal(adiantLista, p) - inss - passagens
     };
   });
 
@@ -2046,7 +2108,7 @@ function mostrarSucesso(pagamentos, totalGeral) {
 async function verRelatorio() {
   let gruposData, nServMapa, totalGeral, valorEncarregado;
 
-  const adiantamentosMap = await buscarAdiantamentosMap();
+  const adiantLista = await buscarAdiantamentosMap();
 
   const temProducao  = entradas.some(e => e.firestoreLocalId);
   const temDiaristas = _diariasCache.length > 0;
@@ -2108,7 +2170,7 @@ async function verRelatorio() {
             s.funcionario && (s.funcionario.id || s.funcionario.nome) === (g.funcionario.id || g.funcionario.nome));
         });
         return { funcionario: g.funcionario, itens: itensVivos };
-      }).filter(g => g.itens.length > 0 || adiantamentosMap.has((g.funcionario.nome || '').normalize('NFC')));
+      }).filter(g => g.itens.length > 0 || buscarAdiantamentoDoFuncionario(adiantLista, g.funcionario).itens.length > 0);
 
       const totalProd = gruposData.reduce((acc, g) => acc + g.itens.reduce((s, e) => s + Number(e.valor), 0), 0);
       totalGeral = totalProd + valorEncarregado;
@@ -2116,13 +2178,13 @@ async function verRelatorio() {
   }
 
   const pagamentos = [];
-  if (encarregadoCache) pagamentos.push({ nome: encarregadoCache.nome, cargo: encarregadoCache.cargo || 'encarregado', valor: valorEncarregado });
+  if (encarregadoCache) pagamentos.push({ id: encarregadoCache.id, nome: encarregadoCache.nome, cargo: encarregadoCache.cargo || 'encarregado', valor: valorEncarregado });
   gruposData.forEach(g => {
     const sub = g.itens.reduce((a, e) => a + Number(e.valor), 0);
-    pagamentos.push({ nome: g.funcionario.nome, cargo: g.funcionario.cargo || '', valor: sub });
+    pagamentos.push({ id: g.funcionario.id, nome: g.funcionario.nome, cargo: g.funcionario.cargo || '', valor: sub });
   });
 
-  mostrarComprovante(gruposData, encarregadoCache, valorEncarregado, nServMapa, totalGeral, pagamentos, adiantamentosMap);
+  mostrarComprovante(gruposData, encarregadoCache, valorEncarregado, nServMapa, totalGeral, pagamentos, adiantLista);
 }
 
 if ('serviceWorker' in navigator) {
