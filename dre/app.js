@@ -1,4 +1,4 @@
-const VERSAO = "1.2";
+const VERSAO = "1.3";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp({
@@ -91,17 +91,27 @@ async function carregar() {
   document.getElementById("conteudo").innerHTML = '<div class="loading">Carregando...</div>';
 
   try {
-    const [receberSnap, pagarSnap, folhasSnap] = await Promise.all([
-      db.collection("contasReceber").get(),
+    const [medicoesSnap, pagarSnap, folhasSnap] = await Promise.all([
+      db.collection("medicoes").get(),
       db.collection("contasPagar").get(),
       db.collection("folhas").get(),
     ]);
 
-    // ── Receita: contas a receber com vencimento dentro do mês ──
-    const itensReceita = receberSnap.docs
+    // ── Receita: medições feitas dentro do mês, pelo Valor da Nota Fiscal ──
+    // Pedido do João (2026-09-16): receita vem das medições (quando o
+    // trabalho foi de fato medido/faturado), não do Contas a Receber. O
+    // Contas a Receber tem vencimentos espalhados no tempo — uma mesma
+    // medição gera uma conta "Medição X" (vencimento logo em seguida) E,
+    // separada, uma conta "Retenção 5% Paradigma X" com vencimento na data
+    // fixa da retenção (pode ser mais de um ano depois, ver
+    // DATA_RETENCAO_PARADIGMA em medicoes/app.js) — usar o Contas a Receber
+    // como fonte rasgava o valor de uma única medição em dois meses/anos
+    // diferentes do DRE. valorNotaFiscal é o valor cheio da medição, antes
+    // da retenção, então já representa o total faturado no mês certo.
+    const itensReceita = medicoesSnap.docs
       .map(d => ({ id: d.id, ...d.data() }))
-      .filter(c => estaNoMes(parseData(c.data), ano, mes));
-    const totalReceita = itensReceita.reduce((s, c) => s + (Number(c.valor) || 0), 0);
+      .filter(m => estaNoMes(parseData(m.data), ano, mes));
+    const totalReceita = itensReceita.reduce((s, m) => s + (Number(m.valorNotaFiscal) || 0), 0);
 
     // ── Contas a Pagar do mês, já categorizadas ──
     const pagarDoMes = pagarSnap.docs
@@ -143,8 +153,8 @@ async function carregar() {
   _carregando = false;
 }
 
-function linhaDetalheReceber(c) {
-  return `<div class="detalhe-linha"><span>${escHtml(c.descricao)}</span><span>${fmtMoeda(c.valor)}</span></div>`;
+function linhaDetalheReceita(m) {
+  return `<div class="detalhe-linha"><span>Medição ${escHtml(m.nome)}</span><span>${fmtMoeda(m.valorNotaFiscal)}</span></div>`;
 }
 function linhaDetalhePagar(c) {
   return `<div class="detalhe-linha"><span>${escHtml(c.descricao)}</span><span>${fmtMoeda(c.valor)}</span></div>`;
@@ -174,7 +184,7 @@ function renderizar(d) {
   const cor = d.resultado >= 0 ? "positivo" : "negativo";
   document.getElementById("conteudo").innerHTML = `
     <div class="dre-card">
-      ${blocoLinha("receita", "Receita", d.totalReceita, "positivo", d.itensReceita, linhaDetalheReceber, "Nenhuma conta a receber com vencimento nesse mês.")}
+      ${blocoLinha("receita", "Receita", d.totalReceita, "positivo", d.itensReceita, linhaDetalheReceita, "Nenhuma medição feita nesse mês.")}
       <div class="dre-sep"></div>
       ${blocoLinha("folha", "(-) Custo de Mão de Obra", -d.totalFolha, "negativo", d.itensFolha, linhaDetalheFolha, "Nenhuma folha fechada nesse mês.")}
       ${blocoLinha("operacional", "(-) Despesas Operacionais", -d.totalOperacional, "negativo", d.itensOperacional, linhaDetalhePagar, "Nenhuma despesa operacional nesse mês.")}
