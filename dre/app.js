@@ -1,4 +1,4 @@
-const VERSAO = "1.3";
+const VERSAO = "1.4";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp({
@@ -58,7 +58,13 @@ function categorizarContaPagar(descricao) {
   if (t.includes("JUROS")) return "financeira";
   if (t.includes("EMPRESTIMO")) return "excluido";
   if (t.includes("BBS")) return "excluido";
-  if (t.startsWith("ADIANTAMENTO:")) return "excluido";
+  // Aceita "ADIANTAMENTO: {nome}" e também "ADIANTAMENTO {nome}" (sem ":",
+  // digitado à mão em lançamentos manuais) — mesma tolerância já usada em
+  // extrairNomeAdiantamento nos outros módulos. Sem isso, adiantamentos sem
+  // ":" na descrição caíam em "operacional" como despesa (achado real,
+  // 2026-09-16: várias contas tipo "Adiantamento Paulo Ricardo" contavam
+  // como despesa operacional em vez de serem excluídas).
+  if (/^ADIANTAMENTO:?\s/.test(t)) return "excluido";
   return "operacional";
 }
 
@@ -114,14 +120,21 @@ async function carregar() {
     const totalReceita = itensReceita.reduce((s, m) => s + (Number(m.valorNotaFiscal) || 0), 0);
 
     // ── Contas a Pagar do mês, já categorizadas ──
+    // Quando a conta é baixada (paga), o campo "valor" vira 0 e o valor real
+    // fica preservado em "valorOriginal" (mesma convenção usada em
+    // caixa/app.js e já tratada em vários outros lugares do sistema) — sem
+    // esse ajuste, toda despesa operacional já paga aparecia como R$ 0 no
+    // DRE (achado real do João, 2026-09-16: "a maioria está com valor
+    // zero" — exatamente porque a maioria já tinha sido baixada).
     const pagarDoMes = pagarSnap.docs
       .map(d => ({ id: d.id, ...d.data() }))
-      .filter(c => estaNoMes(parseData(c.data), ano, mes));
+      .filter(c => estaNoMes(parseData(c.data), ano, mes))
+      .map(c => ({ ...c, valorReal: c.status === "baixado" ? (c.valorOriginal !== undefined ? c.valorOriginal : c.valor) : c.valor }));
 
     const itensOperacional = pagarDoMes.filter(c => categorizarContaPagar(c.descricao) === "operacional");
     const itensFinanceira  = pagarDoMes.filter(c => categorizarContaPagar(c.descricao) === "financeira");
-    const totalOperacional = itensOperacional.reduce((s, c) => s + (Number(c.valor) || 0), 0);
-    const totalFinanceira  = itensFinanceira.reduce((s, c) => s + (Number(c.valor) || 0), 0);
+    const totalOperacional = itensOperacional.reduce((s, c) => s + (Number(c.valorReal) || 0), 0);
+    const totalFinanceira  = itensFinanceira.reduce((s, c) => s + (Number(c.valorReal) || 0), 0);
 
     // ── Custo de Mão de Obra: folhas PAGAS com data dentro do mês ──
     // A coleção 'folhas' também guarda snapshot toda vez que alguém abre o
@@ -157,7 +170,7 @@ function linhaDetalheReceita(m) {
   return `<div class="detalhe-linha"><span>Medição ${escHtml(m.nome)}</span><span>${fmtMoeda(m.valorNotaFiscal)}</span></div>`;
 }
 function linhaDetalhePagar(c) {
-  return `<div class="detalhe-linha"><span>${escHtml(c.descricao)}</span><span>${fmtMoeda(c.valor)}</span></div>`;
+  return `<div class="detalhe-linha"><span>${escHtml(c.descricao)}</span><span>${fmtMoeda(c.valorReal)}</span></div>`;
 }
 function linhaDetalheFolha(f) {
   return `<div class="detalhe-linha"><span>Folha de ${escHtml(f.data)}</span><span>${fmtMoeda(f.totalGeral)}</span></div>`;
