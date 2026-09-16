@@ -1,4 +1,4 @@
-const VERSAO = "1.1";
+const VERSAO = "1.2";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp({
@@ -47,12 +47,17 @@ function normTexto(s) {
 //   adiantamento de salário — nenhum dos dois é despesa: empréstimo é só
 //   caixa entrando/saindo (dívida, não resultado), e adiantamento já está
 //   contado dentro do total da Folha de Pagamento (contar os dois seria
-//   contar a mesma mão de obra duas vezes).
+//   contar a mesma mão de obra duas vezes). BBS Fomento é tratado igual a
+//   empréstimo (é um empréstimo/repasse, não despesa) mesmo sem a palavra
+//   "EMPRESTIMO" na descrição — caixa/app.js registra o principal da BBS
+//   como só "BBS FOMENTO Nº XXXX" de propósito (achado real em 2026-09-16:
+//   sem esse caso, o principal da BBS caía em "operacional" como despesa).
 // - "operacional": tudo o mais (aluguel, combustível, fornecedores...).
 function categorizarContaPagar(descricao) {
   const t = normTexto(descricao);
   if (t.includes("JUROS")) return "financeira";
   if (t.includes("EMPRESTIMO")) return "excluido";
+  if (t.includes("BBS")) return "excluido";
   if (t.startsWith("ADIANTAMENTO:")) return "excluido";
   return "operacional";
 }
