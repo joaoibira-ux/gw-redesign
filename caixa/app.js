@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.65";
+const VERSAO_CAIXA = "3.66";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -215,6 +215,13 @@ let contasReceberCache    = {};
 let contaReceberSelecionada = null;
 let contasPagarCache    = {};
 let contaPagarSelecionada = null;
+// Funcionário escolhido no picker de Adiantamento — guarda id/cpf (não só o
+// nome) pra gravar junto no lançamento. CPF é o identificador de verdade
+// (pedido do João, 2026-09-16): nome muda (erro de digitação, expansão pro
+// nome completo) e funcionarioId muda se a pessoa for demitida e
+// recontratada depois; CPF nunca muda, então é o que deve ser usado pra
+// reconhecer "é a mesma pessoa" nesses casos.
+let funcionarioAdiantamentoSelecionado = null;
 
 function nomeAbrev(nome) {
   const n = (nome || "").toLowerCase();
@@ -543,8 +550,15 @@ document.getElementById("form").addEventListener("submit", async function(e) {
   } else if (origem === "ANE->CREDITO A REPASSAR P BBS FOMENTO") {
     criarCreditoRepassarBBS(data, desc, entrada, comprovante);
   } else {
+    // Adiantamento lançado via picker de funcionário: grava id/cpf junto
+    // (identificador de verdade, não muda com renomeação ou recontratação —
+    // ver comentário na declaração de funcionarioAdiantamentoSelecionado).
+    const dadosAdiantamento = (origem === "ANE->ADIANTAMENTO" || origem === "JOAO->ADIANTAMENTO") && funcionarioAdiantamentoSelecionado
+      ? { funcionarioId: funcionarioAdiantamentoSelecionado.id, funcionarioCpf: funcionarioAdiantamentoSelecionado.cpf || null }
+      : {};
     col.add({
       data, origem, descricao: desc, entrada, saida,
+      ...dadosAdiantamento,
       ...(comprovante ? { comprovanteUrl: comprovante.url, comprovanteNomeArquivo: comprovante.nomeArquivo } : {}),
       criadoEm: firebase.firestore.FieldValue.serverTimestamp()
     });
@@ -557,6 +571,7 @@ document.getElementById("form").addEventListener("submit", async function(e) {
   document.getElementById("f-entrada").readOnly = false;
   document.getElementById("f-comprovante").value = "";
   descPrefix = null;
+  funcionarioAdiantamentoSelecionado = null;
   contaReceberSelecionada = null;
   contaPagarSelecionada = null;
   toggleForm();
@@ -629,6 +644,7 @@ document.getElementById("f-origem").addEventListener("change", function() {
   saida.readOnly = false;
   entrada.readOnly = false;
   descPrefix = null;
+  funcionarioAdiantamentoSelecionado = null;
   contaReceberSelecionada = null;
   contaPagarSelecionada = null;
 
@@ -679,7 +695,7 @@ function abrirPickerFuncionario() {
     }
     lista.innerHTML = ativos.map(d => {
       const f = d.data();
-      return `<div class="picker-item" data-nome="${escHtml(f.nome)}" onclick="selecionarFuncionario(this.dataset.nome)">
+      return `<div class="picker-item" data-id="${d.id}" data-nome="${escHtml(f.nome)}" data-cpf="${escHtml(f.cpf || "")}" onclick="selecionarFuncionario(this.dataset.id, this.dataset.nome, this.dataset.cpf)">
         ${escHtml(f.nome)}<span class="picker-cargo-badge">${escHtml(f.cargo || "")}</span>
       </div>`;
     }).join("");
@@ -783,13 +799,14 @@ function fecharPicker() {
   }
 }
 
-function selecionarFuncionario(nome) {
+function selecionarFuncionario(id, nome, cpf) {
   document.getElementById("picker-overlay").classList.remove("active");
   const desc = document.getElementById("f-desc");
   descPrefix = "Adiantamento: " + nome + " — ";
   desc.value = descPrefix;
   desc.focus();
   desc.setSelectionRange(descPrefix.length, descPrefix.length);
+  funcionarioAdiantamentoSelecionado = { id, nome, cpf: cpf || "" };
 }
 
 function selecionarContaReceber(id) {

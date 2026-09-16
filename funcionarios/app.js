@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.41";
+const VERSAO = "3.42";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -205,14 +205,26 @@ function _nomeAdiantBate(nome, nomeAlvo) {
 // um pedido pendente já reserva o valor contra o limite semanal, pra não
 // deixar várias solicitações simultâneas passarem batido do teto antes de
 // alguém pagar.
-function _somaSeAdiantamentoDoFuncionario(descricao, criadoEm, valor, nomeAlvo, inicioSemana) {
+//
+// cpfLancamento/cpfAlvo (pedido do João, 2026-09-16): CPF é o identificador
+// de verdade — não muda com renomeação nem com demissão/recontratação, ao
+// contrário do nome e do id do cadastro. Registros a partir de 2026-09-16
+// já gravam funcionarioCpf; quando ele existe dos dois lados, decide
+// sozinho (nunca cai pro nome, evita casar com a pessoa errada por
+// coincidência). Registros antigos sem CPF gravado continuam pelo nome
+// tolerante de sempre.
+function _somaSeAdiantamentoDoFuncionario(descricao, criadoEm, valor, nomeAlvo, inicioSemana, cpfLancamento, cpfAlvo) {
   const desc = descricao || "";
   // Aceita "Adiantamento: {nome} — ..." e também "Adiantamento {nome}" (sem
   // ":", digitado à mão em lançamentos manuais de Contas a Pagar).
   const m = desc.match(/^Adiantamento:?\s+(.+)/);
   if (!m) return 0;
-  const nome = m[1].split(/\s*[—–-]/)[0].trim().normalize("NFC");
-  if (!_nomeAdiantBate(nome, nomeAlvo)) return 0;
+  if (cpfLancamento) {
+    if (!cpfAlvo || cpfLancamento.replace(/\D/g, "") !== cpfAlvo.replace(/\D/g, "")) return 0;
+  } else {
+    const nome = m[1].split(/\s*[—–-]/)[0].trim().normalize("NFC");
+    if (!_nomeAdiantBate(nome, nomeAlvo)) return 0;
+  }
   const dt = criadoEm && criadoEm.toDate ? criadoEm.toDate() : null;
   if (!dt || dt < inicioSemana) return 0;
   return Number(valor || 0);
@@ -240,7 +252,7 @@ async function abrirAdiantamento(id) {
     ]);
     lancSnap.docs.forEach(d => {
       const r = d.data();
-      usado += _somaSeAdiantamentoDoFuncionario(r.descricao, r.criadoEm, r.saida, nomeAlvo, segunda);
+      usado += _somaSeAdiantamentoDoFuncionario(r.descricao, r.criadoEm, r.saida, nomeAlvo, segunda, r.funcionarioCpf, f.cpf);
     });
     apagarSnap.docs.forEach(d => {
       const r = d.data();
@@ -249,7 +261,7 @@ async function abrirAdiantamento(id) {
       // adiantamento pago via Contas a Pagar some do "já usado essa semana"
       // assim que a empresa paga, deixando passar solicitações acima do limite.
       const valorReal = r.status === "baixado" ? (r.valorOriginal !== undefined ? r.valorOriginal : r.valor) : r.valor;
-      usado += _somaSeAdiantamentoDoFuncionario(r.descricao, r.criadoEm, valorReal, nomeAlvo, segunda);
+      usado += _somaSeAdiantamentoDoFuncionario(r.descricao, r.criadoEm, valorReal, nomeAlvo, segunda, r.funcionarioCpf, f.cpf);
     });
   } catch (e) {
     document.getElementById("adiant-corpo").innerHTML = '<p class="empty">Erro ao consultar. Tente novamente.</p>';
@@ -324,6 +336,11 @@ async function confirmarSolicitar() {
       descricao: "Adiantamento: " + f.nome + " — Solicitado em Funcionários" + (acimaDoLimite ? " — Acima do limite semanal (liberado por PIN completo)" : ""),
       valor,
       status: "aberto",
+      // Identificador de verdade (pedido do João, 2026-09-16): nome muda
+      // (renomeação, expansão pro nome completo) e o id do cadastro muda se
+      // a pessoa for demitida e recontratada; CPF nunca muda.
+      funcionarioId: id,
+      funcionarioCpf: f.cpf || null,
       criadoEm: firebase.firestore.FieldValue.serverTimestamp(),
     });
   } catch (e) {

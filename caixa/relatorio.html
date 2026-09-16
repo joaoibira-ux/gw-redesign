@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.15";
+  const VERSAO = "2.16";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1527,12 +1527,16 @@
   }
 
   // Empilha em adiantLista os adiantamentos lançados direto no caixa (origem 'Adiantamento').
+  // funcionarioCpf só existe em lançamentos feitos a partir de 2026-09-16
+  // (pedido do João: CPF é o identificador de verdade, não muda nem com
+  // renomeação nem com demissão/recontratação — ver caixa/app.js). Registros
+  // mais antigos não têm o campo e caem no casamento tolerante por nome.
   function somarAdiantamentosCaixa(lancamentosDocs, adiantLista) {
     lancamentosDocs.forEach(d => {
       const r = d.data();
       const nome = extrairNomeAdiantamento(r.descricao);
       if (!nome) return;
-      adiantLista.push({ nome, valor: r.saida || 0 });
+      adiantLista.push({ nome, valor: r.saida || 0, cpf: r.funcionarioCpf || '' });
     });
   }
 
@@ -1547,8 +1551,19 @@
       const nome = extrairNomeAdiantamento(r.descricao);
       if (!nome) return;
       const valor = r.valorOriginal !== undefined ? r.valorOriginal : r.valor;
-      adiantLista.push({ nome, valor: valor || 0 });
+      adiantLista.push({ nome, valor: valor || 0, cpf: r.funcionarioCpf || '' });
     });
+  }
+
+  // Mapa funcionarioId -> CPF atual, pra buscarAdiantamento() saber o CPF do
+  // funcionário-alvo sem precisar tocar em cada chamador.
+  function montarCpfPorId(funcionariosSnap) {
+    const map = new Map();
+    (funcionariosSnap ? funcionariosSnap.docs : []).forEach(d => {
+      const f = d.data();
+      if (f.cpf) map.set(d.id, f.cpf);
+    });
+    return map;
   }
 
   // Tokeniza um nome pra comparação por palavra: minúsculo, sem acento, uma
@@ -1566,23 +1581,27 @@
       .split(/\s+/).filter(Boolean);
   }
 
-  // Soma em adiantLista o valor de um funcionário — nome exato primeiro
-  // (mesma grafia) e, se não bater, tolerante nos DOIS sentidos: soma todo
-  // item cujo conjunto de palavras (o menor dos dois) esteja inteiramente
-  // contido no outro. Precisa ser nos dois sentidos porque o nome congelado
-  // pode estar desatualizado em QUALQUER um dos dois lados — o nome digitado
-  // no adiantamento (Caixa ou "Solicitar adiantamento" em Funcionários) é
-  // uma cópia de quando foi lançado, e o nome no grupo da última folha salva
-  // é uma cópia de quando a folha foi salva; quando o cadastro é expandido
-  // pro nome completo (ex: "Jonas Santos" -> "Jonas Andrade dos Santos"),
-  // QUALQUER um dos dois pode ter ficado pra trás (achado real em
-  // 2026-09-16: o adiantamento do Jonas já tinha o nome completo, mas era a
-  // folha que ainda estava com "Jonas santos" congelado).
-  function buscarAdiantamento(adiantLista, nomeFuncionario) {
+  // Soma em adiantLista o valor de um funcionário. Prioridade:
+  // 1) CPF — o identificador de verdade (pedido do João, 2026-09-16): nunca
+  //    muda, nem com renomeação nem com demissão/recontratação (que troca o
+  //    funcionarioId). Uma entrada COM cpfEntrada só soma se bater exato com
+  //    o CPF do funcionário-alvo — nunca cai pro nome, pra não arriscar
+  //    casar com a pessoa errada por coincidência de nome.
+  // 2) Nome tolerante nos dois sentidos, só pra entradas SEM CPF gravado
+  //    (lançadas antes dessa correção) — o menor conjunto de palavras
+  //    precisa estar inteiramente contido no outro, funciona não importa de
+  //    qual lado (adiantamento ou funcionário) o nome ficou desatualizado.
+  function buscarAdiantamento(adiantLista, nomeFuncionario, cpfFuncionario) {
+    const cpfAlvo = (cpfFuncionario || '').replace(/\D/g, '');
     const palavrasFunc = new Set(tokenizarNome(nomeFuncionario));
-    if (!palavrasFunc.size) return 0;
     let soma = 0;
-    adiantLista.forEach(({ nome, valor }) => {
+    adiantLista.forEach(({ nome, valor, cpf }) => {
+      const cpfEntrada = (cpf || '').replace(/\D/g, '');
+      if (cpfEntrada) {
+        if (cpfAlvo && cpfEntrada === cpfAlvo) soma += valor;
+        return;
+      }
+      if (!palavrasFunc.size) return;
       const palavrasNome = new Set(tokenizarNome(nome));
       if (!palavrasNome.size) return;
       const [menor, maior] = palavrasNome.size <= palavrasFunc.size
@@ -1755,6 +1774,7 @@
     const descontosMap = montarDescontosMap();
 
     let totalBruto = 0, totalInss = 0, totalPassagens = 0, totalAdiant = 0;
+    const cpfPorId = montarCpfPorId(_funcionariosSnap);
     const linhas = grupos.map(g => {
       const temProd = !g.isEncarregado && funcTemProducao(g.funcionario?.cargo, g.funcionario?.nome);
       const temDia  = !g.isEncarregado && funcTemDiaria(g.funcionario?.cargo, g.funcionario?.nome);
@@ -1780,7 +1800,7 @@
         const diaria = diariaPorFunc.get(normNome(g.funcionario.nome));
         if (diaria) bruto += diaria.total;
       }
-      const adiant = buscarAdiantamento(adiantLista, g.funcionario.nome);
+      const adiant = buscarAdiantamento(adiantLista, g.funcionario.nome, cpfPorId.get(g.funcionario.id));
       return { g, bruto, adiant };
     }).filter(({ g, bruto, adiant }) => g.isEncarregado || bruto > 0 || adiant > 0)
       .map(({ g, bruto, adiant }) => {
@@ -1990,6 +2010,7 @@
     if (_adiantSnap) somarAdiantamentosCaixa(_adiantSnap.docs, adiantLista);
     if (_contasPagarSnap) somarAdiantamentosContasPagar(_contasPagarSnap.docs, adiantLista);
     const descontosMap = montarDescontosMap();
+    const cpfPorId = montarCpfPorId(_funcionariosSnap);
 
     let totalBruto = 0, totalInss = 0, totalPassagens = 0, totalAdiant = 0;
     grupos.forEach(g => {
@@ -2017,7 +2038,7 @@
       totalBruto     += bruto;
       totalInss      += desc.inss;
       totalPassagens += desc.passagens;
-      totalAdiant    += buscarAdiantamento(adiantLista, g.funcionario?.nome);
+      totalAdiant    += buscarAdiantamento(adiantLista, g.funcionario?.nome, cpfPorId.get(g.funcionario?.id));
     });
     return totalBruto - totalInss - totalPassagens - totalAdiant;
   }
@@ -2281,6 +2302,7 @@
       somarAdiantamentosCaixa(adSnap.docs, adiantLista);
       somarAdiantamentosContasPagar(cpAdSnap.docs, adiantLista);
       const descontosMapFechamento = montarDescontosMap(funcSnap, folha);
+      const cpfPorId = montarCpfPorId(funcSnap);
 
       let totalBruto = 0, totalInssFechamento = 0, totalPassagensFechamento = 0, totalAdiant = 0;
       const recibosParaTelegram = [];
@@ -2311,7 +2333,7 @@
           }
         }
         const descFechamento = descontosMapFechamento.get(g.funcionario?.id) ?? descontosMapFechamento.get(normNome(g.funcionario?.nome)) ?? { inss: 0, passagens: 0 };
-        const adiantPessoa = buscarAdiantamento(adiantLista, g.funcionario.nome);
+        const adiantPessoa = buscarAdiantamento(adiantLista, g.funcionario.nome, cpfPorId.get(g.funcionario.id));
         totalBruto     += bruto;
         totalInssFechamento      += descFechamento.inss;
         totalPassagensFechamento += descFechamento.passagens;
