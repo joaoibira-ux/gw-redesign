@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.14";
+  const VERSAO = "2.15";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1526,56 +1526,67 @@
     return m[1].split(/\s*[—–\-]/)[0].trim().normalize('NFC');
   }
 
-  // Soma no adiantMap os adiantamentos lançados direto no caixa (origem 'Adiantamento').
-  function somarAdiantamentosCaixa(lancamentosDocs, adiantMap) {
+  // Empilha em adiantLista os adiantamentos lançados direto no caixa (origem 'Adiantamento').
+  function somarAdiantamentosCaixa(lancamentosDocs, adiantLista) {
     lancamentosDocs.forEach(d => {
       const r = d.data();
       const nome = extrairNomeAdiantamento(r.descricao);
       if (!nome) return;
-      adiantMap.set(normNome(nome), (adiantMap.get(normNome(nome)) || 0) + (r.saida || 0));
+      adiantLista.push({ nome, valor: r.saida || 0 });
     });
   }
 
-  // Soma no adiantMap os adiantamentos solicitados em Funcionários e pagos via Contas a
+  // Empilha em adiantLista os adiantamentos solicitados em Funcionários e pagos via Contas a
   // Pagar (baixado = empresa já desembolsou pro funcionário) — esses nunca passam pelo
   // caixa com origem 'Adiantamento', então precisam ser somados à parte. 'descontadoDaFolha'
   // marca os que já foram abatidos de alguma folha, pra não contar duas vezes.
-  function somarAdiantamentosContasPagar(contasPagarDocs, adiantMap) {
+  function somarAdiantamentosContasPagar(contasPagarDocs, adiantLista) {
     contasPagarDocs.forEach(d => {
       const r = d.data();
       if (r.status !== 'baixado' || r.descontadoDaFolha) return;
       const nome = extrairNomeAdiantamento(r.descricao);
       if (!nome) return;
       const valor = r.valorOriginal !== undefined ? r.valorOriginal : r.valor;
-      adiantMap.set(normNome(nome), (adiantMap.get(normNome(nome)) || 0) + (valor || 0));
+      adiantLista.push({ nome, valor: valor || 0 });
     });
   }
 
-  // Busca no adiantMap o valor de um funcionário — tenta o nome exato
-  // primeiro e, se não achar, cai pra um casamento tolerante nos DOIS
-  // sentidos: soma toda chave do adiantMap cujo conjunto de palavras (o
-  // menor dos dois) esteja inteiramente contido no outro. Precisa ser nos
-  // dois sentidos porque o nome congelado pode estar desatualizado em
-  // QUALQUER um dos dois lados — o nome digitado no adiantamento (Caixa ou
-  // "Solicitar adiantamento" em Funcionários) é uma cópia de quando foi
-  // lançado, e o nome no grupo da última folha salva é uma cópia de quando a
-  // folha foi salva; quando o cadastro é expandido pro nome completo (ex:
-  // "Jonas Santos" -> "Jonas Andrade dos Santos"), QUALQUER um dos dois pode
-  // ter ficado pra trás (achado real em 2026-09-16: o adiantamento do Jonas
-  // já tinha o nome completo, mas era a folha que ainda estava com "Jonas
-  // santos" congelado — só casar palavras-do-adiantamento-no-funcionário não
-  // resolvia esse caso, precisa também checar o contrário).
-  function buscarAdiantamento(adiantMap, nomeFuncionario) {
-    const chaveExata = normNome(nomeFuncionario);
-    if (adiantMap.has(chaveExata)) return adiantMap.get(chaveExata);
+  // Tokeniza um nome pra comparação por palavra: minúsculo, sem acento, uma
+  // palavra por elemento. NÃO usa normNome() (a função geral do arquivo,
+  // definida mais acima) — ela remove TODO espaço do nome (vira uma palavra
+  // só, tipo "jonasandradedossantos"), o que faz o split(/\s+/) de depois
+  // não ter nada pra separar e a comparação por palavra virar, na prática,
+  // uma comparação da string inteira concatenada — nunca bate quando um
+  // nome é mais longo que o outro (bug real encontrado em 2026-09-16: a
+  // "correção tolerante" de antes nunca funcionou de verdade por causa
+  // disso, o João ainda via os adiantamentos fora da prévia da Folha).
+  function tokenizarNome(s) {
+    return (s || '').trim().toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .split(/\s+/).filter(Boolean);
+  }
 
-    const palavrasAtual = new Set(chaveExata.split(/\s+/).filter(Boolean));
+  // Soma em adiantLista o valor de um funcionário — nome exato primeiro
+  // (mesma grafia) e, se não bater, tolerante nos DOIS sentidos: soma todo
+  // item cujo conjunto de palavras (o menor dos dois) esteja inteiramente
+  // contido no outro. Precisa ser nos dois sentidos porque o nome congelado
+  // pode estar desatualizado em QUALQUER um dos dois lados — o nome digitado
+  // no adiantamento (Caixa ou "Solicitar adiantamento" em Funcionários) é
+  // uma cópia de quando foi lançado, e o nome no grupo da última folha salva
+  // é uma cópia de quando a folha foi salva; quando o cadastro é expandido
+  // pro nome completo (ex: "Jonas Santos" -> "Jonas Andrade dos Santos"),
+  // QUALQUER um dos dois pode ter ficado pra trás (achado real em
+  // 2026-09-16: o adiantamento do Jonas já tinha o nome completo, mas era a
+  // folha que ainda estava com "Jonas santos" congelado).
+  function buscarAdiantamento(adiantLista, nomeFuncionario) {
+    const palavrasFunc = new Set(tokenizarNome(nomeFuncionario));
+    if (!palavrasFunc.size) return 0;
     let soma = 0;
-    adiantMap.forEach((valor, chave) => {
-      const palavrasChave = new Set(chave.split(/\s+/).filter(Boolean));
-      if (!palavrasChave.size) return;
-      const [menor, maior] = palavrasChave.size <= palavrasAtual.size
-        ? [palavrasChave, palavrasAtual] : [palavrasAtual, palavrasChave];
+    adiantLista.forEach(({ nome, valor }) => {
+      const palavrasNome = new Set(tokenizarNome(nome));
+      if (!palavrasNome.size) return;
+      const [menor, maior] = palavrasNome.size <= palavrasFunc.size
+        ? [palavrasNome, palavrasFunc] : [palavrasFunc, palavrasNome];
       if ([...menor].every(p => maior.has(p))) soma += valor;
     });
     return soma;
@@ -1708,13 +1719,25 @@
     // tem nenhuma linha — o retrato salvo na folha só é atualizado quando
     // alguém abre o módulo Folha; produção registrada depois disso ficava
     // invisível aqui (e de fora do total) até isso acontecer de novo.
+    // Casa por funcionarioId primeiro (quando disponível dos dois lados) —
+    // achado real em 2026-09-16: o nome congelado no retrato salvo pode
+    // estar desatualizado (ex: "Jonas santos" vs o nome atual "Jonas
+    // Andrade dos Santos" usado na produção viva), e só casar por nome
+    // criava uma linha DUPLICADA pra mesma pessoa em vez de reconhecer que
+    // já tinha uma.
     if (_porFuncProducao) {
-      const jaTem = new Set(grupos.map(g => normNome(g.funcionario?.nome)));
+      const jaTem = new Set();
+      grupos.forEach(g => {
+        if (g.funcionario?.id) jaTem.add(g.funcionario.id);
+        jaTem.add(normNome(g.funcionario?.nome));
+      });
       const vistos = new Set();
       _porFuncProducao.forEach(info => {
-        const key = normNome(info.nome);
-        if (jaTem.has(key) || vistos.has(key)) return;
-        vistos.add(key);
+        const chaveId = info.id || '';
+        const chaveNome = normNome(info.nome);
+        if ((chaveId && jaTem.has(chaveId)) || jaTem.has(chaveNome) || (chaveId && vistos.has(chaveId)) || vistos.has(chaveNome)) return;
+        if (chaveId) vistos.add(chaveId);
+        vistos.add(chaveNome);
         grupos = [...grupos, {
           isEncarregado: false,
           funcionario: { id: info.id || '', nome: info.nome, cargo: info.cargo || '' },
@@ -1725,9 +1748,9 @@
 
     if (!grupos.length) { el.innerHTML = ''; renderPrevisaoQuinzena(); return; }
 
-    const adiantMap = new Map();
-    if (_adiantSnap) somarAdiantamentosCaixa(_adiantSnap.docs, adiantMap);
-    if (_contasPagarSnap) somarAdiantamentosContasPagar(_contasPagarSnap.docs, adiantMap);
+    const adiantLista = [];
+    if (_adiantSnap) somarAdiantamentosCaixa(_adiantSnap.docs, adiantLista);
+    if (_contasPagarSnap) somarAdiantamentosContasPagar(_contasPagarSnap.docs, adiantLista);
 
     const descontosMap = montarDescontosMap();
 
@@ -1757,7 +1780,7 @@
         const diaria = diariaPorFunc.get(normNome(g.funcionario.nome));
         if (diaria) bruto += diaria.total;
       }
-      const adiant = buscarAdiantamento(adiantMap, g.funcionario.nome);
+      const adiant = buscarAdiantamento(adiantLista, g.funcionario.nome);
       return { g, bruto, adiant };
     }).filter(({ g, bruto, adiant }) => g.isEncarregado || bruto > 0 || adiant > 0)
       .map(({ g, bruto, adiant }) => {
@@ -1943,12 +1966,18 @@
     });
 
     if (_porFuncProducao) {
-      const jaTem = new Set(grupos.map(g => normNome(g.funcionario?.nome)));
+      const jaTem = new Set();
+      grupos.forEach(g => {
+        if (g.funcionario?.id) jaTem.add(g.funcionario.id);
+        jaTem.add(normNome(g.funcionario?.nome));
+      });
       const vistos = new Set();
       _porFuncProducao.forEach(info => {
-        const key = normNome(info.nome);
-        if (jaTem.has(key) || vistos.has(key)) return;
-        vistos.add(key);
+        const chaveId = info.id || '';
+        const chaveNome = normNome(info.nome);
+        if ((chaveId && jaTem.has(chaveId)) || jaTem.has(chaveNome) || (chaveId && vistos.has(chaveId)) || vistos.has(chaveNome)) return;
+        if (chaveId) vistos.add(chaveId);
+        vistos.add(chaveNome);
         grupos = [...grupos, {
           isEncarregado: false,
           funcionario: { id: info.id || '', nome: info.nome, cargo: info.cargo || '' },
@@ -1957,9 +1986,9 @@
       });
     }
 
-    const adiantMap = new Map();
-    if (_adiantSnap) somarAdiantamentosCaixa(_adiantSnap.docs, adiantMap);
-    if (_contasPagarSnap) somarAdiantamentosContasPagar(_contasPagarSnap.docs, adiantMap);
+    const adiantLista = [];
+    if (_adiantSnap) somarAdiantamentosCaixa(_adiantSnap.docs, adiantLista);
+    if (_contasPagarSnap) somarAdiantamentosContasPagar(_contasPagarSnap.docs, adiantLista);
     const descontosMap = montarDescontosMap();
 
     let totalBruto = 0, totalInss = 0, totalPassagens = 0, totalAdiant = 0;
@@ -1988,7 +2017,7 @@
       totalBruto     += bruto;
       totalInss      += desc.inss;
       totalPassagens += desc.passagens;
-      totalAdiant    += buscarAdiantamento(adiantMap, g.funcionario?.nome);
+      totalAdiant    += buscarAdiantamento(adiantLista, g.funcionario?.nome);
     });
     return totalBruto - totalInss - totalPassagens - totalAdiant;
   }
@@ -2228,12 +2257,18 @@
       // real deixava de pagar (e de descontar adiantamento) quem tivesse
       // produção registrada depois da última vez que a folha foi salva.
       {
-        const jaTem = new Set(grupos.map(g => normNome(g.funcionario?.nome)));
+        const jaTem = new Set();
+        grupos.forEach(g => {
+          if (g.funcionario?.id) jaTem.add(g.funcionario.id);
+          jaTem.add(normNome(g.funcionario?.nome));
+        });
         const vistos = new Set();
         porFuncProducao.forEach(info => {
-          const key = normNome(info.nome);
-          if (jaTem.has(key) || vistos.has(key)) return;
-          vistos.add(key);
+          const chaveId = info.id || '';
+          const chaveNome = normNome(info.nome);
+          if ((chaveId && jaTem.has(chaveId)) || jaTem.has(chaveNome) || (chaveId && vistos.has(chaveId)) || vistos.has(chaveNome)) return;
+          if (chaveId) vistos.add(chaveId);
+          vistos.add(chaveNome);
           grupos = [...grupos, {
             isEncarregado: false,
             funcionario: { id: info.id || '', nome: info.nome, cargo: info.cargo || '' },
@@ -2242,9 +2277,9 @@
         });
       }
 
-      const adiantMap = new Map();
-      somarAdiantamentosCaixa(adSnap.docs, adiantMap);
-      somarAdiantamentosContasPagar(cpAdSnap.docs, adiantMap);
+      const adiantLista = [];
+      somarAdiantamentosCaixa(adSnap.docs, adiantLista);
+      somarAdiantamentosContasPagar(cpAdSnap.docs, adiantLista);
       const descontosMapFechamento = montarDescontosMap(funcSnap, folha);
 
       let totalBruto = 0, totalInssFechamento = 0, totalPassagensFechamento = 0, totalAdiant = 0;
@@ -2276,7 +2311,7 @@
           }
         }
         const descFechamento = descontosMapFechamento.get(g.funcionario?.id) ?? descontosMapFechamento.get(normNome(g.funcionario?.nome)) ?? { inss: 0, passagens: 0 };
-        const adiantPessoa = buscarAdiantamento(adiantMap, g.funcionario.nome);
+        const adiantPessoa = buscarAdiantamento(adiantLista, g.funcionario.nome);
         totalBruto     += bruto;
         totalInssFechamento      += descFechamento.inss;
         totalPassagensFechamento += descFechamento.passagens;
