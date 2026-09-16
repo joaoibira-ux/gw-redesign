@@ -1,4 +1,4 @@
-const VERSION = "dre-v1.5";
+const VERSION = "dre-v1.6";
 const ASSETS = ["./index.html", "./style.css", "./app.js"];
 
 self.addEventListener("install", e => {

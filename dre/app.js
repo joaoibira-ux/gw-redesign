@@ -1,4 +1,4 @@
-const VERSAO = "1.5";
+const VERSAO = "1.6";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp({
@@ -72,6 +72,14 @@ function categorizarContaPagar(descricao) {
   // ficou visível depois de corrigir o valorReal/valorOriginal — antes essa
   // conta baixada mostrava R$ 0 e o problema passava despercebido).
   if (t.includes("FOLHA DE PAGAMENTO")) return "excluido";
+  // Contabilidade e impostos/encargos da empresa — pedido do João
+  // (2026-09-16), separado do Operacional genérico. "INSS" só conta quando
+  // a descrição COMEÇA com a palavra (formato "INSS — Competência MM/AAAA"
+  // gerado pela leitura de guia GPS, ver montarPromptBoleto em
+  // functions/index.js) — não em qualquer menção a "INSS" no meio do texto
+  // (ex: "Correção da folha: desconto de INSS..." é ajuste de folha, não
+  // imposto da empresa).
+  if (t.includes("CONTABILIDADE") || t.includes("FGTS") || t.includes("PREVIDENCIA SOCIAL") || /^INSS\b/.test(t)) return "contabilidade";
   return "operacional";
 }
 
@@ -104,10 +112,11 @@ async function carregar() {
   document.getElementById("conteudo").innerHTML = '<div class="loading">Carregando...</div>';
 
   try {
-    const [medicoesSnap, pagarSnap, folhasSnap] = await Promise.all([
+    const [medicoesSnap, pagarSnap, folhasSnap, lancamentosSnap] = await Promise.all([
       db.collection("medicoes").get(),
       db.collection("contasPagar").get(),
       db.collection("folhas").get(),
+      db.collection("lancamentos").get(),
     ]);
 
     // ── Receita: medições feitas dentro do mês, pelo Valor da Nota Fiscal ──
@@ -138,10 +147,28 @@ async function carregar() {
       .filter(c => estaNoMes(parseData(c.data), ano, mes))
       .map(c => ({ ...c, valorReal: c.status === "baixado" ? (c.valorOriginal !== undefined ? c.valorOriginal : c.valor) : c.valor }));
 
-    const itensOperacional = pagarDoMes.filter(c => categorizarContaPagar(c.descricao) === "operacional");
-    const itensFinanceira  = pagarDoMes.filter(c => categorizarContaPagar(c.descricao) === "financeira");
-    const totalOperacional = itensOperacional.reduce((s, c) => s + (Number(c.valorReal) || 0), 0);
-    const totalFinanceira  = itensFinanceira.reduce((s, c) => s + (Number(c.valorReal) || 0), 0);
+    const itensOperacional   = pagarDoMes.filter(c => categorizarContaPagar(c.descricao) === "operacional");
+    const itensFinanceiraCP  = pagarDoMes.filter(c => categorizarContaPagar(c.descricao) === "financeira");
+    const itensContabilidade = pagarDoMes.filter(c => categorizarContaPagar(c.descricao) === "contabilidade");
+    const totalOperacional   = itensOperacional.reduce((s, c) => s + (Number(c.valorReal) || 0), 0);
+    const totalContabilidade = itensContabilidade.reduce((s, c) => s + (Number(c.valorReal) || 0), 0);
+
+    // ── Juros BBS Fomento: só existem como lançamento direto no Caixa ──
+    // Pedido do João (2026-09-16): juros BBS deve contar em Despesas
+    // Financeiras. Diferente do principal do empréstimo (que gera conta a
+    // pagar, ver ANE->EMPRESTIMO em caixa/app.js), o juros da BBS nunca
+    // passa pelo Contas a Pagar — é lançado direto como saída de caixa
+    // (mesma descrição que dispara avisoJurosBbsFomento em
+    // functions/index.js: "BBS" e "JUROS" juntos). Sem isso, esse juros não
+    // aparecia em lugar nenhum do DRE.
+    const jurosBbsDoMes = lancamentosSnap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(l => estaNoMes(parseData(l.data), ano, mes))
+      .filter(l => { const t = normTexto(l.descricao); return t.includes("BBS") && t.includes("JUROS"); })
+      .map(l => ({ descricao: l.descricao, valorReal: Number(l.saida) || 0 }));
+
+    const itensFinanceira = [...itensFinanceiraCP, ...jurosBbsDoMes];
+    const totalFinanceira = itensFinanceira.reduce((s, c) => s + (Number(c.valorReal) || 0), 0);
 
     // ── Custo de Mão de Obra: folhas PAGAS com data dentro do mês ──
     // A coleção 'folhas' também guarda snapshot toda vez que alguém abre o
@@ -156,12 +183,13 @@ async function carregar() {
       .filter(f => f.status === 'paga' && estaNoMes(parseData(f.data), ano, mes));
     const totalFolha = itensFolha.reduce((s, f) => s + (Number(f.totalGeral) || 0), 0);
 
-    const resultado = totalReceita - totalFolha - totalOperacional - totalFinanceira;
+    const resultado = totalReceita - totalFolha - totalOperacional - totalContabilidade - totalFinanceira;
 
     renderizar({
       totalReceita, itensReceita,
       totalFolha, itensFolha,
       totalOperacional, itensOperacional,
+      totalContabilidade, itensContabilidade,
       totalFinanceira, itensFinanceira,
       resultado
     });
@@ -208,6 +236,7 @@ function renderizar(d) {
       <div class="dre-sep"></div>
       ${blocoLinha("folha", "(-) Custo de Mão de Obra", -d.totalFolha, "negativo", d.itensFolha, linhaDetalheFolha, "Nenhuma folha fechada nesse mês.")}
       ${blocoLinha("operacional", "(-) Despesas Operacionais", -d.totalOperacional, "negativo", d.itensOperacional, linhaDetalhePagar, "Nenhuma despesa operacional nesse mês.")}
+      ${blocoLinha("contabilidade", "(-) Contabilidade e Impostos", -d.totalContabilidade, "negativo", d.itensContabilidade, linhaDetalhePagar, "Nenhuma despesa de contabilidade/impostos nesse mês.")}
       ${blocoLinha("financeira", "(-) Despesas Financeiras", -d.totalFinanceira, "negativo", d.itensFinanceira, linhaDetalhePagar, "Nenhuma despesa financeira nesse mês.")}
       <div class="dre-sep forte"></div>
       <div class="dre-linha dre-resultado">
