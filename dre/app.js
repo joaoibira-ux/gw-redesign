@@ -1,4 +1,4 @@
-const VERSAO = "1.4";
+const VERSAO = "1.5";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp({
@@ -65,6 +65,13 @@ function categorizarContaPagar(descricao) {
   // 2026-09-16: várias contas tipo "Adiantamento Paulo Ricardo" contavam
   // como despesa operacional em vez de serem excluídas).
   if (/^ADIANTAMENTO:?\s/.test(t)) return "excluido";
+  // "Folha de Pagamento da Produção" é a conta a pagar criada ao fechar a
+  // Folha em Caixa → Relatório — já é o mesmo custo de mão de obra contado
+  // em totalFolha (via folhas.totalGeral, ver mais abaixo). Contar aqui
+  // também duplicaria o Custo de Mão de Obra (achado real, 2026-09-16: só
+  // ficou visível depois de corrigir o valorReal/valorOriginal — antes essa
+  // conta baixada mostrava R$ 0 e o problema passava despercebido).
+  if (t.includes("FOLHA DE PAGAMENTO")) return "excluido";
   return "operacional";
 }
 
