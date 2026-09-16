@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.13";
+  const VERSAO = "2.14";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1551,16 +1551,20 @@
     });
   }
 
-  // Busca no adiantMap o valor de um funcionário — tenta o nome exato primeiro
-  // e, se não achar, cai pra um casamento tolerante: soma toda chave do
-  // adiantMap cujas palavras estejam TODAS contidas no nome atual do
-  // funcionário. Existe porque o nome digitado no adiantamento (Caixa ou
-  // "Solicitar adiantamento" em Funcionários) é uma cópia congelada de quando
-  // foi lançado — quando o cadastro é depois expandido pro nome completo (ex:
-  // "Jonas Santos" -> "Jonas Andrade dos Santos"), o nome antigo nunca mais
-  // casa com normNome(nome atual) e o adiantamento parava de ser descontado
-  // da folha (achado real em 2026-09-16: R$ 1.830 em adiantamentos já pagos
-  // ficavam de fora da conta, dobrando o pagamento pro funcionário).
+  // Busca no adiantMap o valor de um funcionário — tenta o nome exato
+  // primeiro e, se não achar, cai pra um casamento tolerante nos DOIS
+  // sentidos: soma toda chave do adiantMap cujo conjunto de palavras (o
+  // menor dos dois) esteja inteiramente contido no outro. Precisa ser nos
+  // dois sentidos porque o nome congelado pode estar desatualizado em
+  // QUALQUER um dos dois lados — o nome digitado no adiantamento (Caixa ou
+  // "Solicitar adiantamento" em Funcionários) é uma cópia de quando foi
+  // lançado, e o nome no grupo da última folha salva é uma cópia de quando a
+  // folha foi salva; quando o cadastro é expandido pro nome completo (ex:
+  // "Jonas Santos" -> "Jonas Andrade dos Santos"), QUALQUER um dos dois pode
+  // ter ficado pra trás (achado real em 2026-09-16: o adiantamento do Jonas
+  // já tinha o nome completo, mas era a folha que ainda estava com "Jonas
+  // santos" congelado — só casar palavras-do-adiantamento-no-funcionário não
+  // resolvia esse caso, precisa também checar o contrário).
   function buscarAdiantamento(adiantMap, nomeFuncionario) {
     const chaveExata = normNome(nomeFuncionario);
     if (adiantMap.has(chaveExata)) return adiantMap.get(chaveExata);
@@ -1568,8 +1572,11 @@
     const palavrasAtual = new Set(chaveExata.split(/\s+/).filter(Boolean));
     let soma = 0;
     adiantMap.forEach((valor, chave) => {
-      const palavrasChave = chave.split(/\s+/).filter(Boolean);
-      if (palavrasChave.length && palavrasChave.every(p => palavrasAtual.has(p))) soma += valor;
+      const palavrasChave = new Set(chave.split(/\s+/).filter(Boolean));
+      if (!palavrasChave.size) return;
+      const [menor, maior] = palavrasChave.size <= palavrasAtual.size
+        ? [palavrasChave, palavrasAtual] : [palavrasAtual, palavrasChave];
+      if ([...menor].every(p => maior.has(p))) soma += valor;
     });
     return soma;
   }
