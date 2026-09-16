@@ -1,4 +1,4 @@
-const VERSAO = "1.0";
+const VERSAO = "1.1";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp({
@@ -108,10 +108,17 @@ async function carregar() {
     const totalOperacional = itensOperacional.reduce((s, c) => s + (Number(c.valor) || 0), 0);
     const totalFinanceira  = itensFinanceira.reduce((s, c) => s + (Number(c.valor) || 0), 0);
 
-    // ── Custo de Mão de Obra: folhas fechadas com data dentro do mês ──
+    // ── Custo de Mão de Obra: folhas PAGAS com data dentro do mês ──
+    // A coleção 'folhas' também guarda snapshot toda vez que alguém abre o
+    // Relatório/Resumo na tela da Folha (status:'fechada') — é só uma
+    // prévia, o dinheiro não saiu. Só status:'paga' (fechada de verdade em
+    // Caixa → Relatório) é despesa real; sem esse filtro, rascunhos
+    // abandonados entravam na conta e inflavam o custo do mês (achado real
+    // em 2026-09-16: agosto tinha 2 rascunhos nunca pagos somando R$ 33 mil
+    // a mais do que o custo real).
     const itensFolha = folhasSnap.docs
       .map(d => ({ id: d.id, ...d.data() }))
-      .filter(f => estaNoMes(parseData(f.data), ano, mes));
+      .filter(f => f.status === 'paga' && estaNoMes(parseData(f.data), ano, mes));
     const totalFolha = itensFolha.reduce((s, f) => s + (Number(f.totalGeral) || 0), 0);
 
     const resultado = totalReceita - totalFolha - totalOperacional - totalFinanceira;
