@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.24";
+const VERSAO = "5.25";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -141,12 +141,25 @@ function ordemServico(nome) {
   return 99;
 }
 
+// Bug real encontrado em 2026-09-17 (João: "só aparece em alguns" no
+// grupo 1.5-1.8): "Textura Predes Wc e Cozinha" (1.5) e "Pintuta do Teto
+// Texturado" (1.6) caíam os dois em "Textura" (sem diferenciar WC), e
+// "Pintura Demao 1"/"Pintura Demao 2" (1.7/1.8) eram cortados em 10
+// caracteres e viravam os dois "Pintura De" — o número (1/2) ficava de
+// fora do corte. Com dois pares de células mostrando o mesmo texto, não
+// dava pra confirmar visualmente se os 4 do grupo realmente marcaram
+// juntos (a seleção em si já funcionava certo, é só a exibição que
+// escondia isso).
 function nomeAbrev(nome) {
   const n = (nome || "").toLowerCase();
   if (n.includes("tratamento")) return "Tratamento";
   if (n.includes("pasta"))      return "Gesso";
   if (n.includes("emassamento") || n.includes("massa")) return "Massa";
+  if (n.includes("textura") && n.includes("wc")) return "Textura WC";
   if (n.includes("textura"))    return "Textura";
+  const demao = n.match(/dem[aã]o\s*(\d+)/);
+  if (demao) return "Demão " + demao[1];
+  if (n.includes("revis")) return "Revisão";
   return (nome || "").substring(0, 10);
 }
 
