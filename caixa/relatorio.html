@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.17";
+  const VERSAO = "2.18";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1671,7 +1671,12 @@
     const descontosMap = new Map();
     if (!funcionariosSnap || !folhaData) return descontosMap;
     const dataFolha = folhaData.criadoEm && folhaData.criadoEm.toDate ? folhaData.criadoEm.toDate() : null;
-    const descontaInssPassagens = !dataFolha || dataFolha.getDate() >= 16;
+    // Gatilho movido de dia 16 pra dia 20 (pedido do João, 2026-09-17) —
+    // mesmo motivo do folha/app.js: se a folha da quinzena 1-15 atrasar pra
+    // fechar depois do dia 16, esse corte por data (não por qual quinzena a
+    // folha realmente representa) fazia o desconto da quinzena seguinte
+    // aparecer cedo demais.
+    const descontaInssPassagens = !dataFolha || dataFolha.getDate() >= 20;
     const CARGOS_POR_PRODUCAO_REL = ['PINTOR', 'RASPADOR'];
 
     // Quem foi admitido DENTRO da quinzena 16-fim do mês não trabalhou o

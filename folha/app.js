@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.25";
+const VERSAO = "5.26";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -1678,7 +1678,15 @@ function parseDataBRparaDate(s) {
 function calcularDescontosFixos(func) {
   const CARGOS_POR_PRODUCAO_REL = ['PINTOR', 'RASPADOR'];
   const hoje = new Date();
-  if (hoje.getDate() < 16) return { inss: 0, passagens: 0 };
+  // Pedido do João (2026-09-17): o gatilho era dia 16, mas se a folha da
+  // quinzena 1-15 atrasar (ainda estava aberta no dia 17), o desconto de
+  // INSS/Passagens da quinzena seguinte já aparecia cedo demais só porque
+  // "hoje" já tinha passado do dia 16 — mesmo a folha 1-15 ainda não tendo
+  // fechado. Movido pra dia 20, dando mais folga. Continua sendo baseado
+  // na data de hoje (não em qual quinzena a folha realmente representa) —
+  // se o fechamento atrasar além do dia 20 num mês, o mesmo efeito pode
+  // se repetir.
+  if (hoje.getDate() < 20) return { inss: 0, passagens: 0 };
 
   let f = (_todosFunc || []).find(x => x.id === func?.id);
   if (!f) {
