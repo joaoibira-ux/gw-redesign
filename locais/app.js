@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "2.10";
+const VERSAO = "2.11";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -59,10 +59,16 @@ function servicoAtual(s) {
 }
 
 // Adiciona automaticamente novos serviços (cadastrados no app Serviços) a todos
-// os apartamentos já existentes que ainda não os possuem, com status "pendente"
+// os apartamentos já existentes que ainda não os possuem, com status "pendente".
+// Só apartamentos (tipo ausente/"Apartamento") — Centro Comunitário e Hall dos
+// Aptos são poucos locais com serviços próprios, não devem receber automático
+// tudo que for cadastrado em Serviços (achado real, 2026-09-17: um novo lote
+// de serviços só do Centro Comunitário foi sincronizado sem querer nos 224
+// apartamentos, 1568 entradas "pendente" que precisaram ser removidas na mão).
 function sincronizarNovosServicos() {
   if (servicosDisponiveis.length === 0) return;
   Object.entries(locaisCache).forEach(([id, l]) => {
+    if (l.tipo && l.tipo !== 'Apartamento') return;
     const atuais = l.servicos || [];
     const existentes = new Set(atuais.map(s => s.id));
     const faltando = servicosDisponiveis.filter(s => !existentes.has(s.id));
