@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.23";
+const VERSAO = "3.24";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -87,6 +87,24 @@ function groupByBloco(data) {
   return blocos;
 }
 
+// Hall dos Aptos (pedido do João, 2026-09-17): 1 bloco pode ter vários
+// halls (ex: bloco de 16 aptos tem 2, bloco de 20 tem 3) — cada hall
+// pertence a um bloco específico, então usa o MESMO prefixo+letra de
+// bloco da identificação dos apartamentos (ex: "K2A90"), só o número muda
+// livremente. Agrupa por bloco pra entrar dentro da seção daquele bloco
+// no mapa, junto dos apartamentos dele.
+function groupHallsByBloco(halls) {
+  const porBloco = {};
+  halls.forEach(local => {
+    const parsed = parseId(local.identificacao);
+    if (!parsed) return;
+    const key = parsed.prefix + parsed.block;
+    if (!porBloco[key]) porBloco[key] = [];
+    porBloco[key].push(local);
+  });
+  return porBloco;
+}
+
 // Monta colunas: par (ímpar=topo, par=base), do maior para o menor
 function buildCols(wing) {
   const nums = Object.keys(wing).map(Number);
@@ -152,6 +170,15 @@ function renderCentrosComunitarios(centros) {
           ${centros.map(renderCentroComunitarioCell).join("")}
         </div>
       </div>
+    </div>`;
+}
+
+function renderHallsRow(halls) {
+  if (!halls || !halls.length) return "";
+  const ordenados = [...halls].sort((a, b) => a.identificacao.localeCompare(b.identificacao));
+  return `<div class="corredor"></div>
+    <div class="wing cc-wing" style="grid-template-columns:repeat(${ordenados.length},90px)">
+      ${ordenados.map(renderCentroComunitarioCell).join("")}
     </div>`;
 }
 
@@ -310,8 +337,10 @@ function renderWing(cols) {
 
 function render(data) {
   const centros = data.filter(l => l.tipo === 'Centro Comunitário');
-  const apartamentos = data.filter(l => l.tipo !== 'Centro Comunitário');
+  const halls = data.filter(l => l.tipo === 'Hall dos Aptos');
+  const apartamentos = data.filter(l => l.tipo !== 'Centro Comunitário' && l.tipo !== 'Hall dos Aptos');
   const blocos = groupByBloco(apartamentos);
+  const hallsPorBloco = groupHallsByBloco(halls);
   const chaves = Object.keys(blocos).sort();
 
   if (!chaves.length && !centros.length) {
@@ -332,6 +361,7 @@ function render(data) {
           <div class="bloco-body">
             ${gCols.length ? renderWing(gCols) : ""}
             ${uCols.length ? `<div class="corredor"></div>${renderWing(uCols)}` : ""}
+            ${renderHallsRow(hallsPorBloco[chave])}
           </div>
         </div>`;
     }).join("");
