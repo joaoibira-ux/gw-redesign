@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.23";
+const VERSAO = "5.24";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -64,6 +64,47 @@ let locaisData           = [];
 let folhaAbertaId        = null;
 let encarregadoCache     = null;
 let _pendingClick        = null; // serviço clicado antes de ter funcionário
+
+// Itens 1.5 a 1.8 do catálogo de Serviços (Textura Paredes Wc/Cozinha,
+// Pintura do Teto Texturado, Pintura Demão 1, Pintura Demão 2) — pedido do
+// João (2026-09-17): são sempre feitos juntos pelo mesmo Pintor na mesma
+// visita, então marcar/desmarcar um no mapa da Folha já marca/desmarca os
+// outros 3 automaticamente (quando existirem e estiverem "pendente" nesse
+// local — os que já estiverem concluídos ou já na folha não são mexidos).
+const GRUPO_ACABAMENTO_IDS = new Set([
+  'qLl71GecaYLw7TCxt1LH', // 1.5 Textura Paredes Wc e Cozinha
+  'f8y9YD15Cc0A6sPXEDR5', // 1.6 Pintura do Teto Texturado
+  'y7X626h09PkythNFbKxX', // 1.7 Pintura Demão 1
+  'M5CVZ7HsvSXfYcDfuE7j', // 1.8 Pintura Demão 2
+]);
+
+// Marca/desmarca um serviço em servicosSelecionados e atualiza o visual da
+// célula correspondente — mesma ação que antes ficava repetida em
+// onServicoClick e _aplicarPendingClick, agora compartilhada pra dar pra
+// aplicar tanto no serviço clicado quanto nos "irmãos" do grupo 1.5-1.8.
+function _marcarServico(local, servico, localid, svidx, marcando) {
+  const key = `${localid}::${svidx}`;
+  if (marcando) servicosSelecionados.set(key, { local, servico });
+  else servicosSelecionados.delete(key);
+  const el = document.querySelector(`.apt-serv[data-localid="${localid}"][data-svidx="${svidx}"]`);
+  if (el) el.classList.toggle('selecionado', marcando);
+}
+
+// Serviços do grupo 1.5-1.8 no MESMO local que o clicado, ainda pendentes
+// (exclui o próprio serviço clicado) — retorna [] se o clicado não é do
+// grupo, ou se não houver mais nenhum outro elegível nesse local.
+function _servicosIrmaosDoGrupo(local, servicoClicado) {
+  if (!GRUPO_ACABAMENTO_IDS.has(servicoClicado.id)) return [];
+  const ordenados = [...(local.servicos || [])].sort((a, b) => ordemServico(a.nome) - ordemServico(b.nome));
+  const irmaos = [];
+  ordenados.forEach((s, idx) => {
+    if (s === servicoClicado) return;
+    if (!GRUPO_ACABAMENTO_IDS.has(s.id)) return;
+    if (s.status !== 'pendente') return;
+    irmaos.push({ servico: s, svidx: idx });
+  });
+  return irmaos;
+}
 
 // Flags para o link #relatorio — aguarda as 3 fontes de dados
 const _isRelatorioLink    = window.location.hash === '#relatorio';
@@ -811,11 +852,12 @@ db.collection('funcionarios').orderBy('nome').onSnapshot(snap => {
 
 function _aplicarPendingClick() {
   if (!_pendingClick) return;
-  const { key, local, servico, localid, svidx } = _pendingClick;
+  const { local, servico, localid, svidx } = _pendingClick;
   _pendingClick = null;
-  servicosSelecionados.set(key, { local, servico });
-  const el = document.querySelector(`.apt-serv[data-localid="${localid}"][data-svidx="${svidx}"]`);
-  if (el) el.classList.add('selecionado');
+  _marcarServico(local, servico, localid, svidx, true);
+  _servicosIrmaosDoGrupo(local, servico).forEach(({ servico: irmao, svidx: idx }) => {
+    _marcarServico(local, irmao, localid, idx, true);
+  });
   atualizarBtnOk();
 }
 
@@ -1141,21 +1183,19 @@ function onServicoClick(el) {
   }
 
   const key = `${el.dataset.localid}::${el.dataset.svidx}`;
-  if (!servicosSelecionados.has(key)) {
-    if (!funcionarioAtual) {
-      _pendingClick = { key, local, servico, localid: el.dataset.localid, svidx: el.dataset.svidx };
-      // Tratamento também pode ser feito por ajudante; os demais serviços, só produção (pintor/raspador)
-      apenasProducao = ordemServico(servico.nome) !== 0;
-      mostrarView('view-funcionarios');
-      return;
-    }
-    servicosSelecionados.set(key, { local, servico });
-  } else {
-    servicosSelecionados.delete(key);
+  const marcando = !servicosSelecionados.has(key);
+  if (marcando && !funcionarioAtual) {
+    _pendingClick = { key, local, servico, localid: el.dataset.localid, svidx: el.dataset.svidx };
+    // Tratamento também pode ser feito por ajudante; os demais serviços, só produção (pintor/raspador)
+    apenasProducao = ordemServico(servico.nome) !== 0;
+    mostrarView('view-funcionarios');
+    return;
   }
 
-  // atualiza visual sem re-renderizar tudo
-  el.classList.toggle('selecionado', servicosSelecionados.has(key));
+  _marcarServico(local, servico, el.dataset.localid, el.dataset.svidx, marcando);
+  _servicosIrmaosDoGrupo(local, servico).forEach(({ servico: irmao, svidx }) => {
+    _marcarServico(local, irmao, el.dataset.localid, svidx, marcando);
+  });
   atualizarBtnOk();
 }
 
