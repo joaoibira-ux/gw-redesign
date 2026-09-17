@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.26";
+const VERSAO = "5.27";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -1015,23 +1015,45 @@ function buildCols(wing) {
   return cols;
 }
 
+// Lista de serviços clicáveis de um local — compartilhada entre o grid de
+// apartamentos (renderAptCell) e a seção separada de Centros Comunitários
+// (renderCentroComunitarioCell), que não passam pelo agrupamento por
+// torre/bloco (identificação não segue o padrão K2A01).
+function renderServicosDoLocal(local) {
+  const servs = [...(local.servicos || [])].sort((a, b) => ordemServico(a.nome) - ordemServico(b.nome));
+  return servs.map((s, i) => {
+    const key = `${local.id}::${i}`;
+    const sel = servicosSelecionados.has(key) ? ' selecionado' : '';
+    const cursor = (s.status === 'concluido' || s.status === 'em_pagamento') ? ' nao-clicavel' : '';
+    return `<div class="apt-serv ${s.status}${sel}${cursor}"
+                 data-localid="${escHtml(local.id)}"
+                 data-svidx="${i}"
+                 onclick="onServicoClick(this)">${escHtml(nomeMapaServico(s))}</div>`;
+  }).join("");
+}
+
 function renderAptCell(local) {
   if (!local) return `<div class="apt-vazio"></div>`;
   locaisCache[local.id] = local;
   const numPart = (local.identificacao.match(/\d+$/) || [local.identificacao])[0];
-  const servs   = [...(local.servicos || [])].sort((a, b) => ordemServico(a.nome) - ordemServico(b.nome));
   return `
     <div class="apt-cell">
       <div class="apt-header">Apt: ${escHtml(numPart)}</div>
-      ${servs.map((s, i) => {
-        const key = `${local.id}::${i}`;
-        const sel = servicosSelecionados.has(key) ? ' selecionado' : '';
-        const cursor = (s.status === 'concluido' || s.status === 'em_pagamento') ? ' nao-clicavel' : '';
-        return `<div class="apt-serv ${s.status}${sel}${cursor}"
-                     data-localid="${escHtml(local.id)}"
-                     data-svidx="${i}"
-                     onclick="onServicoClick(this)">${escHtml(nomeMapaServico(s))}</div>`;
-      }).join("")}
+      ${renderServicosDoLocal(local)}
+    </div>`;
+}
+
+// Centro Comunitário (pedido do João, 2026-09-17): tipo de local separado
+// dos apartamentos, sem torre/bloco/número — mostra a identificação
+// completa (célula mais larga, já que não precisa caber lado a lado com
+// dezenas de apartamentos) numa seção própria, fora do agrupamento por
+// bloco.
+function renderCentroComunitarioCell(local) {
+  locaisCache[local.id] = local;
+  return `
+    <div class="apt-cell cc-cell">
+      <div class="apt-header">${escHtml(local.identificacao)}</div>
+      ${renderServicosDoLocal(local)}
     </div>`;
 }
 
@@ -1044,26 +1066,43 @@ function renderWing(cols) {
     </div>`;
 }
 
+function renderCentrosComunitarios(centros) {
+  if (!centros.length) return "";
+  return `
+    <div class="bloco">
+      <div class="bloco-label">CENTROS COMUNITÁRIOS</div>
+      <div class="bloco-body">
+        <div class="wing cc-wing" style="grid-template-columns:repeat(${centros.length},110px)">
+          ${centros.map(renderCentroComunitarioCell).join("")}
+        </div>
+      </div>
+    </div>`;
+}
+
 function render(data) {
-  const blocos = groupByBloco(data);
+  const centros = data.filter(l => l.tipo === 'Centro Comunitário');
+  const apartamentos = data.filter(l => l.tipo !== 'Centro Comunitário');
+  const blocos = groupByBloco(apartamentos);
   const chaves = Object.keys(blocos).sort();
-  if (!chaves.length) {
+  if (!chaves.length && !centros.length) {
     document.getElementById("mapa").innerHTML = '<p class="empty">Nenhum local cadastrado.</p>';
     return;
   }
-  document.getElementById("mapa").innerHTML = chaves.map(chave => {
-    const { prefix, block, ground, upper } = blocos[chave];
-    const gCols = buildCols(ground);
-    const uCols = buildCols(upper);
-    return `
-      <div class="bloco">
-        <div class="bloco-label">${labelPrefixoBloco(prefix)}BLOCO ${block}</div>
-        <div class="bloco-body">
-          ${gCols.length ? renderWing(gCols) : ""}
-          ${uCols.length ? `<div class="corredor"></div>${renderWing(uCols)}` : ""}
-        </div>
-      </div>`;
-  }).join("");
+  document.getElementById("mapa").innerHTML =
+    renderCentrosComunitarios(centros) +
+    chaves.map(chave => {
+      const { prefix, block, ground, upper } = blocos[chave];
+      const gCols = buildCols(ground);
+      const uCols = buildCols(upper);
+      return `
+        <div class="bloco">
+          <div class="bloco-label">${labelPrefixoBloco(prefix)}BLOCO ${block}</div>
+          <div class="bloco-body">
+            ${gCols.length ? renderWing(gCols) : ""}
+            ${uCols.length ? `<div class="corredor"></div>${renderWing(uCols)}` : ""}
+          </div>
+        </div>`;
+    }).join("");
 }
 
 db.collection("locais").orderBy("identificacao", "asc").onSnapshot(snap => {

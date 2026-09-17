@@ -1,8 +1,8 @@
-const VERSION = "locais-v20";
+const VERSION = "locais-v21";
 const ASSETS = [
   "./index.html",
   "./style.css?v=15",
-  "./app.js?v=17",
+  "./app.js?v=19",
   "./manifest.json",
   "./Logo-gw.png"
 ];

@@ -164,6 +164,12 @@ header {
   font-weight: 600;
 }
 
+/* Centro Comunitário: célula mais larga que a de apartamento, só tem 1-2
+   por vez (não precisa caber dezenas lado a lado) — texto legível. */
+.cc-cell { min-width: 110px; }
+.cc-cell .apt-header { font-size: 0.5rem; white-space: normal; padding: 3px 4px; }
+.cc-cell .apt-serv   { font-size: 0.45rem; padding: 3px 4px; }
+
 .empty {
   text-align: center;
   color: #aaa;
