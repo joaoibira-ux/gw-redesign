@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.18";
+  const VERSAO = "2.19";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -783,6 +783,15 @@
     if (n.includes('emassamento') || n.includes('massa'))  return 2;
     if (n.includes('textura') && n.includes('wc'))         return 3;
     if (n.includes('textura'))                             return 4;
+    // Itens 1.7/1.8/1.9 (e equivalentes de Centro Comunitário) tinham
+    // "medicao" real no catálogo mas caíam todos em cat=99 — categoria
+    // descartada do total da Previsão da Medição. Achado real, 2026-09-17:
+    // R$ 1.592,00 em medição de "Pintura Demão 1/2" já na folha sumindo do
+    // relatório financeiro sem aviso nenhum.
+    if (/dem[aã]o\s*1/.test(n))                             return 5;
+    if (/dem[aã]o\s*2/.test(n))                             return 6;
+    if (n.includes('revis'))                                return 7;
+    if (n.includes('pintura teto'))                         return 8;
     return 99;
   }
   function nomeAbrev(nome) {
@@ -792,6 +801,10 @@
     if (n.includes('emassamento') || n.includes('massa')) return 'Massa';
     if (n.includes('textura') && n.includes('wc'))         return 'Textura WC';
     if (n.includes('textura'))    return 'Textura';
+    const demao = n.match(/dem[aã]o\s*(\d+)/);
+    if (demao) return 'Demão ' + demao[1];
+    if (n.includes('revis'))      return 'Revisão';
+    if (n.includes('pintura teto')) return 'Pintura Teto';
     return (nome||'').substring(0, 12);
   }
   document.getElementById("versao-app").textContent = "Versão: " + VERSAO;
