@@ -1,8 +1,8 @@
-const VERSION = "mapa-v39";
+const VERSION = "mapa-v40";
 const ASSETS = [
   "./index.html",
   "./style.css?v=28",
-  "./app.js?v=42",
+  "./app.js?v=43",
   "./manifest.json",
   "./Logo-gw.png"
 ];

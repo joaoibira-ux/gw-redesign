@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.21";
+const VERSAO = "3.22";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -26,12 +26,21 @@ function ordemServico(nome) {
   return 99;
 }
 
+// Mesmo bug/correção de folha/app.js (2026-09-17): "Textura Predes Wc e
+// Cozinha" e "Pintuta do Teto Texturado" caíam os dois em "Textura", e
+// "Pintura Demao 1"/"Pintura Demao 2" eram cortados em 10 caracteres e
+// viravam os dois "Pintura De" — dois pares de células idênticas, dava
+// pra achar que os serviços novos nem tinham aparecido no mapa.
 function nomeAbrev(nome) {
   const n = (nome || "").toLowerCase();
   if (n.includes("tratamento")) return "Tratamento";
   if (n.includes("pasta"))      return "Gesso";
   if (n.includes("emassamento") || n.includes("massa")) return "Massa";
+  if (n.includes("textura") && n.includes("wc")) return "Textura WC";
   if (n.includes("textura"))    return "Textura";
+  const demao = n.match(/dem[aã]o\s*(\d+)/);
+  if (demao) return "Demão " + demao[1];
+  if (n.includes("revis")) return "Revisão";
   return (nome || "").substring(0, 10);
 }
 
