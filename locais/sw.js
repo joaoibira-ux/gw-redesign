@@ -1,8 +1,8 @@
-const VERSION = "locais-v23";
+const VERSION = "locais-v24";
 const ASSETS = [
   "./index.html",
   "./style.css?v=15",
-  "./app.js?v=21",
+  "./app.js?v=22",
   "./manifest.json",
   "./Logo-gw.png"
 ];
@@ -26,8 +26,18 @@ self.addEventListener("activate", e => {
 });
 
 self.addEventListener("fetch", e => {
-  if (e.request.mode === "navigate") {
-    e.respondWith(fetch(e.request).catch(() => caches.match("./index.html")));
+  // Navegação e app.js: rede primeiro, sem cache de resposta antiga — evita
+  // rodar código desatualizado (ex.: opções de Tipo de local que já mudaram).
+  const critico = e.request.mode === "navigate" || e.request.url.includes("app.js");
+  if (critico) {
+    e.respondWith(
+      fetch(e.request, { cache: "no-store" })
+        .then(response => {
+          if (response.ok) caches.open(VERSION).then(c => c.put(e.request, response.clone()));
+          return response;
+        })
+        .catch(() => caches.match(e.request).then(r => r || caches.match("./index.html")))
+    );
     return;
   }
   e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
