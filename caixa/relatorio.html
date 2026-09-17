@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.16";
+  const VERSAO = "2.17";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1198,10 +1198,12 @@
       return;
     }
 
+    const servById   = {};
     const servByName = {};
     const catFallback = {};
     _servicosSnap.docs.forEach(d => {
       const s = d.data();
+      servById[d.id]  = { medicao: s.medicao || 0, mdo: s.mdo || 0 };
       servByName[s.nome] = { medicao: s.medicao || 0, mdo: s.mdo || 0 };
       const cat = ordemServico(s.nome);
       if (cat < 99 && !(cat in catFallback)) catFallback[cat] = { nome: nomeAbrev(s.nome), medicao: s.medicao || 0, mdo: s.mdo || 0 };
@@ -1215,7 +1217,15 @@
         if (s.status !== 'em_pagamento') return;
         nServTotal++;
         const cat = ordemServico(s.nome);
-        const valores = servByName[s.nome] || catFallback[cat] || { medicao: 0, mdo: 0 };
+        // id primeiro (achado real, 2026-09-17): o nome gravado no serviço do
+        // mapa é uma cópia congelada de quando foi atribuído — se o serviço
+        // for depois renomeado no catálogo (ex: "Revestimento de Gesso
+        // Texturado em Teto" virou "...sala e quartos"), o nome congelado
+        // nunca mais bate com servByName e cai no catFallback por categoria,
+        // que pode pegar o preço de outro serviço da mesma categoria (achado
+        // real: 83 serviços desse tipo foram fechados a R$100 em vez dos
+        // R$80 corretos do catálogo). id é estável e não muda com renomeação.
+        const valores = servById[s.id] || servByName[s.nome] || catFallback[cat] || { medicao: 0, mdo: 0 };
         let custoApto = valores.mdo;
         if (cat === 0 && s.funcionario && (s.funcionario.cargo || '').toLowerCase().includes('pintor')) {
           custoApto += 10;
@@ -2188,10 +2198,12 @@
       if (folha.status === 'paga') { alert('A última folha já foi fechada.'); return; }
 
       // Recalcula o total da folha (mesmo cálculo do pagarFolha em caixa/app.js)
+      const servById   = {};
       const servByName = {};
       const catFallback = {};
       servicosSnap.docs.forEach(d => {
         const s = d.data();
+        servById[d.id]  = { medicao: s.medicao || 0, mdo: s.mdo || 0 };
         servByName[s.nome] = { medicao: s.medicao || 0, mdo: s.mdo || 0 };
         const cat = ordemServico(s.nome);
         if (cat < 99 && !(cat in catFallback)) catFallback[cat] = { medicao: s.medicao || 0, mdo: s.mdo || 0 };
@@ -2234,7 +2246,10 @@
           if (s.status !== 'em_pagamento') return;
           nServTotal++;
           const cat = ordemServico(s.nome);
-          const valores = servByName[s.nome] || catFallback[cat] || { medicao: 0, mdo: 0 };
+          // id primeiro — ver comentário equivalente em renderPrevisaoMedicao
+          // (achado real, 2026-09-17: nome congelado desatualizado por
+          // renomeação no catálogo causava preço errado/ambíguo).
+          const valores = servById[s.id] || servByName[s.nome] || catFallback[cat] || { medicao: 0, mdo: 0 };
           let custoApto = valores.mdo;
           if (cat === 0 && s.funcionario && (s.funcionario.cargo || '').toLowerCase().includes('pintor')) custoApto += 10;
           custoPorServico.set(`${d.id}:${s.nome}`, { valor: custoApto, funcionario: s.funcionario || null });
