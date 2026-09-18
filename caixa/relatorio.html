@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.20";
+  const VERSAO = "2.21";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1235,7 +1235,7 @@
       servById[d.id]  = { medicao: s.medicao || 0, mdo: s.mdo || 0 };
       servByName[s.nome] = { medicao: s.medicao || 0, mdo: s.mdo || 0 };
       const cat = ordemServico(s.nome);
-      if (cat < 99 && !(cat in catFallback)) catFallback[cat] = { nome: nomeAbrev(s.nome), medicao: s.medicao || 0, mdo: s.mdo || 0 };
+      if (cat !== 99 && !(cat in catFallback)) catFallback[cat] = { nome: nomeAbrev(s.nome), medicao: s.medicao || 0, mdo: s.mdo || 0 };
     });
 
     const sumsByCat = {};
@@ -1260,7 +1260,7 @@
           custoApto += 10;
         }
 
-        if (cat < 99) {
+        if (cat !== 99) {
           if (!sumsByCat[cat]) sumsByCat[cat] = { count: 0, subtotal: 0, custo: 0 };
           sumsByCat[cat].count++;
           sumsByCat[cat].subtotal += valores.medicao;
@@ -2254,7 +2254,7 @@
         servById[d.id]  = { medicao: s.medicao || 0, mdo: s.mdo || 0 };
         servByName[s.nome] = { medicao: s.medicao || 0, mdo: s.mdo || 0 };
         const cat = ordemServico(s.nome);
-        if (cat < 99 && !(cat in catFallback)) catFallback[cat] = { medicao: s.medicao || 0, mdo: s.mdo || 0 };
+        if (cat !== 99 && !(cat in catFallback)) catFallback[cat] = { medicao: s.medicao || 0, mdo: s.mdo || 0 };
       });
 
       // Ajudante "Remunerado por Produção" (ex: Leonardo Ferreira) é pago
