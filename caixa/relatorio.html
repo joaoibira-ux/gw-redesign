@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.26";
+  const VERSAO = "2.27";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -2466,40 +2466,18 @@
       });
       folhaProducaoParaTelegram.sort((a, b) => a.nome.localeCompare(b.nome));
 
-      // Total das passagens (pagamento antecipado da próxima quinzena),
-      // descontando faltas líquidas da quinzena atual, que está terminando
-      // hoje (após compensar com o crédito acumulado) — ver
-      // calcularFaltasQuinzenaAtual/combinarFaltasComCredito, mais acima.
-      // Quem ainda não bateu entrada hoje até a hora do fechamento também
-      // entra como falta de hoje (ver buscarEntradaHojeSet, mais abaixo).
-      const [faltasMap, entradaHoje] = await Promise.all([
-        calcularFaltasQuinzenaAtual(new Date()),
-        buscarEntradaHojeSet()
-      ]);
-      let totalPassagens = 0;
-      const passagensPorFunc = {}; // id -> { bruto, liquido, creditoRestante }
-      funcSnap.docs.forEach(d => {
-        const f = d.data();
-        if (f.ativo === false) return;
-        const bruto = Number(f.passagens || 0);
-        if (bruto <= 0) return;
-        const { faltasLiquidas, creditoRestante } = combinarFaltasComCredito(faltasMap, d.id, f.nome, f.creditoFaltas || 0);
-        const bateuHoje = entradaHoje.ids.has(d.id) || entradaHoje.nomes.has(normNome(f.nome));
-        const faltaHoje = (!entradaHoje.ehDomingo && !bateuHoje) ? 1 : 0;
-        const liquido = Math.max(0, bruto - (faltasLiquidas + faltaHoje) * (bruto / 10));
-        totalPassagens += liquido;
-        passagensPorFunc[d.id] = { bruto, liquido, creditoRestante };
-      });
-
-      if (totalFolha <= 0 && totalPassagens <= 0) {
-        alert('Nada a fechar: folha e passagens estão zeradas.');
+      // Passagens (pagamento antecipado da quinzena) NÃO é mais fechada
+      // aqui — pedido do João (2026-09-18): esse botão só cuida de
+      // Medição/Folha; passagens tem o botão próprio "Fechar Passagens"
+      // (fecharPassagens(), mais robusto: já considera faltas/crédito).
+      // Essa lógica estava duplicada nos dois lugares antes dessa mudança.
+      if (totalFolha <= 0) {
+        alert('Nada a fechar: folha está zerada.');
         return;
       }
 
-      const { inicio: proxIni, fim: proxFim } = limitesProximaQuinzena(new Date());
-      const periodoLabel = `${fmtDataBR(proxIni)} a ${fmtDataBR(proxFim)}`;
       const dataVencimento = fmtDataBR(proximaSexta());
-      const resumo = `Folha: R$ ${fmt(totalFolha)}\nPassagens (pagamento antecipado, dias úteis de ${periodoLabel}): R$ ${fmt(totalPassagens)}\n\nVão ser criadas contas a pagar com vencimento em ${dataVencimento}.\nOs serviços em medição serão marcados como concluídos, e as diárias/passagens zeradas.`;
+      const resumo = `Folha: R$ ${fmt(totalFolha)}\n\nVai ser criada uma conta a pagar com vencimento em ${dataVencimento}.\nOs serviços em medição serão marcados como concluídos, e as diárias zeradas.`;
       if (!confirm('Fechar Medição/Folha?\n\n' + resumo)) return;
 
       btn.textContent = '📸 Enviando mapa...';
@@ -2508,18 +2486,10 @@
       btn.textContent = '⏳ Fechando...';
       const batch = db.batch();
 
-      if (totalFolha > 0) {
-        batch.set(db.collection('contasPagar').doc(), {
-          data: dataVencimento, descricao: 'Folha de Pagamento da Produção', valor: totalFolha,
-          status: 'aberto', criadoEm: firebase.firestore.FieldValue.serverTimestamp()
-        });
-      }
-      if (totalPassagens > 0) {
-        batch.set(db.collection('contasPagar').doc(), {
-          data: dataVencimento, descricao: `Passagens da Quinzena (${periodoLabel})`, valor: totalPassagens,
-          status: 'aberto', criadoEm: firebase.firestore.FieldValue.serverTimestamp()
-        });
-      }
+      batch.set(db.collection('contasPagar').doc(), {
+        data: dataVencimento, descricao: 'Folha de Pagamento da Produção', valor: totalFolha,
+        status: 'aberto', criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+      });
 
       batch.update(db.collection('folhas').doc(fdoc.id), {
         status: 'paga',
@@ -2572,12 +2542,6 @@
         if (r.status === 'baixado' && !r.descontadoDaFolha && extrairNomeAdiantamento(r.descricao)) {
           batch.update(doc.ref, { descontadoDaFolha: true });
         }
-      });
-
-      Object.entries(passagensPorFunc).forEach(([id, { liquido, creditoRestante }]) => {
-        batch.update(db.collection('funcionarios').doc(id), {
-          passagens: 0, passagensUltimoPago: liquido, creditoFaltas: creditoRestante
-        });
       });
 
       await batch.commit();
