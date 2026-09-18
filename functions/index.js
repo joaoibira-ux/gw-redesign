@@ -4024,18 +4024,19 @@ exports.verificarStatusEvolution = onCall(
 // /instance/connect, que reinicia a sessão e devolve o QR em base64 — o
 // João escaneia pelo WhatsApp do celular pareado.
 exports.reconectarEvolution = onCall(
-  { secrets: [evolutionApiKey], cors: true, invoker: "public", timeoutSeconds: 30 },
+  { secrets: [evolutionApiKey], cors: true, invoker: "public", timeoutSeconds: 60 },
   async () => {
     try {
       const resp = await fetch(`${EVOLUTION_API_URL}/instance/connect/${EVOLUTION_INSTANCE}`, {
-        headers: { "apikey": evolutionApiKey.value() }
+        headers: { "apikey": evolutionApiKey.value() },
+        signal: AbortSignal.timeout(45000)
       });
       const texto = await resp.text();
       let corpo;
       try { corpo = JSON.parse(texto); } catch { corpo = texto; }
       return { ok: resp.ok, status: resp.status, corpo };
     } catch (err) {
-      return { ok: false, erro: err.message };
+      return { ok: false, erro: err.message, causa: err.cause ? String(err.cause) : null };
     }
   }
 );
