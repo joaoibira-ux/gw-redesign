@@ -3996,7 +3996,13 @@ exports.enviarReciboWhatsApp = onCall(
 // só a cópia interna pro Telegram — o envio por WhatsApp pro próprio
 // funcionário continua manual, pela tela de Recibo em Folha.
 exports.enviarRecibosFolhaTelegram = onCall(
-  { cors: true, invoker: "public", timeoutSeconds: 120 },
+  // memory explícita — achado real, 2026-09-18: sem isso a função roda no
+  // default de 256MiB e estoura o limite (sharp + fonte + logo já consomem
+  // ~260MiB antes mesmo de gerar a imagem), derrubando o envio com "500
+  // Internal Server Error" mesmo pra 1 recibo só. Outras funções que geram
+  // imagem (extrato_refeicoes_imagem etc.) só funcionam porque rodam dentro
+  // do agenteGW, que já tem memory:"512MiB" — essa nunca teve.
+  { cors: true, invoker: "public", timeoutSeconds: 120, memory: "512MiB" },
   async (request) => {
     const { recibos } = request.data || {};
     if (!Array.isArray(recibos) || recibos.length === 0) {
