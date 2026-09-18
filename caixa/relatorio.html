@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.28";
+  const VERSAO = "2.29";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -2520,9 +2520,16 @@
           if (s.status !== 'em_pagamento') return s;
           const found    = lookup.get(`${doc.id}:${s.nome}`) || lookup.get(`${doc.id}:${nomeAbrev(s.nome)}`) || {};
           const executor = s.funcionario || found.funcionario || null;
-          // Sem item salvo em folha.grupos (entrou pelo merge de produção
-          // viva) — usa o custo recalculado ao vivo em vez de 0.
-          const valorPago = found.valor || (custoPorServico.get(`${doc.id}:${s.nome}`) || {}).valor || 0;
+          // custoPorServico (preço ao vivo, calculado por id do catálogo)
+          // primeiro — achado real, 2026-09-18: found.valor vem do retrato
+          // SALVO da folha (folha.grupos), que pode estar desatualizado se
+          // um serviço foi adicionado ao mapa depois do último autosave e
+          // antes do fechamento (o Geryson ficou sem um serviço de R$80 no
+          // retrato salvo, mas o total pago já tinha usado o valor certo —
+          // só o valorPago gravado em Locais ficava inconsistente com o
+          // total real). custoPorServico é construído do zero a partir de
+          // TODO serviço em_pagamento, sempre tem o valor certo.
+          const valorPago = (custoPorServico.get(`${doc.id}:${s.nome}`) || {}).valor ?? found.valor ?? 0;
           return {
             id: s.id, nome: s.nome, status: 'concluido',
             executor: executor ? { nome: executor.nome, id: executor.id || '', cargo: executor.cargo || '' } : null,
