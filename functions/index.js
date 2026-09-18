@@ -3999,6 +3999,26 @@ async function enviarWhatsAppEvolution(texto, apiKeyValue, destinatarios = EVOLU
   }
 }
 
+// Checagem de diagnóstico (só leitura, não manda mensagem nenhuma) — consulta
+// o estado da conexão da instância "gw" na Evolution API self-hosted na VM.
+// Pedido do João (2026-09-18): "verifica o whatsapp da gw".
+exports.verificarStatusEvolution = onCall(
+  { secrets: [evolutionApiKey], cors: true, invoker: "public", timeoutSeconds: 30 },
+  async () => {
+    try {
+      const resp = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${EVOLUTION_INSTANCE}`, {
+        headers: { "apikey": evolutionApiKey.value() }
+      });
+      const texto = await resp.text();
+      let corpo;
+      try { corpo = JSON.parse(texto); } catch { corpo = texto; }
+      return { ok: resp.ok, status: resp.status, corpo };
+    } catch (err) {
+      return { ok: false, erro: err.message };
+    }
+  }
+);
+
 // Mesma lógica de enviarWhatsAppEvolution, mas pra imagem (endpoint
 // sendMedia em vez de sendText). "buffer" é o PNG já pronto (ex: retorno de
 // gerarImagemExtrato).
