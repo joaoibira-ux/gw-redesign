@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.29";
+  const VERSAO = "2.30";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -2043,16 +2043,21 @@
       const subtotal = (doc.dias || []).reduce((s, dia) => s + Number(dia.valor || 0), 0);
       if (subtotal <= 0) return;
       const key = normNome(doc.funcionarioNome);
-      const atual = diariaPorFunc.get(key) || { total: 0, nome: doc.funcionarioNome, cargo: doc.cargo || 'Ajudante' };
+      const atual = diariaPorFunc.get(key) || { total: 0, nome: doc.funcionarioNome, cargo: doc.cargo || 'Ajudante', id: doc.funcionarioId || '' };
       atual.total += subtotal;
       diariaPorFunc.set(key, atual);
     });
 
+    // id precisa vir junto — mesmo achado do renderPrevisaoFolha (ver
+    // comentário lá): sem id, buscarAdiantamento() não achava o CPF do
+    // funcionário e um adiantamento COM cpf gravado (padrão desde
+    // 2026-09-16) não caía no fallback por nome, ficando de fora da
+    // projeção.
     const nomesExistentes = new Set(grupos.map(g => normNome(g.funcionario?.nome)));
     diariaPorFunc.forEach((info, key) => {
       if (!nomesExistentes.has(key)) grupos = [...grupos, {
         isEncarregado: false,
-        funcionario: { nome: info.nome, cargo: info.cargo },
+        funcionario: { id: info.id || '', nome: info.nome, cargo: info.cargo },
         subtotal: 0
       }];
     });
@@ -2356,16 +2361,26 @@
         const subtotal = (doc.dias || []).reduce((s, dia) => s + Number(dia.valor || 0), 0);
         if (subtotal <= 0) return;
         const key = normNome(doc.funcionarioNome);
-        const atual = diariaPorFunc.get(key) || { total: 0, nome: doc.funcionarioNome, cargo: doc.cargo || 'Ajudante' };
+        const atual = diariaPorFunc.get(key) || { total: 0, nome: doc.funcionarioNome, cargo: doc.cargo || 'Ajudante', id: doc.funcionarioId || '' };
         atual.total += subtotal;
         diariaPorFunc.set(key, atual);
       });
 
+      // id precisa vir junto (achado real, 2026-09-18: sem isso, um
+      // funcionário que só tem diária, ao entrar aqui, ficava sem id no
+      // grupo — cpfPorId.get(g.funcionario.id) falhava, buscarAdiantamento()
+      // não achava o CPF-alvo, e um adiantamento COM cpf gravado (padrão
+      // desde 2026-09-16) tomava o caminho "só por CPF" e era descartado em
+      // vez de cair no fallback por nome. O Welington teve R$50 de
+      // adiantamento MARCADO como descontado — pelo batch.update que roda
+      // incondicionalmente em toda conta a pagar de adiantamento aberta —
+      // mas NUNCA de fato subtraído do líquido dele, porque o cálculo do
+      // desconto usou esse mesmo bug e não contou esse item).
       const nomesExistentes = new Set(grupos.map(g => normNome(g.funcionario?.nome)));
       diariaPorFunc.forEach((info, key) => {
         if (!nomesExistentes.has(key)) grupos = [...grupos, {
           isEncarregado: false,
-          funcionario: { nome: info.nome, cargo: info.cargo },
+          funcionario: { id: info.id || '', nome: info.nome, cargo: info.cargo },
           subtotal: 0
         }];
       });
