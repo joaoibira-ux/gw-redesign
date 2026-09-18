@@ -4433,6 +4433,40 @@ exports.alertaContasVencidas = onSchedule(
   }
 );
 
+// Roda de segunda a sexta às 9:55, 20 minutos antes do relatorioRefeicoesHoje
+// (10:15) — checa se a instância "gw" da Evolution API está com a conexão
+// aberta e avisa pelo Telegram SE NÃO estiver. Achado real, 2026-09-18: o
+// WhatsApp caiu sem nenhum aviso (nem o Telegram, que hoje só é usado como
+// fallback manual em alguns pontos, avisou), o relatório de refeições das
+// 10:15 não foi enviado ao restaurante e o João só percebeu quando já
+// precisou levar o almoço na obra na mão. Esse check dá margem pra
+// reconectar (ou avisar o restaurante por fora) antes do envio automático
+// falhar de verdade.
+exports.checarWhatsAppDiario = onSchedule(
+  { schedule: "55 9 * * 1-5", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
+  async () => {
+    let state = null;
+    try {
+      const resp = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${EVOLUTION_INSTANCE}`, {
+        headers: { "apikey": evolutionApiKey.value() },
+        signal: AbortSignal.timeout(15000)
+      });
+      const corpo = await resp.json();
+      state = corpo?.instance?.state;
+    } catch (err) {
+      logger.error("[checarWhatsAppDiario] falha ao consultar status", { erro: err.message });
+      await enviarTextoTelegram(`⚠️ GW: não consegui checar o status do WhatsApp da instância "gw" (erro: ${err.message}). Confira manualmente antes dos envios automáticos de hoje (relatório de refeições às 10:15).`);
+      return;
+    }
+    if (state !== "open") {
+      logger.error("[checarWhatsAppDiario] WhatsApp desconectado", { state });
+      await enviarTextoTelegram(`⚠️ GW: WhatsApp da instância "gw" está desconectado (estado: "${state}"). O relatório de refeições das 10:15 e outros envios automáticos por WhatsApp vão FALHAR hoje até reconectar.`);
+    } else {
+      logger.info("[checarWhatsAppDiario] WhatsApp conectado normalmente");
+    }
+  }
+);
+
 // Roda de segunda a sexta às 10:15 (não roda sábado nem domingo) e manda a
 // imagem do extrato de refeições (café da manhã: entrada antes das 7h;
 // almoço: entrada antes das 10:30) do dia atual pelo WhatsApp — mesma
