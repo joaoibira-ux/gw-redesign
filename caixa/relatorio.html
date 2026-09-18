@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.23";
+  const VERSAO = "2.24";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1768,7 +1768,7 @@
       const subtotal = (doc.dias || []).reduce((s, dia) => s + Number(dia.valor || 0), 0);
       if (subtotal <= 0) return;
       const key = normNome(doc.funcionarioNome);
-      const atual = diariaPorFunc.get(key) || { total: 0, nome: doc.funcionarioNome, cargo: doc.cargo || 'Ajudante' };
+      const atual = diariaPorFunc.get(key) || { total: 0, nome: doc.funcionarioNome, cargo: doc.cargo || 'Ajudante', id: doc.funcionarioId || '' };
       atual.total += subtotal;
       diariaPorFunc.set(key, atual);
     });
@@ -1778,7 +1778,13 @@
     diariaPorFunc.forEach((info, key) => {
       if (!nomesExistentes.has(key)) grupos = [...grupos, {
         isEncarregado: false,
-        funcionario: { nome: info.nome, cargo: info.cargo },
+        // id precisa vir junto (achado real, 2026-09-17: sem id aqui,
+        // cpfPorId.get(g.funcionario.id) falhava, buscarAdiantamento()
+        // caía sem CPF-alvo, e um adiantamento novo COM cpf gravado era
+        // silenciosamente descartado em vez de cair no fallback por nome
+        // — Welington Francisco ficou com adiantamento de hoje sumindo
+        // do total da Previsão da Folha).
+        funcionario: { id: info.id || '', nome: info.nome, cargo: info.cargo },
         subtotal: 0
       }];
     });
