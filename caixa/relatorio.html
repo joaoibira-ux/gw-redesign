@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.24";
+  const VERSAO = "2.25";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1271,7 +1271,7 @@
         // mesmo objeto — cobre tanto o lookup antigo (id||nome) quanto o
         // novo merge por normNome.
         const func = s.funcionario;
-        if (func && funcTemProducao(func.cargo, func.nome)) {
+        if (func && funcTemProducao(func.cargo, func.nome, func.id)) {
           const chaves = [func.id, func.nome, normNome(func.nome)].filter(Boolean);
           const existente = chaves.map(k => porFunc.get(k)).find(Boolean);
           const info = existente || { total: 0, nome: func.nome, cargo: func.cargo || '', id: func.id || '' };
@@ -1659,26 +1659,38 @@
   // ao mesmo tempo (dois checkboxes independentes em Funcionários) — por
   // isso os dois cálculos entram separadamente, cada um só quando o
   // respectivo checkbox está marcado, e se somam quando ambos estão.
-  function funcTemProducao(cargo, nome) {
+  // id primeiro (achado real, 2026-09-17): o nome gravado no serviço/grupo
+  // pode ser uma cópia congelada de antes de uma renomeação no cadastro
+  // (ex.: "Leonardo Ferreira" virou "Leonardo da Silva Ferreira") — só
+  // buscar por normNome(nome) faz esses registros antigos nunca baterem
+  // com o cadastro atual, excluindo a produção dele do total (achado real:
+  // R$320 sumindo do Leonardo da Silva Ferreira, 8 de 22 serviços de
+  // Tratamento ficando de fora só por causa do nome congelado). id não muda.
+  function _achaFuncCad(id, nome) {
+    if (!_funcionariosSnap) return null;
+    if (id) {
+      const porId = _funcionariosSnap.docs.find(d => d.id === id);
+      if (porId) return porId;
+    }
+    const alvo = normNome(nome);
+    return _funcionariosSnap.docs.find(d => normNome(d.data().nome) === alvo) || null;
+  }
+  function funcTemProducao(cargo, nome, id) {
     const cargoUp = (cargo || '').toUpperCase();
     if (['PINTOR', 'RASPADOR'].includes(cargoUp)) return true;
-    if (!_funcionariosSnap) return false;
-    const alvo = normNome(nome);
-    const f = _funcionariosSnap.docs.find(d => normNome(d.data().nome) === alvo);
+    const f = _achaFuncCad(id, nome);
     return !!(f && f.data().porProducao === true);
   }
   // Cadastro antigo (sem o campo porDiaria) precisa do mesmo default de
   // sempre: "ajudante sem porProducao = diária" — senão alguém já marcado
   // como porProducao (ex: Leonardo Ferreira) passa a ser tratado também
   // como diária sem nunca ter sido configurado assim.
-  function funcTemDiaria(cargo, nome) {
+  function funcTemDiaria(cargo, nome, id) {
     const cargoUp = (cargo || '').toUpperCase();
     if (['PINTOR', 'RASPADOR'].includes(cargoUp)) return true; // sempre puderam ter diária junto da produção
     const isAjud = (cargo || '').toLowerCase().includes('ajudante');
     if (!isAjud) return false;
-    if (!_funcionariosSnap) return true;
-    const alvo = normNome(nome);
-    const f = _funcionariosSnap.docs.find(d => normNome(d.data().nome) === alvo);
+    const f = _achaFuncCad(id, nome);
     if (!f) return true;
     const dados = f.data();
     if (dados.porDiaria !== undefined) return dados.porDiaria !== false;
@@ -1758,7 +1770,7 @@
     // Remove ajudantes do documento salvo — agora vêm da coleção 'diarias'
     // (exceto quem é remunerado por produção, esses ficam)
     let grupos = (_ultimaFolha.grupos || []).filter(g =>
-      g.isEncarregado || funcTemProducao(g.funcionario?.cargo, g.funcionario?.nome)
+      g.isEncarregado || funcTemProducao(g.funcionario?.cargo, g.funcionario?.nome, g.funcionario?.id)
     );
 
     // Soma das diárias por funcionário (pintores também registram diária, além dos serviços de produção)
@@ -1831,8 +1843,8 @@
     let totalBruto = 0, totalInss = 0, totalPassagens = 0, totalAdiant = 0;
     const cpfPorId = montarCpfPorId(_funcionariosSnap);
     const linhas = grupos.map(g => {
-      const temProd = !g.isEncarregado && funcTemProducao(g.funcionario?.cargo, g.funcionario?.nome);
-      const temDia  = !g.isEncarregado && funcTemDiaria(g.funcionario?.cargo, g.funcionario?.nome);
+      const temProd = !g.isEncarregado && funcTemProducao(g.funcionario?.cargo, g.funcionario?.nome, g.funcionario?.id);
+      const temDia  = !g.isEncarregado && funcTemDiaria(g.funcionario?.cargo, g.funcionario?.nome, g.funcionario?.id);
       // Bruto recalculado a partir do estado atual de 'locais' (mais confiável que o subtotal salvo na folha)
       let bruto = g.subtotal || 0;
       if (g.isEncarregado) {
@@ -2017,7 +2029,7 @@
   function calcularTotalFolhaAberta() {
     if (_ultimaFolha === undefined || _ultimaFolha === null) return 0;
     let grupos = (_ultimaFolha.grupos || []).filter(g =>
-      g.isEncarregado || funcTemProducao(g.funcionario?.cargo, g.funcionario?.nome)
+      g.isEncarregado || funcTemProducao(g.funcionario?.cargo, g.funcionario?.nome, g.funcionario?.id)
     );
 
     const diariaPorFunc = new Map();
@@ -2069,8 +2081,8 @@
 
     let totalBruto = 0, totalInss = 0, totalPassagens = 0, totalAdiant = 0;
     grupos.forEach(g => {
-      const temProd = !g.isEncarregado && funcTemProducao(g.funcionario?.cargo, g.funcionario?.nome);
-      const temDia  = !g.isEncarregado && funcTemDiaria(g.funcionario?.cargo, g.funcionario?.nome);
+      const temProd = !g.isEncarregado && funcTemProducao(g.funcionario?.cargo, g.funcionario?.nome, g.funcionario?.id);
+      const temDia  = !g.isEncarregado && funcTemDiaria(g.funcionario?.cargo, g.funcionario?.nome, g.funcionario?.id);
       let bruto = g.subtotal || 0;
       if (g.isEncarregado) {
         if (_nServTotal !== null) {
@@ -2261,6 +2273,14 @@
       const porProducaoSet = new Set(
         funcSnap.docs.filter(d => d.data().porProducao === true).map(d => normNome(d.data().nome))
       );
+      // id também (achado real, 2026-09-17: mesmo bug do R$320 sumindo do
+      // Leonardo da Silva Ferreira na Previsão — aqui é mais grave, é o
+      // FECHAMENTO de verdade. Nome gravado no serviço pode estar
+      // congelado de antes de uma renomeação e nunca bater com o cadastro
+      // atual só por normNome; id não muda).
+      const porProducaoIds = new Set(
+        funcSnap.docs.filter(d => d.data().porProducao === true).map(d => d.id)
+      );
       // Cadastro antigo (sem o campo porDiaria) precisa do mesmo default de
       // sempre: "ajudante sem porProducao = diária" — senão alguém já
       // marcado como porProducao passa a ser tratado também como diária
@@ -2271,16 +2291,22 @@
           return dados.porDiaria !== undefined ? dados.porDiaria === false : !!dados.porProducao;
         }).map(d => normNome(d.data().nome))
       );
-      function funcTemProducaoLocal(cargo, nome) {
+      const semDiariaIds = new Set(
+        funcSnap.docs.filter(d => {
+          const dados = d.data();
+          return dados.porDiaria !== undefined ? dados.porDiaria === false : !!dados.porProducao;
+        }).map(d => d.id)
+      );
+      function funcTemProducaoLocal(cargo, nome, id) {
         const cargoUp = (cargo || '').toUpperCase();
         if (['PINTOR', 'RASPADOR'].includes(cargoUp)) return true;
-        return porProducaoSet.has(normNome(nome));
+        return (id && porProducaoIds.has(id)) || porProducaoSet.has(normNome(nome));
       }
-      function funcTemDiariaLocal(cargo, nome) {
+      function funcTemDiariaLocal(cargo, nome, id) {
         const cargoUp = (cargo || '').toUpperCase();
         if (['PINTOR', 'RASPADOR'].includes(cargoUp)) return true; // sempre puderam ter diária junto da produção
         if (!(cargo || '').toLowerCase().includes('ajudante')) return false;
-        return !semDiariaSet.has(normNome(nome));
+        return !((id && semDiariaIds.has(id)) || semDiariaSet.has(normNome(nome)));
       }
 
       const porFuncProducao = new Map();
@@ -2299,7 +2325,7 @@
           if (cat === 0 && s.funcionario && (s.funcionario.cargo || '').toLowerCase().includes('pintor')) custoApto += 10;
           custoPorServico.set(`${d.id}:${s.nome}`, { valor: custoApto, funcionario: s.funcionario || null });
           const func = s.funcionario;
-          if (func && funcTemProducaoLocal(func.cargo, func.nome)) {
+          if (func && funcTemProducaoLocal(func.cargo, func.nome, func.id)) {
             const chaves = [func.id, func.nome, normNome(func.nome)].filter(Boolean);
             const existente = chaves.map(k => porFuncProducao.get(k)).find(Boolean);
             const info = existente || { total: 0, nome: func.nome, cargo: func.cargo || '', id: func.id || '' };
@@ -2310,7 +2336,7 @@
       });
 
       let grupos = (folha.grupos || []).filter(g =>
-        g.isEncarregado || funcTemProducaoLocal(g.funcionario?.cargo, g.funcionario?.nome)
+        g.isEncarregado || funcTemProducaoLocal(g.funcionario?.cargo, g.funcionario?.nome, g.funcionario?.id)
       );
 
       const diariaPorFunc = new Map();
@@ -2367,8 +2393,8 @@
       let totalBruto = 0, totalInssFechamento = 0, totalPassagensFechamento = 0, totalAdiant = 0;
       const recibosParaTelegram = [];
       grupos.forEach(g => {
-        const temProd = !g.isEncarregado && funcTemProducaoLocal(g.funcionario?.cargo, g.funcionario?.nome);
-        const temDia  = !g.isEncarregado && funcTemDiariaLocal(g.funcionario?.cargo, g.funcionario?.nome);
+        const temProd = !g.isEncarregado && funcTemProducaoLocal(g.funcionario?.cargo, g.funcionario?.nome, g.funcionario?.id);
+        const temDia  = !g.isEncarregado && funcTemDiariaLocal(g.funcionario?.cargo, g.funcionario?.nome, g.funcionario?.id);
         let bruto = g.subtotal || 0;
         const proventos = [];
         if (g.isEncarregado) {
