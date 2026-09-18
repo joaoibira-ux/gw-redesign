@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.30";
+const VERSAO = "5.31";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -1225,13 +1225,19 @@ db.collection("locais").orderBy("identificacao", "asc").onSnapshot(snap => {
         (fSnap.docs[0].data().grupos || []).forEach(g => {
           if (g.isEncarregado) return;
           (g.itens || []).forEach(item => {
-            const entry = { fn: g.funcionario, valor: Number(item.valor), dataRegistro: item.dataRegistro || null };
+            const entry = { fn: g.funcionario, dataRegistro: item.dataRegistro || null };
             lookup.set(`${item.firestoreLocalId}:${item.servico}`,            entry);
             lookup.set(`${item.firestoreLocalId}:${nomeAbrev(item.servico)}`, entry);
           });
         });
 
-        // Refina apenas entradas de produção (funcionário, valor, dataRegistro)
+        // Refina apenas funcionário/dataRegistro — NUNCA o valor a partir
+        // do snapshot salvo (achado real, 2026-09-17: esse listener
+        // reaplicava o valor CONGELADO do último save a cada mudança,
+        // desfazendo silenciosamente qualquer reprecificação feita pelo
+        // catálogo — Leonardo André continuava preso em R$30/R$50/R$50
+        // mesmo depois da correção em calcValor). valor sempre recalculado
+        // ao vivo pelo catálogo atual (id primeiro).
         let refinado = false;
         entradas = entradas.map(e => {
           if (!e.firestoreLocalId) return e;
@@ -1239,7 +1245,7 @@ db.collection("locais").orderBy("identificacao", "asc").onSnapshot(snap => {
                      || lookup.get(`${e.firestoreLocalId}:${nomeAbrev(e.servico)}`);
           if (!found) return e;
           const novoFn    = found.fn ? { ...e.funcionario, cargo: found.fn.cargo || e.funcionario.cargo || '' } : e.funcionario;
-          const novoValor = found.valor !== undefined ? found.valor : e.valor;
+          const novoValor = calcValor(e.servico, novoFn.cargo, e.servicoId);
           if (novoFn !== e.funcionario || novoValor !== e.valor) refinado = true;
           return { ...e, funcionario: novoFn, valor: novoValor, dataRegistro: found.dataRegistro || e.dataRegistro || null };
         });
