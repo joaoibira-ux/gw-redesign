@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.29";
+const VERSAO = "5.30";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -2331,14 +2331,22 @@ async function verRelatorio() {
         ? ((encarregadoCache.salario || 0) / 2) + (5 * nServMapa) : 0;
 
       gruposData = gList.filter(g => !g.isEncarregado).map(g => {
-        const itensVivos = (g.itens || []).filter(item => {
-          if (!item.firestoreLocalId) return true; // diárias de ajudantes (sem local)
+        const itensVivos = (g.itens || []).map(item => {
+          if (!item.firestoreLocalId) return item; // diárias de ajudantes (sem local)
           const local = locaisCache[item.firestoreLocalId];
-          if (!local) return false;
-          return (local.servicos || []).some(s =>
+          if (!local) return null;
+          const s = (local.servicos || []).find(s =>
             s.nome === item.servico && s.status === 'em_pagamento' &&
             s.funcionario && (s.funcionario.id || s.funcionario.nome) === (g.funcionario.id || g.funcionario.nome));
-        });
+          if (!s) return null;
+          // Recalcula pelo catálogo atual (id primeiro) em vez de confiar
+          // no valor congelado salvo na folha (achado real, 2026-09-17:
+          // Leonardo André ficou R$300 a menos porque esse caminho —
+          // usado ao abrir o relatório sem a folha estar em edição ao
+          // vivo — nunca atualizava o valor depois de uma correção de
+          // preço no catálogo).
+          return { ...item, valor: calcValor(s.nome, (s.funcionario || {}).cargo, s.id) };
+        }).filter(Boolean);
         return { funcionario: g.funcionario, itens: itensVivos };
       }).filter(g => g.itens.length > 0 || buscarAdiantamentoDoFuncionario(adiantLista, g.funcionario).itens.length > 0);
 
