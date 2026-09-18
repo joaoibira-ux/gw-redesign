@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.27";
+  const VERSAO = "2.28";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1934,9 +1934,14 @@
   // passagens separadas) com vencimento na próxima sexta-feira após o
   // fechamento (revertido em 2026-09-09 — tinha passado por "fim da
   // quinzena atual" numa mudança anterior, mas a regra combinada é essa).
+  // Achado real, 2026-09-18: o "|| 7" fazia pular pra sexta da semana
+  // seguinte quando hoje JÁ é sexta (getDay()===5 → resto 0, e 0 é falsy,
+  // caindo no fallback de 7 dias) — o João fechou a folha numa sexta e o
+  // vencimento saiu com 25/09 em vez de hoje (18/09). Sem o fallback, resto
+  // 0 fica 0 dias (vencimento hoje mesmo), que é o comportamento certo.
   function proximaSexta() {
     const hoje = new Date();
-    const diasAteSexta = ((5 - hoje.getDay()) + 7) % 7 || 7;
+    const diasAteSexta = ((5 - hoje.getDay()) + 7) % 7;
     return new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + diasAteSexta);
   }
 
