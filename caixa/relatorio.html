@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.22";
+  const VERSAO = "2.23";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -776,37 +776,47 @@
     setTimeout(() => { btn.textContent = '📸 Telegram'; }, 3000);
   }
   function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  // Centro Comunitário tem os MESMOS tipos de serviço do apartamento, mas
+  // com mdo/medição diferentes no catálogo (ex.: Gesso em Pasta é R$260 no
+  // apto e R$320 no CC) — não pode juntar na mesma linha/categoria porque o
+  // preço unitário mostrado ficaria errado (pega só um dos dois valores).
+  // Categoria própria (+100), sempre separada em bloco à parte.
+  function isCentroComunitario(nome) {
+    const n = (nome||'').toLowerCase();
+    return n.includes('comunitario') || n.includes('comunitária') || n.includes('comunitaria');
+  }
   function ordemServico(nome) {
     const n = (nome||'').toLowerCase();
-    if (n.includes('tratamento'))                          return 0;
-    if (n.includes('pasta'))                               return 1;
-    if (n.includes('emassamento') || n.includes('massa'))  return 2;
-    if (n.includes('textura') && n.includes('wc'))         return 3;
-    if (n.includes('textura'))                             return 4;
+    let cat;
+    if (n.includes('tratamento'))                          cat = 0;
+    else if (n.includes('pasta'))                          cat = 1;
+    else if (n.includes('emassamento') || n.includes('massa')) cat = 2;
+    else if (n.includes('textura') && n.includes('wc'))    cat = 3;
+    else if (n.includes('textura'))                        cat = 4;
     // Itens 1.7/1.8/1.9 (e equivalentes de Centro Comunitário) tinham
     // "medicao" real no catálogo mas caíam todos em cat=99 — categoria
     // descartada do total da Previsão da Medição. Achado real, 2026-09-17:
     // R$ 1.592,00 em medição de "Pintura Demão 1/2" já na folha sumindo do
-    // relatório financeiro sem aviso nenhum. Centro Comunitário entra nas
-    // MESMAS categorias do apartamento (pedido do João: uma janela só,
-    // sem destacar o que é Centro Comunitário).
-    if (/dem[aã]o\s*1/.test(n))                             return 5;
-    if (/dem[aã]o\s*2/.test(n))                             return 6;
-    if (n.includes('revis'))                                return 7;
-    if (n.includes('pintura teto'))                         return 8;
-    return 99;
+    // relatório financeiro sem aviso nenhum.
+    else if (/dem[aã]o\s*1/.test(n))                       cat = 5;
+    else if (/dem[aã]o\s*2/.test(n))                       cat = 6;
+    else if (n.includes('revis'))                          cat = 7;
+    else if (n.includes('pintura teto'))                   cat = 8;
+    else return 99;
+    return isCentroComunitario(n) ? cat + 100 : cat;
   }
   function nomeAbrev(nome) {
     const n = (nome||'').toLowerCase();
-    if (n.includes('tratamento')) return 'Tratamento';
-    if (n.includes('pasta'))      return 'Gesso';
-    if (n.includes('emassamento') || n.includes('massa')) return 'Massa';
-    if (n.includes('textura') && n.includes('wc'))         return 'Textura WC';
-    if (n.includes('textura'))    return 'Textura';
+    const sufixo = isCentroComunitario(n) ? ' (CC)' : '';
+    if (n.includes('tratamento')) return 'Tratamento' + sufixo;
+    if (n.includes('pasta'))      return 'Gesso' + sufixo;
+    if (n.includes('emassamento') || n.includes('massa')) return 'Massa' + sufixo;
+    if (n.includes('textura') && n.includes('wc'))         return 'Textura WC' + sufixo;
+    if (n.includes('textura'))    return 'Textura' + sufixo;
     const demao = n.match(/dem[aã]o\s*(\d+)/);
-    if (demao) return 'Demão ' + demao[1];
-    if (n.includes('revis'))      return 'Revisão';
-    if (n.includes('pintura teto')) return 'Pintura Teto';
+    if (demao) return 'Demão ' + demao[1] + sufixo;
+    if (n.includes('revis'))      return 'Revisão' + sufixo;
+    if (n.includes('pintura teto')) return 'Pintura Teto' + sufixo;
     return (nome||'').substring(0, 12);
   }
   document.getElementById("versao-app").textContent = "Versão: " + VERSAO;
@@ -1278,9 +1288,10 @@
     const cats = Object.keys(sumsByCat).map(Number).sort((a, b) => a - b);
     if (!cats.length) { el.innerHTML = ''; return; }
 
-    // Monta o painel (linhas + total) a partir das categorias somadas —
-    // Centro Comunitário entra misturado nas mesmas linhas dos apartamentos,
-    // sem separação (pedido do João, 2026-09-17).
+    // Monta o painel (linhas + total) — Centro Comunitário fica no MESMO
+    // bloco/total dos apartamentos, mas em linhas separadas (cat >= 100,
+    // rótulo "(CC)"), porque o preço unitário (mdo/medição) é diferente do
+    // apartamento e não pode aparecer junto na mesma linha.
     function montarBloco(catsDoBloco, titulo) {
       if (!catsDoBloco.length) return '';
       let totalMedicao = 0, totalRetencao = 0, totalAReceber = 0, totalCusto = 0;
