@@ -1494,6 +1494,92 @@ async function gerarImagemRecibo(dados) {
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
+// Relatório itemizado (Local · Serviço · Valor, por profissional) mandado
+// pro Telegram ao fechar a folha — pedido do João (2026-09-18): saber quais
+// serviços do mapa estão sendo pagos e por quem, separado do recibo
+// financeiro (que só mostra Produção/Diária/Descontos agregados). dados =
+// { data, grupos: [{nome, cargo, itens: [{local, servico, valor}], subtotal}], totalGeral }.
+function construirSVGFolhaProducao(dados) {
+  const LARGURA = 700;
+  const PAD = 32;
+  const ALT_TITULO = 96;
+  const ALT_CABEC_PESSOA = 40;
+  const ALT_LINHA_ITEM = 30;
+  const ALT_SUBTOTAL = 32;
+  const ESPACO_ENTRE_PESSOAS = 10;
+  const ALT_TOTAL_GERAL = 64;
+  const ALT_FOOTER = 34;
+
+  const larguraCard = LARGURA - PAD * 2;
+  const grupos = dados.grupos || [];
+
+  let altPessoas = 0;
+  grupos.forEach(g => {
+    altPessoas += ALT_CABEC_PESSOA + (g.itens || []).length * ALT_LINHA_ITEM + ALT_SUBTOTAL + ESPACO_ENTRE_PESSOAS;
+  });
+
+  const ALTURA = ALT_TITULO + altPessoas + ALT_TOTAL_GERAL + ALT_FOOTER + PAD;
+
+  let y = ALT_TITULO;
+  let corpo = "";
+  grupos.forEach(g => {
+    corpo += `
+      <rect x="${PAD}" y="${y}" width="${larguraCard}" height="${ALT_CABEC_PESSOA}" fill="rgba(105,240,174,0.10)" rx="8"/>
+      <text x="${PAD + 14}" y="${y + ALT_CABEC_PESSOA / 2 + 5}" font-size="16" font-weight="800" fill="#f1f8f2" font-family="Arial, Helvetica, sans-serif">${escXml(g.nome || "")}</text>
+      <text x="${PAD + larguraCard - 14}" y="${y + ALT_CABEC_PESSOA / 2 + 5}" font-size="12" font-weight="700" letter-spacing="1" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${escXml((g.cargo || "").toUpperCase())}</text>
+    `;
+    y += ALT_CABEC_PESSOA;
+    (g.itens || []).forEach((it, i) => {
+      const bg = i % 2 === 0 ? "rgba(255,255,255,0.03)" : "transparent";
+      corpo += `
+        <rect x="${PAD}" y="${y}" width="${larguraCard}" height="${ALT_LINHA_ITEM}" fill="${bg}"/>
+        <text x="${PAD + 12}" y="${y + ALT_LINHA_ITEM / 2 + 4}" font-size="12" font-weight="700" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif">${escXml(it.local || "")}</text>
+        <text x="${PAD + 92}" y="${y + ALT_LINHA_ITEM / 2 + 4}" font-size="13" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif">${escXml(it.servico || "")}</text>
+        <text x="${PAD + larguraCard - 12}" y="${y + ALT_LINHA_ITEM / 2 + 4}" font-size="13" font-weight="600" fill="#c8e6c9" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${fmtMoeda(it.valor)}</text>
+      `;
+      y += ALT_LINHA_ITEM;
+    });
+    corpo += `
+      <line x1="${PAD}" y1="${y + 4}" x2="${PAD + larguraCard}" y2="${y + 4}" stroke="rgba(165,214,167,0.2)" stroke-width="1"/>
+      <text x="${PAD + larguraCard}" y="${y + ALT_SUBTOTAL / 2 + 10}" font-size="13" font-weight="700" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="end">Subtotal: ${fmtMoeda(g.subtotal || 0)}</text>
+    `;
+    y += ALT_SUBTOTAL + ESPACO_ENTRE_PESSOAS;
+  });
+
+  const blocoTotal = `
+    <rect x="${PAD}" y="${y}" width="${larguraCard}" height="${ALT_TOTAL_GERAL}" rx="14" fill="rgba(105,240,174,0.08)" stroke="rgba(105,240,174,0.35)" stroke-width="1.5"/>
+    <text x="${PAD + 22}" y="${y + ALT_TOTAL_GERAL / 2 + 6}" font-size="14" font-weight="800" letter-spacing="1" fill="#a5d6a7" font-family="Arial, Helvetica, sans-serif">TOTAL GERAL</text>
+    <text x="${PAD + larguraCard - 22}" y="${y + ALT_TOTAL_GERAL / 2 + 9}" font-size="22" font-weight="800" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${fmtMoeda(dados.totalGeral || 0)}</text>
+  `;
+  y += ALT_TOTAL_GERAL;
+
+  const footer = `
+    <text x="${LARGURA / 2}" y="${y + 26}" font-size="11" letter-spacing="1" fill="#5a8a63" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">Sistema GW • ${escXml(dados.data || "")}</text>
+  `;
+
+  return `
+<svg width="${LARGURA}" height="${ALTURA}" viewBox="0 0 ${LARGURA} ${ALTURA}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#12331f"/>
+      <stop offset="45%" stop-color="#0c2417"/>
+      <stop offset="100%" stop-color="#06120b"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="${LARGURA}" height="${ALTURA}" fill="url(#bg)"/>
+  <text x="${LARGURA / 2}" y="40" font-size="22" font-weight="800" letter-spacing="1.5" fill="#f1f8f2" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">FOLHA DE PAGAMENTO DA PRODUÇÃO</text>
+  <text x="${LARGURA / 2}" y="64" font-size="12" letter-spacing="1" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">Emitida em ${escXml(dados.data || "")}</text>
+  ${corpo}
+  ${blocoTotal}
+  ${footer}
+</svg>`;
+}
+
+async function gerarImagemFolhaProducao(dados) {
+  const svg = construirSVGFolhaProducao(dados);
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
 // Extrai o nome do funcionário de uma descrição "Adiantamento: {nome} — ..."
 // OU "Adiantamento {nome}" sem ":" (digitado à mão em lançamentos manuais de
 // Contas a Pagar — mesmo padrão usado em funcionarios/app.js e caixa/relatorio.html).
@@ -4024,6 +4110,30 @@ exports.enviarRecibosFolhaTelegram = onCall(
     }
 
     return { enviados, total: recibos.length, erros };
+  }
+);
+
+// Chamada por caixa/relatorio.html logo após fechar a folha, junto com
+// enviarRecibosFolhaTelegram — manda UMA imagem só com todos os serviços do
+// mapa que acabaram de ser pagos, agrupados por profissional (Local ·
+// Serviço · Valor), pedido do João (2026-09-18). memory maior que o recibo
+// individual porque a imagem pode ficar bem mais alta (todo mundo numa
+// imagem só) — mesma lição do 500 por estouro de memória encontrada hoje.
+exports.enviarFolhaProducaoTelegram = onCall(
+  { cors: true, invoker: "public", timeoutSeconds: 120, memory: "1GiB" },
+  async (request) => {
+    const { data, grupos, totalGeral } = request.data || {};
+    if (!Array.isArray(grupos) || grupos.length === 0) {
+      throw new HttpsError("invalid-argument", "grupos deve ser uma lista não vazia.");
+    }
+    try {
+      const buffer = await gerarImagemFolhaProducao({ data, grupos, totalGeral });
+      await enviarFotoTelegram(buffer, "folha-pagamento-producao.png", `Folha de Pagamento da Produção — ${data || ""}`);
+      return { enviado: true };
+    } catch (err) {
+      logger.error("[enviarFolhaProducaoTelegram] falha ao gerar/enviar", { erro: err.message });
+      return { enviado: false, erro: err.message };
+    }
   }
 );
 

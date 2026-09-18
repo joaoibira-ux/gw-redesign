@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.25";
+  const VERSAO = "2.26";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -2310,9 +2310,11 @@
       }
 
       const porFuncProducao = new Map();
+      const porFuncItens = new Map(); // mesma chave de porFuncProducao -> [{local, servico, valor}] — pro relatório itemizado enviado ao Telegram (Folha de Pagamento da Produção)
       const custoPorServico = new Map(); // "localId:nomeServico" -> { valor, funcionario } — fallback do valorPago pra quem entrou só pelo merge de produção viva, sem item salvo em folha.grupos
       let nServTotal = 0;
       locaisSnap.docs.forEach(d => {
+        const identificacao = d.data().identificacao || d.id;
         (d.data().servicos || []).forEach(s => {
           if (s.status !== 'em_pagamento') return;
           nServTotal++;
@@ -2331,6 +2333,10 @@
             const info = existente || { total: 0, nome: func.nome, cargo: func.cargo || '', id: func.id || '' };
             info.total += custoApto;
             chaves.forEach(k => porFuncProducao.set(k, info));
+            const chaveItens = existente ? (chaves.find(k => porFuncItens.has(k)) || chaves[0]) : chaves[0];
+            if (!porFuncItens.has(chaveItens)) porFuncItens.set(chaveItens, []);
+            porFuncItens.get(chaveItens).push({ local: identificacao, servico: nomeAbrev(s.nome), valor: custoApto });
+            chaves.forEach(k => { if (!porFuncItens.has(k)) porFuncItens.set(k, porFuncItens.get(chaveItens)); });
           }
         });
       });
@@ -2441,6 +2447,24 @@
         }
       });
       const totalFolha = totalBruto - totalInssFechamento - totalPassagensFechamento - totalAdiant;
+
+      // Relatório itemizado (Local · Serviço · Valor por pessoa) — pedido do
+      // João (2026-09-18): mandar pro Telegram, ao fechar, quais serviços do
+      // mapa estão sendo pagos e por quem, separado do recibo financeiro
+      // (proventos/descontos) que já é enviado por enviarRecibosFolhaTelegram.
+      const vistosItens = new Set();
+      const folhaProducaoParaTelegram = [];
+      porFuncProducao.forEach((info, key) => {
+        const itens = porFuncItens.get(key) || [];
+        if (!itens.length || vistosItens.has(itens)) return;
+        vistosItens.add(itens);
+        folhaProducaoParaTelegram.push({
+          nome: info.nome, cargo: info.cargo || '',
+          itens: itens.map(it => ({ local: it.local, servico: it.servico, valor: it.valor })),
+          subtotal: itens.reduce((a, it) => a + it.valor, 0)
+        });
+      });
+      folhaProducaoParaTelegram.sort((a, b) => a.nome.localeCompare(b.nome));
 
       // Total das passagens (pagamento antecipado da próxima quinzena),
       // descontando faltas líquidas da quinzena atual, que está terminando
@@ -2567,6 +2591,16 @@
         }
       } catch (erroTelegram) {
         console.error('Erro ao enviar recibos pro Telegram:', erroTelegram);
+      }
+
+      try {
+        if (folhaProducaoParaTelegram.length) {
+          await firebase.functions().httpsCallable('enviarFolhaProducaoTelegram')({
+            data: fmtDataBR(new Date()), grupos: folhaProducaoParaTelegram, totalGeral: totalBruto
+          });
+        }
+      } catch (erroTelegram) {
+        console.error('Erro ao enviar Folha de Pagamento da Produção pro Telegram:', erroTelegram);
       }
 
       alert('Fechado com sucesso! Contas a pagar geradas para ' + dataVencimento + '.');
