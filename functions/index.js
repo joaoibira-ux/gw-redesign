@@ -4019,6 +4019,27 @@ exports.verificarStatusEvolution = onCall(
   }
 );
 
+// Pede um novo QR Code pra reconectar a instância "gw" (achado real,
+// 2026-09-18: estava com state "close", ninguém tinha sido avisado). Chama
+// /instance/connect, que reinicia a sessão e devolve o QR em base64 — o
+// João escaneia pelo WhatsApp do celular pareado.
+exports.reconectarEvolution = onCall(
+  { secrets: [evolutionApiKey], cors: true, invoker: "public", timeoutSeconds: 30 },
+  async () => {
+    try {
+      const resp = await fetch(`${EVOLUTION_API_URL}/instance/connect/${EVOLUTION_INSTANCE}`, {
+        headers: { "apikey": evolutionApiKey.value() }
+      });
+      const texto = await resp.text();
+      let corpo;
+      try { corpo = JSON.parse(texto); } catch { corpo = texto; }
+      return { ok: resp.ok, status: resp.status, corpo };
+    } catch (err) {
+      return { ok: false, erro: err.message };
+    }
+  }
+);
+
 // Mesma lógica de enviarWhatsAppEvolution, mas pra imagem (endpoint
 // sendMedia em vez de sendText). "buffer" é o PNG já pronto (ex: retorno de
 // gerarImagemExtrato).
