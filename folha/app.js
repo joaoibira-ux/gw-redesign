@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.28";
+const VERSAO = "5.29";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -196,7 +196,17 @@ function labelPrefixoBloco(prefix) {
   return (m ? `KEL${m[1]}` : prefix) + ' ';
 }
 
-function getMdo(nomeServico) {
+// id primeiro (achado real, 2026-09-17: mesmo bug já corrigido no caixa —
+// o nome gravado no serviço pode estar desatualizado, seja por renomeação
+// no catálogo ("Pintuta do Teto Texturado" virou "Pintura do Teto
+// Texturado") seja por correção de preço; sem id, caía no fallback por
+// categoria, que pode pegar o preço de outro serviço da mesma categoria).
+// id é estável e não muda.
+function getMdo(nomeServico, servicoId) {
+  if (servicoId) {
+    const porId = servicosCache.find(s => s.id === servicoId);
+    if (porId) return porId.mdo || 0;
+  }
   const exato = servicosCache.find(s => s.nome === nomeServico);
   if (exato) return exato.mdo || 0;
   const ordem = ordemServico(nomeServico);
@@ -204,8 +214,8 @@ function getMdo(nomeServico) {
   return match ? (match.mdo || 0) : 0;
 }
 
-function calcValor(nomeServico, cargo) {
-  const base        = getMdo(nomeServico);
+function calcValor(nomeServico, cargo, servicoId) {
+  const base        = getMdo(nomeServico, servicoId);
   const tratamento  = (nomeServico || '').toLowerCase().includes('tratamento');
   const pintor      = (cargo || '').toLowerCase().includes('pintor');
   return tratamento && pintor ? base + 10 : base;
@@ -215,6 +225,32 @@ function calcValor(nomeServico, cargo) {
 db.collection('servicos').onSnapshot(snap => {
   servicosCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   render(locaisData);
+
+  // Repreça a produção já adicionada à folha em aberto sempre que o
+  // catálogo mudar — sem isso, o valor ficava congelado no momento do
+  // clique e uma correção de preço no catálogo (comum nesta sessão) não
+  // era refletida até o fechamento. Achado real, 2026-09-17: Leonardo
+  // André ficou R$300 a menos no relatório porque 3 itens dele (Pintura
+  // do Teto Texturado, Demão 1, Demão 2) ficaram travados no preço
+  // antigo (30/50/50) depois de uma correção no catálogo pra 80/100/100.
+  if (entradas.length) {
+    let mudou = false;
+    entradas = entradas.map(e => {
+      if (!e.firestoreLocalId) return e; // diárias não usam catálogo
+      const novoValor = calcValor(e.servico, e.funcionario.cargo, e.servicoId);
+      if (novoValor !== e.valor) mudou = true;
+      return novoValor !== e.valor ? { ...e, valor: novoValor } : e;
+    });
+    if (mudou) {
+      filtrarProducaoConflitanteComDiaria();
+      filtrarDiariaConflitanteComProducaoPintor();
+      if (document.getElementById('view-folha')?.classList.contains('ativa')) {
+        renderizarFolha();
+        atualizarHeader();
+      }
+      agendarSave();
+    }
+  }
 });
 
 // ── Encarregado ────────────────────────────────────────────
@@ -1155,6 +1191,7 @@ db.collection("locais").orderBy("identificacao", "asc").onSnapshot(snap => {
             firestoreLocalId: doc.id,
             localId:          local.identificacao,
             servico:          s.nome,
+            servicoId:        s.id || null,
             funcionario:      s.funcionario || null,
             dataRegistro:     s.dataRegistro || null
           });
@@ -1169,7 +1206,8 @@ db.collection("locais").orderBy("identificacao", "asc").onSnapshot(snap => {
         firestoreLocalId: s.firestoreLocalId,
         localId:          s.localId,
         servico:          s.servico,
-        valor:            calcValor(s.servico, (s.funcionario || {}).cargo),
+        servicoId:        s.servicoId,
+        valor:            calcValor(s.servico, (s.funcionario || {}).cargo, s.servicoId),
         dataRegistro:     s.dataRegistro || null
       }));
       // 2. Adiciona diaristas por cima (depois da produção, para não ser sobrescrito)
@@ -1307,7 +1345,8 @@ function confirmarSelecao() {
       firestoreLocalId: local.id,
       localId:          local.identificacao,
       servico:          servico.nome,
-      valor:            calcValor(servico.nome, funcionarioAtual.cargo),
+      servicoId:        servico.id,
+      valor:            calcValor(servico.nome, funcionarioAtual.cargo, servico.id),
       dataRegistro:     new Date().toLocaleDateString('pt-BR')
     });
   });
