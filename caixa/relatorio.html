@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.21";
+  const VERSAO = "2.22";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -776,51 +776,37 @@
     setTimeout(() => { btn.textContent = '📸 Telegram'; }, 3000);
   }
   function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-  // Serviços de Centro Comunitário têm nome próprio no catálogo ("...
-  // (C.comunitario 1 e 2)") mas são o mesmo TIPO de serviço do apartamento
-  // (gesso, textura etc.) — precisam de categoria própria na Previsão da
-  // Medição pra não ficar misturado no mesmo total dos apartamentos (pedido
-  // do João, 2026-09-17: "não mostra os dados do centro comunitário" — na
-  // verdade entravam na soma, só que escondidos dentro da linha do
-  // apartamento, sem discriminação nenhuma).
-  function isCentroComunitario(nome) {
-    const n = (nome||'').toLowerCase();
-    return n.includes('comunitario') || n.includes('comunitária') || n.includes('comunitaria');
-  }
   function ordemServico(nome) {
     const n = (nome||'').toLowerCase();
-    let cat;
-    if (n.includes('tratamento'))                          cat = 0;
-    else if (n.includes('pasta'))                          cat = 1;
-    else if (n.includes('emassamento') || n.includes('massa')) cat = 2;
-    else if (n.includes('textura') && n.includes('wc'))    cat = 3;
-    else if (n.includes('textura'))                        cat = 4;
+    if (n.includes('tratamento'))                          return 0;
+    if (n.includes('pasta'))                               return 1;
+    if (n.includes('emassamento') || n.includes('massa'))  return 2;
+    if (n.includes('textura') && n.includes('wc'))         return 3;
+    if (n.includes('textura'))                             return 4;
     // Itens 1.7/1.8/1.9 (e equivalentes de Centro Comunitário) tinham
     // "medicao" real no catálogo mas caíam todos em cat=99 — categoria
     // descartada do total da Previsão da Medição. Achado real, 2026-09-17:
     // R$ 1.592,00 em medição de "Pintura Demão 1/2" já na folha sumindo do
-    // relatório financeiro sem aviso nenhum.
-    else if (/dem[aã]o\s*1/.test(n))                       cat = 5;
-    else if (/dem[aã]o\s*2/.test(n))                       cat = 6;
-    else if (n.includes('revis'))                          cat = 7;
-    else if (n.includes('pintura teto'))                   cat = 8;
-    else return 99;
-    // +100 pro Centro Comunitário — mesma ordenação/lógica de preço, só
-    // cai numa faixa de categoria separada (sempre depois das de apartamento).
-    return isCentroComunitario(n) ? cat + 100 : cat;
+    // relatório financeiro sem aviso nenhum. Centro Comunitário entra nas
+    // MESMAS categorias do apartamento (pedido do João: uma janela só,
+    // sem destacar o que é Centro Comunitário).
+    if (/dem[aã]o\s*1/.test(n))                             return 5;
+    if (/dem[aã]o\s*2/.test(n))                             return 6;
+    if (n.includes('revis'))                                return 7;
+    if (n.includes('pintura teto'))                         return 8;
+    return 99;
   }
   function nomeAbrev(nome) {
     const n = (nome||'').toLowerCase();
-    const sufixo = isCentroComunitario(n) ? ' (CC)' : '';
-    if (n.includes('tratamento')) return 'Tratamento' + sufixo;
-    if (n.includes('pasta'))      return 'Gesso' + sufixo;
-    if (n.includes('emassamento') || n.includes('massa')) return 'Massa' + sufixo;
-    if (n.includes('textura') && n.includes('wc'))         return 'Textura WC' + sufixo;
-    if (n.includes('textura'))    return 'Textura' + sufixo;
+    if (n.includes('tratamento')) return 'Tratamento';
+    if (n.includes('pasta'))      return 'Gesso';
+    if (n.includes('emassamento') || n.includes('massa')) return 'Massa';
+    if (n.includes('textura') && n.includes('wc'))         return 'Textura WC';
+    if (n.includes('textura'))    return 'Textura';
     const demao = n.match(/dem[aã]o\s*(\d+)/);
-    if (demao) return 'Demão ' + demao[1] + sufixo;
-    if (n.includes('revis'))      return 'Revisão' + sufixo;
-    if (n.includes('pintura teto')) return 'Pintura Teto' + sufixo;
+    if (demao) return 'Demão ' + demao[1];
+    if (n.includes('revis'))      return 'Revisão';
+    if (n.includes('pintura teto')) return 'Pintura Teto';
     return (nome||'').substring(0, 12);
   }
   document.getElementById("versao-app").textContent = "Versão: " + VERSAO;
@@ -1292,12 +1278,9 @@
     const cats = Object.keys(sumsByCat).map(Number).sort((a, b) => a - b);
     if (!cats.length) { el.innerHTML = ''; return; }
 
-    // Monta um bloco (linhas + totais) a partir de uma lista de categorias —
-    // usado duas vezes: uma pros apartamentos (cat < 100), outra pro Centro
-    // Comunitário (cat >= 100). Blocos totalmente separados, cada um com seu
-    // próprio total de Custo/Medição/Retenção/A Receber — pedido do João
-    // (2026-09-17): antes o Centro Comunitário entrava somado escondido
-    // dentro do total geral dos apartamentos, sem nenhuma discriminação.
+    // Monta o painel (linhas + total) a partir das categorias somadas —
+    // Centro Comunitário entra misturado nas mesmas linhas dos apartamentos,
+    // sem separação (pedido do João, 2026-09-17).
     function montarBloco(catsDoBloco, titulo) {
       if (!catsDoBloco.length) return '';
       let totalMedicao = 0, totalRetencao = 0, totalAReceber = 0, totalCusto = 0;
@@ -1341,10 +1324,7 @@
         </div>`;
     }
 
-    const catsApto = cats.filter(c => c < 100);
-    const catsCC   = cats.filter(c => c >= 100);
-    el.innerHTML = montarBloco(catsApto, 'Previsão da Medição')
-                 + montarBloco(catsCC,   'Previsão da Medição — Centro Comunitário');
+    el.innerHTML = montarBloco(cats, 'Previsão da Medição');
   }
 
   db.collection('locais').onSnapshot(snap => { _locaisSnap = snap; renderPrevisaoMedicao(); });
