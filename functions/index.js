@@ -4499,14 +4499,16 @@ exports.relatorioRefeicoesHoje = onSchedule(
   }
 );
 
-// Roda de segunda a sábado às 10:00 (não roda domingo) e avisa via WhatsApp
+// Roda de segunda a sexta às 10:00 (NÃO roda sábado nem domingo — pedido do
+// João, 2026-09-19: no sábado mandou "13 funcionários sem ponto" sem ter
+// expediente) e avisa via WhatsApp
 // quais funcionários ativos ainda não bateram entrada hoje — mesmo cálculo
 // do card "Ponto (Hoje)" da Visão Geral (cruza funcionarios.ativo com pontos
 // do dia, tentando casar por funcionarioId e caindo pro nome se precisar).
 // Só manda mensagem se houver alguém faltando; se todo mundo já bateu
 // ponto, fica em silêncio.
 exports.alertaPontoEmAberto = onSchedule(
-  { schedule: "0 10 * * 1-6", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
+  { schedule: "0 10 * * 1-5", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
   async () => {
     const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
     const dataInicio = new Date(hojeISO + "T00:00:00-03:00");
