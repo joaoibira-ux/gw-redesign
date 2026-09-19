@@ -1402,6 +1402,11 @@ function construirSVGRecibo(dados, logoBase64) {
   const ALT_HEADER = 190;
   const ALT_TITULO_SECAO = 36;
   const ALT_LINHA = 40;
+  // item com "meta" (data/origem em cinza embaixo do rótulo) — usado na
+  // composição do bruto e dos descontos (pedido do João, 2026-09-19)
+  const ALT_LINHA_META = 56;
+  const altItem = it => (it.meta ? ALT_LINHA_META : ALT_LINHA);
+  const somaAlt = itens => itens.reduce((a, it) => a + altItem(it), 0);
   const ALT_SUBTOTAL = 34;
   const ESPACO_ENTRE_SECOES = 16;
   const ALT_LIQUIDO = 90;
@@ -1411,8 +1416,8 @@ function construirSVGRecibo(dados, logoBase64) {
   const totalProv = dados.proventos.reduce((a, p) => a + p.valor, 0);
   const totalDesc = dados.descontos.reduce((a, p) => a + p.valor, 0);
 
-  const altSecaoProv = ALT_TITULO_SECAO + dados.proventos.length * ALT_LINHA + ALT_SUBTOTAL;
-  const altSecaoDesc = dados.descontos.length ? (ALT_TITULO_SECAO + dados.descontos.length * ALT_LINHA + ALT_SUBTOTAL + ESPACO_ENTRE_SECOES) : 0;
+  const altSecaoProv = ALT_TITULO_SECAO + somaAlt(dados.proventos) + ALT_SUBTOTAL;
+  const altSecaoDesc = dados.descontos.length ? (ALT_TITULO_SECAO + somaAlt(dados.descontos) + ALT_SUBTOTAL + ESPACO_ENTRE_SECOES) : 0;
   const ALTURA = ALT_HEADER + altSecaoProv + altSecaoDesc + ESPACO_ENTRE_SECOES + ALT_LIQUIDO + ALT_FOOTER + PAD;
 
   let y = ALT_HEADER;
@@ -1422,12 +1427,17 @@ function construirSVGRecibo(dados, logoBase64) {
     y += ALT_TITULO_SECAO;
     itens.forEach((it, i) => {
       const bg = i % 2 === 0 ? "rgba(255,255,255,0.035)" : "transparent";
+      const alt = altItem(it);
+      // com meta: rótulo na metade de cima, data/origem em cinza embaixo;
+      // sem meta: rótulo centralizado como sempre
+      const yLabel = it.meta ? y + 24 : y + alt / 2 + 5;
       svg += `
-        <rect x="${PAD}" y="${y}" width="${larguraCard}" height="${ALT_LINHA}" fill="${bg}" rx="8"/>
-        <text x="${PAD + 16}" y="${y + ALT_LINHA / 2 + 5}" font-size="15" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif">${escXml(it.label)}</text>
-        <text x="${PAD + larguraCard - 16}" y="${y + ALT_LINHA / 2 + 5}" font-size="15" font-weight="600" fill="${neg ? '#ff8a65' : '#c8e6c9'}" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${neg ? '− ' : ''}${fmtMoeda(it.valor)}</text>
+        <rect x="${PAD}" y="${y}" width="${larguraCard}" height="${alt}" fill="${bg}" rx="8"/>
+        <text x="${PAD + 16}" y="${yLabel}" font-size="15" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif">${escXml(it.label)}</text>
+        ${it.meta ? `<text x="${PAD + 16}" y="${y + 43}" font-size="12" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif">${escXml(it.meta)}</text>` : ""}
+        <text x="${PAD + larguraCard - 16}" y="${y + alt / 2 + 5}" font-size="15" font-weight="600" fill="${neg ? '#ff8a65' : '#c8e6c9'}" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${neg ? '− ' : ''}${fmtMoeda(it.valor)}</text>
       `;
-      y += ALT_LINHA;
+      y += alt;
     });
     svg += `
       <line x1="${PAD}" y1="${y + 6}" x2="${PAD + larguraCard}" y2="${y + 6}" stroke="rgba(165,214,167,0.2)" stroke-width="1"/>

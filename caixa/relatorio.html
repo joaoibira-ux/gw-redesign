@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.30";
+  const VERSAO = "2.31";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1580,7 +1580,7 @@
       const r = d.data();
       const nome = extrairNomeAdiantamento(r.descricao);
       if (!nome) return;
-      adiantLista.push({ nome, valor: r.saida || 0, cpf: r.funcionarioCpf || '' });
+      adiantLista.push({ nome, valor: r.saida || 0, cpf: r.funcionarioCpf || '', data: r.data || '', origem: 'Caixa' });
     });
   }
 
@@ -1595,7 +1595,7 @@
       const nome = extrairNomeAdiantamento(r.descricao);
       if (!nome) return;
       const valor = r.valorOriginal !== undefined ? r.valorOriginal : r.valor;
-      adiantLista.push({ nome, valor: valor || 0, cpf: r.funcionarioCpf || '' });
+      adiantLista.push({ nome, valor: valor || 0, cpf: r.funcionarioCpf || '', data: r.data || '', origem: 'Contas a Pagar' });
     });
   }
 
@@ -1635,14 +1635,18 @@
   //    (lançadas antes dessa correção) — o menor conjunto de palavras
   //    precisa estar inteiramente contido no outro, funciona não importa de
   //    qual lado (adiantamento ou funcionário) o nome ficou desatualizado.
-  function buscarAdiantamento(adiantLista, nomeFuncionario, cpfFuncionario) {
+  // Devolve as entradas (com data/origem) que casam com o funcionário — mesma
+  // regra de sempre. buscarAdiantamento() é só a soma disso, então o detalhe
+  // mostrado no recibo nunca diverge do total descontado.
+  function buscarAdiantamentoItens(adiantLista, nomeFuncionario, cpfFuncionario) {
     const cpfAlvo = (cpfFuncionario || '').replace(/\D/g, '');
     const palavrasFunc = new Set(tokenizarNome(nomeFuncionario));
-    let soma = 0;
-    adiantLista.forEach(({ nome, valor, cpf }) => {
+    const itens = [];
+    adiantLista.forEach(entrada => {
+      const { nome, cpf } = entrada;
       const cpfEntrada = (cpf || '').replace(/\D/g, '');
       if (cpfEntrada) {
-        if (cpfAlvo && cpfEntrada === cpfAlvo) soma += valor;
+        if (cpfAlvo && cpfEntrada === cpfAlvo) itens.push(entrada);
         return;
       }
       if (!palavrasFunc.size) return;
@@ -1650,9 +1654,12 @@
       if (!palavrasNome.size) return;
       const [menor, maior] = palavrasNome.size <= palavrasFunc.size
         ? [palavrasNome, palavrasFunc] : [palavrasFunc, palavrasNome];
-      if ([...menor].every(p => maior.has(p))) soma += valor;
+      if ([...menor].every(p => maior.has(p))) itens.push(entrada);
     });
-    return soma;
+    return itens;
+  }
+  function buscarAdiantamento(adiantLista, nomeFuncionario, cpfFuncionario) {
+    return buscarAdiantamentoItens(adiantLista, nomeFuncionario, cpfFuncionario).reduce((s, e) => s + e.valor, 0);
   }
 
   // Um Ajudante pode ser remunerado por Produção, por Diária, ou pelos dois
@@ -2345,7 +2352,7 @@
             chaves.forEach(k => porFuncProducao.set(k, info));
             const chaveItens = existente ? (chaves.find(k => porFuncItens.has(k)) || chaves[0]) : chaves[0];
             if (!porFuncItens.has(chaveItens)) porFuncItens.set(chaveItens, []);
-            porFuncItens.get(chaveItens).push({ local: identificacao, servico: nomeAbrev(s.nome), valor: custoApto });
+            porFuncItens.get(chaveItens).push({ local: identificacao, servico: nomeAbrev(s.nome), valor: custoApto, data: s.dataRegistro || '' });
             chaves.forEach(k => { if (!porFuncItens.has(k)) porFuncItens.set(k, porFuncItens.get(chaveItens)); });
           }
         });
@@ -2361,8 +2368,9 @@
         const subtotal = (doc.dias || []).reduce((s, dia) => s + Number(dia.valor || 0), 0);
         if (subtotal <= 0) return;
         const key = normNome(doc.funcionarioNome);
-        const atual = diariaPorFunc.get(key) || { total: 0, nome: doc.funcionarioNome, cargo: doc.cargo || 'Ajudante', id: doc.funcionarioId || '' };
+        const atual = diariaPorFunc.get(key) || { total: 0, nome: doc.funcionarioNome, cargo: doc.cargo || 'Ajudante', id: doc.funcionarioId || '', dias: [] };
         atual.total += subtotal;
+        atual.dias.push(...(doc.dias || []));
         diariaPorFunc.set(key, atual);
       });
 
@@ -2418,6 +2426,25 @@
 
       let totalBruto = 0, totalInssFechamento = 0, totalPassagensFechamento = 0, totalAdiant = 0;
       const recibosParaTelegram = [];
+
+      // Composição do bruto no recibo (pedido do João, 2026-09-18/19): em vez
+      // de uma linha só "Produção"/"Diária", lista cada serviço (local ·
+      // serviço + data do registro) e cada dia de diária — igual ao recibo
+      // da tela Folha. A soma dos itens é exatamente o mesmo valor que já
+      // entrava no total (info.total / diaria.total), só detalhado.
+      const chaveDataBR = s => { const [d, m, a] = (s || '').split('/').map(Number); return (a || 0) * 10000 + (m || 0) * 100 + (d || 0); };
+      const labelDiariaRecibo = d => {
+        if (d.horas) return `Diária (${d.horas}h)`;
+        const [dia, mes] = String(d.localId || '').replace(' ½', '').trim().split('/').map(Number);
+        if (dia && mes) {
+          const ds = new Date(new Date().getFullYear(), mes - 1, dia).getDay();
+          if (ds === 6) return 'Sábado';
+          if (ds === 0) return 'Repouso Remunerado';
+        }
+        return 'Diária';
+      };
+      const chaveDiaMes = localId => { const [d, m] = String(localId || '').replace(' ½', '').trim().split('/').map(Number); return (m || 0) * 100 + (d || 0); };
+
       grupos.forEach(g => {
         const temProd = !g.isEncarregado && funcTemProducaoLocal(g.funcionario?.cargo, g.funcionario?.nome, g.funcionario?.id);
         const temDia  = !g.isEncarregado && funcTemDiariaLocal(g.funcionario?.cargo, g.funcionario?.nome, g.funcionario?.id);
@@ -2426,21 +2453,32 @@
         if (g.isEncarregado) {
           const quinzena = (g.itens || []).find(i => i.servico === 'Quinzena 50%');
           bruto = quinzena ? Number(quinzena.valor || 0) + 5 * nServTotal : 0;
-          if (bruto > 0) proventos.push({ label: 'Quinzena', valor: bruto });
+          if (bruto > 0) {
+            proventos.push({ label: 'Quinzena 50%', valor: Number(quinzena.valor || 0) });
+            proventos.push({ label: `${nServTotal} serviço${nServTotal !== 1 ? 's' : ''} × R$5`, valor: 5 * nServTotal });
+          }
         } else {
           bruto = 0;
           if (temProd) {
             const key = g.funcionario.id || g.funcionario.nome;
             const info = porFuncProducao.get(key) || porFuncProducao.get(normNome(g.funcionario.nome));
             const valorProd = info ? info.total : 0;
-            if (valorProd > 0) proventos.push({ label: 'Produção', valor: valorProd });
+            if (valorProd > 0) {
+              const itensProd = (porFuncItens.get(key) || porFuncItens.get(normNome(g.funcionario.nome)) || [])
+                .slice()
+                .sort((a, b) => String(a.local).localeCompare(String(b.local), 'pt-BR', { numeric: true }) || String(a.servico).localeCompare(String(b.servico), 'pt-BR'));
+              itensProd.forEach(it => proventos.push({ label: `${it.local} · ${it.servico}`, meta: it.data || '', valor: it.valor }));
+            }
             bruto += valorProd;
           }
         }
         if (g.isEncarregado || temDia) {
           const diaria = diariaPorFunc.get(normNome(g.funcionario.nome));
           if (diaria && diaria.total > 0) {
-            proventos.push({ label: 'Diária', valor: diaria.total });
+            diaria.dias
+              .slice()
+              .sort((a, b) => chaveDiaMes(a.localId) - chaveDiaMes(b.localId))
+              .forEach(d => proventos.push({ label: `${d.localId} · ${labelDiariaRecibo(d)}`, valor: Number(d.valor || 0) }));
             bruto += diaria.total;
           }
         }
@@ -2455,7 +2493,10 @@
           const descontos = [];
           if (descFechamento.inss > 0)      descontos.push({ label: 'INSS',        valor: descFechamento.inss });
           if (descFechamento.passagens > 0) descontos.push({ label: 'Passagens',   valor: descFechamento.passagens });
-          if (adiantPessoa > 0)             descontos.push({ label: 'Adiantamento', valor: adiantPessoa });
+          buscarAdiantamentoItens(adiantLista, g.funcionario.nome, cpfPorId.get(g.funcionario.id))
+            .slice()
+            .sort((a, b) => chaveDataBR(a.data) - chaveDataBR(b.data))
+            .forEach(a => descontos.push({ label: 'Adiantamento', meta: [a.data, a.origem].filter(Boolean).join(' · '), valor: a.valor }));
           recibosParaTelegram.push({
             nome: g.funcionario.nome,
             cargo: g.funcionario.cargo || '',
