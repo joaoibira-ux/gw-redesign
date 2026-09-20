@@ -3757,6 +3757,28 @@ exports.relatorioPontoWhatsApp = onCall(
   }
 );
 
+// Auto-corretor: serviços exclusivos do Centro Comunitário nunca ficam pendentes
+// em apartamentos. O app Locais de aparelhos com cache antigo copia todo serviço
+// do catálogo para todo apartamento (1.568 entradas fantasmas em 17/09 e de novo
+// em 18/09). Aqui removemos, no servidor, só o que está pendente e sem executor.
+const SERVICOS_SO_CENTRO_COMUNITARIO = new Set([
+  "tnIIkmaopjccZDnRyarA", "IqF06KI7bgtyZn6ItwQx", "JooQsBcPetUVVe9PC4zH",
+  "0WPvJx28qL4EaWYnPGop", "VZhEE4RJ42v82JQbR9mj", "HHyPFH31rz3ErnfdYXuB",
+  "1c20561aPySUuq3UbF9o",
+]);
+exports.limparServicosCCDeApartamentos = onDocumentWritten("locais/{localId}", async (event) => {
+  const depois = event.data.after;
+  if (!depois.exists) return;
+  const l = depois.data();
+  if (l.tipo && l.tipo !== "Apartamento") return;
+  const servicos = l.servicos || [];
+  const limpos = servicos.filter(s => !(SERVICOS_SO_CENTRO_COMUNITARIO.has(s.id) &&
+    s.status === "pendente" && !s.funcionario && !s.executor && !s.valorPago));
+  if (limpos.length === servicos.length) return; // nada a corrigir, evita loop
+  await depois.ref.update({ servicos: limpos });
+  logger.info("limparServicosCCDeApartamentos", { local: event.params.localId, removidos: servicos.length - limpos.length });
+});
+
 // Auto-corretor: sempre que um documento em 'diarias' é criado/atualizado,
 // verifica se a quinzena atual já foi fechada (última folha paga criada
 // dentro dela) — se foi, apaga o documento de novo. Protege contra clientes
