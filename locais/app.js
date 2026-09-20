@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "2.12";
+const VERSAO = "2.13";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -71,7 +71,12 @@ function sincronizarNovosServicos() {
     if (l.tipo && l.tipo !== 'Apartamento') return;
     const atuais = l.servicos || [];
     const existentes = new Set(atuais.map(s => s.id));
-    const faltando = servicosDisponiveis.filter(s => !existentes.has(s.id));
+    // Serviços do Centro Comunitário (itens 2.12–2.18, "C.comunitario 1 e 2") existem
+    // no mesmo catálogo mas nunca devem ir para apartamentos (achado 2026-09-19: o
+    // guard por tipo acima só protegia o CC, e o sync ainda copiava esses serviços
+    // para os apartamentos toda vez que o app abria).
+    const soCC = s => /comunit/i.test(s.nome || "");
+    const faltando = servicosDisponiveis.filter(s => !existentes.has(s.id) && !soCC(s));
     if (faltando.length === 0) return;
     const novos = faltando.map(s => ({
       id: s.id, nome: s.nome, status: "pendente",
