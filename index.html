@@ -97,16 +97,16 @@
 
     /* Tela simplificada de "toque para entrar" (PC marcado como confiável) */
     .pin-toque {
-      display: none; flex-direction: column; align-items: center; gap: 22px;
-      padding: 48px 56px;
+      display: none; flex-direction: column; align-items: center; gap: 10px;
+      padding: 22px 30px;
       border-radius: 28px;
       cursor: pointer; user-select: none;
-      max-width: 360px;
+      max-width: 240px;
       flex-shrink: 0;
       margin: auto 0;
     }
-    .pin-toque-icone { font-size: 5rem; }
-    .pin-toque-texto { font-size: 1.15rem; color: #e8f5e9; text-align: center; font-weight: 600; }
+    .pin-toque-icone { font-size: 2.4rem; }
+    .pin-toque-texto { font-size: 0.9rem; color: #e8f5e9; text-align: center; font-weight: 600; }
     .pin-toque-usar-senha {
       font-size: 0.8rem; color: #9fc7a3; text-decoration: underline;
       margin-top: 8px;
@@ -751,7 +751,7 @@
       .catch(e => console.error('Falha ao fechar saídas pendentes do ponto:', e));
     })();
 
-    const VERSAO = '7.06';
+    const VERSAO = '7.07';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
