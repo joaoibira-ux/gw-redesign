@@ -3779,6 +3779,67 @@ exports.limparServicosCCDeApartamentos = onDocumentWritten("locais/{localId}", a
   logger.info("limparServicosCCDeApartamentos", { local: event.params.localId, removidos: servicos.length - limpos.length });
 });
 
+// Backup quinzenal automático: ao fechar a Folha (status vira "paga"), salva
+// uma cópia de TODAS as coleções do sistema no Cloud Storage, pasta BKP/,
+// nomeada bkp-AAAA-MM-DD.json — pedido do João (2026-09-19/22): se algo der
+// muito errado, dá pra reconstituir os dados como estavam naquele fechamento.
+// Nome do arquivo em ISO (não DD-MM-AAAA) só pra ordenar certo em qualquer
+// listagem de pasta. Fica de fora aqui o que é log/estado transitório, não
+// dado de negócio (agenteWhatsappPolling, agenteWhatsappHistorico,
+// relatoriosPonto — regeneráveis, não fazem falta pra "rodar o sistema").
+const COLECOES_BACKUP = [
+  "funcionarios", "locais", "servicos", "folhas", "contasPagar", "contasReceber",
+  "lancamentos", "pontos", "pontosHistorico", "diarias", "config", "configuracoes",
+  "despesasRecorrentes", "despesasRecorrentesSemanais", "refeicoesPagas",
+  "medicoes", "contatos", "desenvolvimento", "estoques", "almoxarifado", "deletados",
+];
+
+function serializarParaBackup(valor) {
+  if (valor === null || valor === undefined) return valor;
+  if (valor instanceof admin.firestore.Timestamp) return valor.toDate().toISOString();
+  if (valor instanceof admin.firestore.GeoPoint) return { lat: valor.latitude, lng: valor.longitude };
+  if (valor instanceof admin.firestore.DocumentReference) return valor.path;
+  if (Array.isArray(valor)) return valor.map(serializarParaBackup);
+  if (typeof valor === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(valor)) out[k] = serializarParaBackup(v);
+    return out;
+  }
+  return valor;
+}
+
+exports.backupQuinzenalNoFechamento = onDocumentUpdated(
+  { document: "folhas/{folhaId}", memory: "512MiB", timeoutSeconds: 300 },
+  async (event) => {
+    const antes  = event.data.before.data();
+    const depois = event.data.after.data();
+    // só na transição pra "paga" — se atualizar de novo depois (ex: pagaEm),
+    // antes.status já é "paga" e não roda de novo, evita duplicar backup.
+    if (depois.status !== "paga" || antes.status === "paga") return;
+
+    const backup = { geradoEm: new Date().toISOString(), folhaId: event.params.folhaId };
+    for (const nome of COLECOES_BACKUP) {
+      const snap = await db.collection(nome).get();
+      backup[nome] = snap.docs.map(d => ({ id: d.id, ...serializarParaBackup(d.data()) }));
+    }
+
+    const dataISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const caminho = `BKP/bkp-${dataISO}.json`;
+    const bucket = admin.storage().bucket();
+    await bucket.file(caminho).save(JSON.stringify(backup), {
+      metadata: { contentType: "application/json" }
+    });
+
+    const totalDocs = COLECOES_BACKUP.reduce((s, c) => s + backup[c].length, 0);
+    logger.info("backupQuinzenalNoFechamento", { caminho, colecoes: COLECOES_BACKUP.length, totalDocs });
+    try {
+      await enviarTextoTelegram(`💾 Backup da quinzena salvo: ${caminho} (${totalDocs} registros, ${COLECOES_BACKUP.length} coleções).`);
+    } catch (err) {
+      logger.error("backupQuinzenalNoFechamento: falha ao avisar Telegram", { erro: err.message });
+    }
+  }
+);
+
 // Auto-corretor: sempre que um documento em 'diarias' é criado/atualizado,
 // verifica se a quinzena atual já foi fechada (última folha paga criada
 // dentro dela) — se foi, apaga o documento de novo. Protege contra clientes
@@ -4835,8 +4896,15 @@ exports.agenteGarconeteNativa = onCall(
   async (request) => {
     const { mensagem, historico = [], estadoCardapio } = request.data || {};
 
-    if (!mensagem || typeof mensagem !== "string") {
-      throw new HttpsError("invalid-argument", "mensagem é obrigatória.");
+    // mensagem é a fala do cliente (string) na 1ª rodada de cada turno, ou o
+    // array de tool_result (depois que o client executou as tools que o
+    // Claude pediu) nas rodadas seguintes do mesmo turno — os dois formatos
+    // são válidos como content de uma mensagem "user" na API da Anthropic.
+    const mensagemValida = typeof mensagem === "string" ? mensagem.trim().length > 0
+      : Array.isArray(mensagem) ? mensagem.length > 0
+      : false;
+    if (!mensagemValida) {
+      throw new HttpsError("invalid-argument", "mensagem é obrigatória (string ou array de tool_result).");
     }
     if (!Array.isArray(historico) || historico.length > 30) {
       throw new HttpsError("invalid-argument", "histórico inválido ou muito longo.");
