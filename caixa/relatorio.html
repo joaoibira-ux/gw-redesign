@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.31";
+  const VERSAO = "2.32";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1946,10 +1946,16 @@
   // caindo no fallback de 7 dias) — o João fechou a folha numa sexta e o
   // vencimento saiu com 25/09 em vez de hoje (18/09). Sem o fallback, resto
   // 0 fica 0 dias (vencimento hoje mesmo), que é o comportamento certo.
+  // A partir de uma data-base (padrão: hoje), acha a primeira sexta-feira
+  // a partir dela (inclusive — se a própria data-base já é sexta, o
+  // vencimento é ela mesma, sem pular pra semana seguinte).
+  function proximaSextaAPartirDe(base) {
+    const d = new Date(base); d.setHours(0, 0, 0, 0);
+    const diasAteSexta = ((5 - d.getDay()) + 7) % 7;
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() + diasAteSexta);
+  }
   function proximaSexta() {
-    const hoje = new Date();
-    const diasAteSexta = ((5 - hoje.getDay()) + 7) % 7;
-    return new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + diasAteSexta);
+    return proximaSextaAPartirDe(new Date());
   }
 
   function fmtDataBR(d) {
@@ -2146,15 +2152,22 @@
     if (!el || _ultimaFolha === undefined || !_contasPagarSnap) return;
 
     const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-    const dataFechamento = proximaSexta(); dataFechamento.setHours(0, 0, 0, 0);
+    // Vencimento projetado: Passagens e Refeições fecham no dia 15 ou 31 (o
+    // fim da quinzena atual — o mais próximo de hoje); a Folha só fecha na
+    // primeira sexta-feira a partir desse dia (achado real, 2026-09-22: os
+    // três estavam usando proximaSexta() a partir de HOJE, uma data que não
+    // tem relação com o fim de quinzena real).
+    const { fim: fimQuinzena } = limitesQuinzenaAtual(hoje);
+    const dataPassagensRefeicoes = new Date(fimQuinzena); dataPassagensRefeicoes.setHours(0, 0, 0, 0);
+    const dataFolha = proximaSextaAPartirDe(fimQuinzena);
 
     const itens = [];
     const totalFolha = calcularTotalFolhaAberta();
-    if (totalFolha > 0) itens.push({ desc: 'Folha de Pagamento da Produção', data: dataFechamento, valor: totalFolha });
+    if (totalFolha > 0) itens.push({ desc: 'Folha de Pagamento da Produção', data: dataFolha, valor: totalFolha });
     const totalPassagens = calcularTotalPassagensQuinzena();
-    if (totalPassagens > 0) itens.push({ desc: 'Passagens da Quinzena', data: dataFechamento, valor: totalPassagens });
+    if (totalPassagens > 0) itens.push({ desc: 'Passagens da Quinzena', data: dataPassagensRefeicoes, valor: totalPassagens });
     const totalRefeicoes = _refeicoesQuinzena.custoCafe + _refeicoesQuinzena.custoAlmoco;
-    if (totalRefeicoes > 0) itens.push({ desc: 'Refeições da Quinzena (café + almoço)', data: dataFechamento, valor: totalRefeicoes });
+    if (totalRefeicoes > 0) itens.push({ desc: 'Refeições da Quinzena (café + almoço)', data: dataPassagensRefeicoes, valor: totalRefeicoes });
 
     _contasPagarSnap.docs.forEach(d => {
       const c = d.data();
