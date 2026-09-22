@@ -4505,7 +4505,7 @@ exports.checarWhatsAppDiario = onSchedule(
 // imagem gerada pela ferramenta extrato_refeicoes_imagem do agenteGW, mas
 // automática e diária, via Evolution API em vez de Telegram.
 exports.relatorioRefeicoesHoje = onSchedule(
-  { schedule: "15 10 * * 1-5", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
+  { schedule: "55 9 * * 1-5", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
   async () => {
     const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
     const dados = await calcularRefeicoesHojeComNomes(hojeISO);
@@ -4540,7 +4540,7 @@ exports.relatorioRefeicoesHoje = onSchedule(
 // Só manda mensagem se houver alguém faltando; se todo mundo já bateu
 // ponto, fica em silêncio.
 exports.alertaPontoEmAberto = onSchedule(
-  { schedule: "0 10 * * 1-5", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
+  { schedule: "45 9 * * 1-5", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
   async () => {
     const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
     const dataInicio = new Date(hojeISO + "T00:00:00-03:00");
