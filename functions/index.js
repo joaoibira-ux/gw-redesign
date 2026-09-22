@@ -4690,3 +4690,184 @@ exports.lembretePontoIndividual = onSchedule(
     logger.info(`[lembretePontoIndividual] enviado individualmente pra ${enviados} de ${naoBateram.length} funcionário(s) sem ponto`);
   }
 );
+
+// ---------------------------------------------------------------------
+// Garçonete de voz do cardápio digital da Nativa (Sistema NATIVA,
+// projeto Firebase separado sistema-nativa-ibira) — reaproveita o secret
+// ANTHROPIC_API_KEY que já existe aqui no GW pra não precisar habilitar
+// Blaze nem cadastrar chave de novo no projeto da Nativa. Function pública
+// (invoker: "public") chamada via Firebase SDK a partir do domínio
+// joaoibira-ux.github.io/nativa/cardapio/.
+//
+// Diferente do agenteGW, o LOOP de tool use não roda aqui: essa function
+// só repassa UMA rodada pra API da Anthropic e devolve o content bruto —
+// quem EXECUTA cada tool é o próprio cardápio no navegador do cliente
+// (as tools mexem no estado visual do wizard, que só existe lá), então
+// o client é quem decide se chama de novo com os tool_results.
+const TOOLS_GARCONETE_NATIVA = [
+  {
+    name: "abrir_categoria",
+    description: "Abre o assistente de montagem de um item de uma categoria do cardápio (ex: começar a montar uma Marmita Fit). Use quando o cliente disser o que quer pedir e ainda não há montagem em andamento.",
+    input_schema: {
+      type: "object",
+      properties: { categoriaId: { type: "string", description: "id exato da categoria, como veio na lista de categorias disponíveis" } },
+      required: ["categoriaId"]
+    }
+  },
+  {
+    name: "marcar_opcao",
+    description: "Marca (seleciona) uma opção dentro da etapa atual da montagem em andamento — ex: escolher a proteína, um acompanhamento, o molho. Use o nome EXATO da opção como aparece na lista de opções da etapa atual, nunca invente ou aproxime.",
+    input_schema: {
+      type: "object",
+      properties: { nome: { type: "string", description: "nome exato da opção a marcar" } },
+      required: ["nome"]
+    }
+  },
+  {
+    name: "desmarcar_opcao",
+    description: "Remove a marcação de uma opção já selecionada na etapa atual, caso o cliente mude de ideia.",
+    input_schema: {
+      type: "object",
+      properties: { nome: { type: "string", description: "nome exato da opção a desmarcar" } },
+      required: ["nome"]
+    }
+  },
+  {
+    name: "avancar_etapa",
+    description: "Avança para a próxima etapa da montagem do item atual (só funciona se o mínimo de opções da etapa atual já estiver selecionado). Use depois que o cliente terminou de escolher as opções da etapa atual.",
+    input_schema: { type: "object", properties: {} }
+  },
+  {
+    name: "voltar_etapa",
+    description: "Volta para a etapa anterior da montagem atual, ou cancela a montagem se já estiver na primeira etapa.",
+    input_schema: { type: "object", properties: {} }
+  },
+  {
+    name: "definir_quantidade",
+    description: "Define quantas unidades desse item o cliente quer — só existe na última etapa da montagem, depois de todas as escolhas feitas.",
+    input_schema: {
+      type: "object",
+      properties: { quantidade: { type: "integer", description: "quantidade desejada, mínimo 1" } },
+      required: ["quantidade"]
+    }
+  },
+  {
+    name: "abrir_pratos_prontos",
+    description: "Mostra a lista de pratos especiais/já prontos da categoria atual, para quando o cliente prefere algo pronto em vez de montar do zero.",
+    input_schema: { type: "object", properties: {} }
+  },
+  {
+    name: "adicionar_prato_pronto",
+    description: "Adiciona ao carrinho um prato especial/já pronto, pelo nome exato.",
+    input_schema: {
+      type: "object",
+      properties: { nome: { type: "string", description: "nome exato do prato especial" } },
+      required: ["nome"]
+    }
+  },
+  {
+    name: "remover_item_carrinho",
+    description: "Remove um item já adicionado ao carrinho, pelo id exato do item (como veio na lista do carrinho atual).",
+    input_schema: {
+      type: "object",
+      properties: { idItem: { type: "string", description: "id exato do item no carrinho" } },
+      required: ["idItem"]
+    }
+  },
+  {
+    name: "ver_carrinho",
+    description: "Abre a tela do carrinho para o cliente ver o pedido montado até agora, com valores.",
+    input_schema: { type: "object", properties: {} }
+  },
+  {
+    name: "finalizar_pedido",
+    description: "Envia o pedido definitivamente pra cozinha. SÓ chame depois de repetir em voz alta todos os itens do carrinho e o cliente confirmar explicitamente (\"sim\", \"pode mandar\", \"confirmo\" ou equivalente) que está tudo certo.",
+    input_schema: { type: "object", properties: {} }
+  }
+];
+
+function montarSystemPromptGarconeteNativa(estadoCardapio) {
+  const { clienteNome, categorias, montagemAtual, carrinho } = estadoCardapio || {};
+
+  const catalogoTexto = (categorias || []).map(c => {
+    const gruposTxt = (c.grupos || []).map(g => {
+      const opcoes = g.opcoesComPreco
+        ? g.opcoesComPreco.map(o => `${o.nome}${o.preco ? ` (+R$${o.preco})` : ""}`)
+        : (g.opcoes || []);
+      return `    - Etapa "${g.nome}" (mín. ${g.min}, máx. ${g.max}): ${opcoes.join(", ")}`;
+    }).join("\n");
+    const especiaisTxt = (c.especiais || []).length
+      ? `\n    Pratos prontos: ${c.especiais.map(e => `${e.nome} (R$${e.preco})`).join(", ")}`
+      : "";
+    return `- id "${c.id}" — ${c.nome}${c.precoBase != null ? ` (R$${c.precoBase})` : ""}\n${gruposTxt}${especiaisTxt}`;
+  }).join("\n");
+
+  const montagemTxt = montagemAtual
+    ? `\nMontagem em andamento agora: categoria "${montagemAtual.categoriaNome}", etapa atual "${montagemAtual.grupoNome}" (selecionado até agora: ${(montagemAtual.selecaoAtual || []).join(", ") || "nada ainda"}).`
+    : "\nNenhuma montagem em andamento no momento — se o cliente quiser pedir algo, use abrir_categoria primeiro.";
+
+  const carrinhoTxt = (carrinho || []).length
+    ? `\nCarrinho atual:\n${carrinho.map(i => `  - id "${i.idItem}": ${i.categoriaNome}${i.descricao ? " — " + i.descricao : ""}, qtd ${i.quantidade}, R$${(i.valorUnitario * i.quantidade).toFixed(2)}`).join("\n")}`
+    : "\nCarrinho vazio até agora.";
+
+  return `Você é a garçonete virtual da Nativa Cozinha Leve, atendendo por voz um cliente que está montando o próprio pedido pelo cardápio digital.
+Fale de forma calorosa, natural e breve — como uma garçonete de verdade conversando, não uma lista de opções. Respostas curtas (1-3 frases), sempre em português brasileiro.
+${clienteNome ? `O cliente se chama ${clienteNome}.` : ""}
+
+Cardápio disponível agora:
+${catalogoTexto}
+${montagemTxt}
+${carrinhoTxt}
+
+Regras:
+- Para começar a montar um item, chame abrir_categoria com o id exato da categoria (nunca invente um id que não esteja na lista acima).
+- Dentro de uma montagem, use marcar_opcao/desmarcar_opcao com o nome EXATO da opção, copiado exatamente como está na lista acima.
+- Só chame avancar_etapa depois que o cliente já escolheu o que queria na etapa atual, respeitando o mínimo exigido.
+- Na última etapa (quantidade), use definir_quantidade.
+- Sempre que o cliente quiser saber o total ou revisar o pedido, chame ver_carrinho.
+- NUNCA chame finalizar_pedido sem antes repetir em voz alta o pedido completo (itens e valores) e o cliente confirmar de forma clara.
+- Se o cliente pedir algo que não existe no cardápio, avise educadamente e sugira o mais parecido que existir.
+- Depois de cada ação, dê um retorno curto e natural do que foi feito (ex: "Show, frango desfiado marcado! Agora escolhe os acompanhamentos.").`;
+}
+
+exports.agenteGarconeteNativa = onCall(
+  { secrets: [anthropicApiKey], timeoutSeconds: 60, memory: "256MiB", cors: true, invoker: "public" },
+  async (request) => {
+    const { mensagem, historico = [], estadoCardapio } = request.data || {};
+
+    if (!mensagem || typeof mensagem !== "string") {
+      throw new HttpsError("invalid-argument", "mensagem é obrigatória.");
+    }
+    if (!Array.isArray(historico) || historico.length > 30) {
+      throw new HttpsError("invalid-argument", "histórico inválido ou muito longo.");
+    }
+
+    const systemPrompt = montarSystemPromptGarconeteNativa(estadoCardapio);
+    const messages = [...historico.slice(-16), { role: "user", content: mensagem }];
+
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": anthropicApiKey.value(),
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-5",
+        max_tokens: 512,
+        system: systemPrompt,
+        tools: TOOLS_GARCONETE_NATIVA,
+        messages
+      })
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      logger.error("[agenteGarconeteNativa] erro Anthropic", { status: resp.status, errText: errText.slice(0, 300) });
+      throw new HttpsError("internal", "Erro ao consultar a IA (status " + resp.status + ").");
+    }
+
+    const data = await resp.json();
+    return { content: data.content, stop_reason: data.stop_reason };
+  }
+);
