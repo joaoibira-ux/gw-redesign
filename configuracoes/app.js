@@ -1,4 +1,4 @@
-const VERSAO = "1.16";
+const VERSAO = "1.17";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp({
@@ -33,7 +33,7 @@ const DEFAULTS = {
   valorCafe:          0,
   valorAlmoco:        0,
   limiteAdiantamentoSemanal: 0,
-  capitalAdiantamentoSemanal: 500,
+  capitalAdiantamentoSemanal: 100,
   limiteAjudantesDiaria: 2,
   limitePintoresDiaria: 2,
 };

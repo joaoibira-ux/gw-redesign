@@ -4344,6 +4344,24 @@ exports.avisoPagamentoAdiantamento = onDocumentUpdated(
   }
 );
 
+// Toda segunda de manhã cedo, o "Total geral disponível" pra adiantamentos
+// (Configurações → Adiantamentos) volta sozinho pro valor-base de R$ 100 —
+// pedido do João, 2026-09-25: durante a semana ele vai aumentando esse valor
+// à mão (PIN completo) conforme sobra caixa, mas a semana sempre começa do
+// mesmo jeito, sem ele precisar lembrar de resetar. Só mexe nesse campo — o
+// limite individual por funcionário não é afetado. Se o valor-base mudar,
+// atualizar aqui E em configuracoes/app.js (DEFAULTS.capitalAdiantamentoSemanal).
+exports.resetarCapitalAdiantamentoSemanal = onSchedule(
+  { schedule: "5 0 * * 1", timeZone: "America/Sao_Paulo" },
+  async () => {
+    await db.collection("configuracoes").doc("geral").set(
+      { capitalAdiantamentoSemanal: 100 },
+      { merge: true }
+    );
+    logger.info("[resetarCapitalAdiantamentoSemanal] resetado para R$ 100");
+  }
+);
+
 function normTexto(s) {
   return String(s || "")
     .normalize("NFD")
