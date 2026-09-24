@@ -1,4 +1,4 @@
-const VERSAO = "1.11";
+const VERSAO = "1.12";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp({
@@ -59,12 +59,93 @@ colRecorrentesSemanais.orderBy("criadoEm").onSnapshot(snap => {
   renderizar();
 });
 
-// Só pra popular o seletor de funcionário da condição de presença — não afeta o resto da tela.
+// Popula o seletor de funcionário da condição de presença e a lista de
+// Saldo disponível para adiantamentos (abaixo).
 db.collection("funcionarios").orderBy("nome").onSnapshot(snap => {
   funcionariosCache = snap.docs
     .map(d => ({ id: d.id, ...d.data() }))
     .filter(f => f.ativo !== false);
+  renderizar();
 });
+
+// ── Saldo disponível para adiantamentos (pedido do João, 2026-09-24) ──────
+// Mesmo cálculo de funcionarios/app.js (duplicado de propósito, mesmo
+// padrão do resto do sistema) — mostrado aqui, ao lado de onde o limite
+// semanal é ajustado, pra ver o efeito da mudança em cada funcionário.
+let _lancAdiantDocs = [];
+let _contasPagarDocs = [];
+db.collection("lancamentos").where("origem", "in", ["ANE->ADIANTAMENTO", "JOAO->ADIANTAMENTO"]).onSnapshot(snap => {
+  _lancAdiantDocs = snap.docs.map(d => d.data());
+  renderizar();
+});
+db.collection("contasPagar").onSnapshot(snap => {
+  _contasPagarDocs = snap.docs.map(d => d.data());
+  renderizar();
+});
+
+function inicioDaSemana() {
+  const hoje = new Date();
+  const diaSemana = hoje.getDay();
+  const diffSegunda = diaSemana === 0 ? 6 : diaSemana - 1;
+  return new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - diffSegunda, 0, 0, 0, 0);
+}
+function _normNomeAdiant(s) {
+  return (s || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+function _nomeAdiantBate(nome, nomeAlvo) {
+  if (nome === nomeAlvo) return true;
+  const palavrasNome = new Set(_normNomeAdiant(nome).split(/\s+/).filter(Boolean));
+  const palavrasAlvo = new Set(_normNomeAdiant(nomeAlvo).split(/\s+/).filter(Boolean));
+  if (!palavrasNome.size || !palavrasAlvo.size) return false;
+  const [menor, maior] = palavrasNome.size <= palavrasAlvo.size
+    ? [palavrasNome, palavrasAlvo] : [palavrasAlvo, palavrasNome];
+  return [...menor].every(p => maior.has(p));
+}
+function _somaSeAdiantamentoDoFuncionario(descricao, criadoEm, valor, nomeAlvo, inicioSemana, cpfLancamento, cpfAlvo) {
+  const desc = descricao || "";
+  const m = desc.match(/^Adiantamento:?\s+(.+)/);
+  if (!m) return 0;
+  if (cpfLancamento) {
+    if (!cpfAlvo || cpfLancamento.replace(/\D/g, "") !== cpfAlvo.replace(/\D/g, "")) return 0;
+  } else {
+    const nome = m[1].split(/\s*[—–-]/)[0].trim().normalize("NFC");
+    if (!_nomeAdiantBate(nome, nomeAlvo)) return 0;
+  }
+  const dt = criadoEm && criadoEm.toDate ? criadoEm.toDate() : null;
+  if (!dt || dt < inicioSemana) return 0;
+  return Number(valor || 0);
+}
+function calcularSaldoFuncionario(f) {
+  const limite = Number(cfg.limiteAdiantamentoSemanal || 0);
+  if (limite <= 0) return null;
+  const segunda = inicioDaSemana();
+  const nomeAlvo = (f.nome || "").trim().normalize("NFC");
+  let usado = 0;
+  _lancAdiantDocs.forEach(r => {
+    usado += _somaSeAdiantamentoDoFuncionario(r.descricao, r.criadoEm, r.saida, nomeAlvo, segunda, r.funcionarioCpf, f.cpf);
+  });
+  _contasPagarDocs.forEach(r => {
+    const valorReal = r.status === "baixado" ? (r.valorOriginal !== undefined ? r.valorOriginal : r.valor) : r.valor;
+    usado += _somaSeAdiantamentoDoFuncionario(r.descricao, r.criadoEm, valorReal, nomeAlvo, segunda, r.funcionarioCpf, f.cpf);
+  });
+  return Math.max(0, limite - usado);
+}
+function blocoSaldoAdiantamentos() {
+  const limite = Number(cfg.limiteAdiantamentoSemanal || 0);
+  if (limite <= 0) return '<div class="cfg-item" style="justify-content:center;color:#888">Configure o limite semanal acima pra ver o saldo de cada funcionário.</div>';
+  if (!funcionariosCache.length) return '<div class="cfg-item" style="justify-content:center;color:#888">Nenhum funcionário ativo.</div>';
+  return funcionariosCache.map(f => {
+    const saldo = calcularSaldoFuncionario(f);
+    const zerado = saldo <= 0;
+    return `
+      <div class="cfg-item">
+        <div>
+          <div class="cfg-label">${escHtml(f.nome)}</div>
+        </div>
+        <div class="cfg-valor" style="${zerado ? 'color:#e57373' : 'color:#66bb6a'}">${zerado ? 'Limite atingido' : fmtMoeda(saldo)}</div>
+      </div>`;
+  }).join("");
+}
 
 function fmtMoeda(v) {
   return "R$ " + Number(v || 0).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
@@ -83,6 +164,8 @@ function renderizar() {
 
     <div class="secao-titulo">💵 Adiantamentos</div>
     ${item("Limite semanal por funcionário", fmtMoeda(cfg.limiteAdiantamentoSemanal), "limiteAdiantamentoSemanal", false)}
+    <div class="cfg-subtitulo">Saldo disponível para adiantamentos (semana atual)</div>
+    ${blocoSaldoAdiantamentos()}
 
     <div class="secao-titulo">📅 Diárias</div>
     ${item("Máximo de ajudantes por dia", cfg.limiteAjudantesDiaria, "limiteAjudantesDiaria", false)}

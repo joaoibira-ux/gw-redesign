@@ -82,6 +82,12 @@ header {
   color: #aaa;
 }
 
+.cfg-subtitulo {
+  font-size: 0.72rem;
+  color: #999;
+  padding: 2px 4px 8px;
+}
+
 .btn-editar {
   background: #e8f5e9;
   color: #1a3322;
