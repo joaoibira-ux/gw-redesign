@@ -1,4 +1,4 @@
-const VERSAO = "1.13";
+const VERSAO = "1.14";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp({
@@ -139,7 +139,7 @@ function renderizar() {
     ${item("Valor do Almoço", fmtMoeda(cfg.valorAlmoco), "valorAlmoco", false)}
 
     <div class="secao-titulo">💵 Adiantamentos</div>
-    ${item("Capital geral disponível (semanal)", fmtMoeda(cfg.capitalAdiantamentoSemanal), "capitalAdiantamentoSemanal", false)}
+    ${item("Total geral disponível (semanal)", fmtMoeda(cfg.capitalAdiantamentoSemanal), "capitalAdiantamentoSemanal", false)}
     ${saldoCapitalGeralItemHtml()}
 
     <div class="secao-titulo">📅 Diárias</div>
@@ -228,7 +228,7 @@ const LABELS = {
   valorCafe:          "Valor do Café (R$)",
   valorAlmoco:        "Valor do Almoço (R$)",
   limiteAdiantamentoSemanal: "Limite semanal de adiantamento, por funcionário (R$)",
-  capitalAdiantamentoSemanal: "Capital geral disponível pra adiantamentos, por semana — soma de todo mundo (R$)",
+  capitalAdiantamentoSemanal: "Total geral disponível pra adiantamentos, por semana — soma de todo mundo (R$)",
   limiteAjudantesDiaria: "Máximo de ajudantes por diária, no mesmo dia",
   limitePintoresDiaria:  "Máximo de pintores por diária, no mesmo dia",
   senhaExcluir:       "Nova senha — Excluir / Ativar",

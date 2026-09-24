@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.44";
+const VERSAO = "3.45";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -308,14 +308,14 @@ function renderAdiantCorpo(usado, usadoTotal) {
   }
   if (capitalTotal > 0) {
     const restaGeral = Math.max(0, capitalTotal - usadoTotal);
-    linhas.push(`<div class="adiant-linha"><span>Capital geral da empresa</span><strong>${fmtMoeda(capitalTotal)}</strong></div>`);
-    linhas.push(`<div class="adiant-linha ${restaGeral <= 0 ? 'estourado' : ''}"><span>Resta (capital geral)</span><strong>${fmtMoeda(restaGeral)}</strong></div>`);
+    linhas.push(`<div class="adiant-linha"><span>Total geral disponível</span><strong>${fmtMoeda(capitalTotal)}</strong></div>`);
+    linhas.push(`<div class="adiant-linha ${restaGeral <= 0 ? 'estourado' : ''}"><span>Resta (total geral)</span><strong>${fmtMoeda(restaGeral)}</strong></div>`);
     restas.push(restaGeral);
   }
 
   if (!restas.length) {
     document.getElementById("adiant-corpo").innerHTML = linhas.join("") +
-      `<p class="adiant-aviso">Limite semanal e Capital geral ainda não configurados (Configurações → Adiantamentos).</p>`;
+      `<p class="adiant-aviso">Limite semanal e Total geral disponível ainda não configurados (Configurações → Adiantamentos).</p>`;
     return;
   }
 
