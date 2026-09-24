@@ -1,4 +1,4 @@
-const VERSAO = "1.14";
+const VERSAO = "1.15";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp({
@@ -42,6 +42,14 @@ let cfg = { ...DEFAULTS };
 let recorrentes = [];
 let recorrentesSemanais = [];
 let funcionariosCache = [];
+// _lancAdiantTodos/_contasPagarTodas (capital geral, mais abaixo) precisam
+// existir ANTES do primeiro onSnapshot, porque o listener de "configuracoes/
+// geral" logo adiante pode disparar de forma síncrona (cache local) — achado
+// real, 2026-09-24: renderizar() rodava antes dessas variáveis serem
+// inicializadas (ReferenceError silencioso, tela ficava presa em
+// "Carregando..." pra sempre, sem erro visível pro usuário).
+let _lancAdiantTodos = [];
+let _contasPagarTodas = [];
 
 // ── Carrega e renderiza ───────────────────────────────────────
 docRef.onSnapshot(snap => {
@@ -73,8 +81,6 @@ db.collection("funcionarios").orderBy("nome").onSnapshot(snap => {
 // quem destina, mas nunca passa do que sobrar aqui. Renova toda semana
 // (mesma janela segunda-a-domingo do limite individual, sem estado gravado)
 // e o valor configurado pode ser aumentado a qualquer momento, direto aqui.
-let _lancAdiantTodos = [];
-let _contasPagarTodas = [];
 db.collection("lancamentos").where("origem", "in", ["ANE->ADIANTAMENTO", "JOAO->ADIANTAMENTO"]).onSnapshot(snap => {
   _lancAdiantTodos = snap.docs.map(d => d.data());
   renderizar();
