@@ -1,4 +1,4 @@
-const VERSAO = "1.11";
+const VERSAO = "1.12";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp({
@@ -33,6 +33,7 @@ const DEFAULTS = {
   valorCafe:          0,
   valorAlmoco:        0,
   limiteAdiantamentoSemanal: 0,
+  capitalAdiantamentoSemanal: 500,
   limiteAjudantesDiaria: 2,
   limitePintoresDiaria: 2,
 };
@@ -66,6 +67,49 @@ db.collection("funcionarios").orderBy("nome").onSnapshot(snap => {
     .filter(f => f.ativo !== false);
 });
 
+// ── Capital geral disponível pra adiantamentos (pedido do João, 2026-09-24) ──
+// Teto compartilhado por TODOS os funcionários (além do limite individual,
+// que é igual pra cada um) — o encarregado escolhe, em Funcionários, pra
+// quem destina, mas nunca passa do que sobrar aqui. Renova toda semana
+// (mesma janela segunda-a-domingo do limite individual, sem estado gravado)
+// e o valor configurado pode ser aumentado a qualquer momento, direto aqui.
+let _lancAdiantTodos = [];
+let _contasPagarTodas = [];
+db.collection("lancamentos").where("origem", "in", ["ANE->ADIANTAMENTO", "JOAO->ADIANTAMENTO"]).onSnapshot(snap => {
+  _lancAdiantTodos = snap.docs.map(d => d.data());
+  renderizar();
+});
+db.collection("contasPagar").onSnapshot(snap => {
+  _contasPagarTodas = snap.docs.map(d => d.data());
+  renderizar();
+});
+
+function inicioDaSemana() {
+  const hoje = new Date();
+  const diaSemana = hoje.getDay();
+  const diffSegunda = diaSemana === 0 ? 6 : diaSemana - 1;
+  return new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - diffSegunda, 0, 0, 0, 0);
+}
+function _somaSeQualquerAdiantamento(descricao, criadoEm, valor, inicioSemana) {
+  const desc = descricao || "";
+  if (!/^Adiantamento:?\s+/.test(desc)) return 0;
+  const dt = criadoEm && criadoEm.toDate ? criadoEm.toDate() : null;
+  if (!dt || dt < inicioSemana) return 0;
+  return Number(valor || 0);
+}
+function usadoCapitalGeralSemana() {
+  const segunda = inicioDaSemana();
+  let usado = 0;
+  _lancAdiantTodos.forEach(r => {
+    usado += _somaSeQualquerAdiantamento(r.descricao, r.criadoEm, r.saida, segunda);
+  });
+  _contasPagarTodas.forEach(r => {
+    const valorReal = r.status === "baixado" ? (r.valorOriginal !== undefined ? r.valorOriginal : r.valor) : r.valor;
+    usado += _somaSeQualquerAdiantamento(r.descricao, r.criadoEm, valorReal, segunda);
+  });
+  return usado;
+}
+
 function fmtMoeda(v) {
   return "R$ " + Number(v || 0).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
@@ -83,6 +127,8 @@ function renderizar() {
 
     <div class="secao-titulo">💵 Adiantamentos</div>
     ${item("Limite semanal por funcionário", fmtMoeda(cfg.limiteAdiantamentoSemanal), "limiteAdiantamentoSemanal", false)}
+    ${item("Capital geral disponível (semanal)", fmtMoeda(cfg.capitalAdiantamentoSemanal), "capitalAdiantamentoSemanal", false)}
+    <div class="cfg-subtitulo">Restante essa semana, somando todo mundo: ${fmtMoeda(Math.max(0, Number(cfg.capitalAdiantamentoSemanal || 0) - usadoCapitalGeralSemana()))}</div>
 
     <div class="secao-titulo">📅 Diárias</div>
     ${item("Máximo de ajudantes por dia", cfg.limiteAjudantesDiaria, "limiteAjudantesDiaria", false)}
@@ -161,7 +207,7 @@ function item(label, valor, campo, oculto) {
 }
 
 // ── Modal ─────────────────────────────────────────────────────
-const CAMPOS_MOEDA   = ["salarioEncarregado", "salarioAjudante", "valorCafe", "valorAlmoco", "limiteAdiantamentoSemanal"];
+const CAMPOS_MOEDA   = ["salarioEncarregado", "salarioAjudante", "valorCafe", "valorAlmoco", "limiteAdiantamentoSemanal", "capitalAdiantamentoSemanal"];
 const CAMPOS_SENHAS  = ["senhaExcluir", "senhaAlterarBanco", "pinCompleto", "pinParcial", "pinRestrito", "pinLimitado"];
 const CAMPOS_INTEIRO = ["limiteAjudantesDiaria", "limitePintoresDiaria"];
 const LABELS = {
@@ -170,6 +216,7 @@ const LABELS = {
   valorCafe:          "Valor do Café (R$)",
   valorAlmoco:        "Valor do Almoço (R$)",
   limiteAdiantamentoSemanal: "Limite semanal de adiantamento, por funcionário (R$)",
+  capitalAdiantamentoSemanal: "Capital geral disponível pra adiantamentos, por semana — soma de todo mundo (R$)",
   limiteAjudantesDiaria: "Máximo de ajudantes por diária, no mesmo dia",
   limitePintoresDiaria:  "Máximo de pintores por diária, no mesmo dia",
   senhaExcluir:       "Nova senha — Excluir / Ativar",

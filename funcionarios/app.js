@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.42";
+const VERSAO = "3.43";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -17,9 +17,9 @@ firebase.initializeApp(firebaseConfig);
 const db  = firebase.firestore();
 const col = db.collection("funcionarios");
 
-let cfgGeral = { limiteAdiantamentoSemanal: 0 };
+let cfgGeral = { limiteAdiantamentoSemanal: 0, capitalAdiantamentoSemanal: 0 };
 db.collection("configuracoes").doc("geral").onSnapshot(snap => {
-  if (snap.exists) cfgGeral = { limiteAdiantamentoSemanal: 0, ...snap.data() };
+  if (snap.exists) cfgGeral = { limiteAdiantamentoSemanal: 0, capitalAdiantamentoSemanal: 0, ...snap.data() };
 });
 
 function escHtml(s) {
@@ -230,6 +230,20 @@ function _somaSeAdiantamentoDoFuncionario(descricao, criadoEm, valor, nomeAlvo, 
   return Number(valor || 0);
 }
 
+// Mesma soma acima, mas SEM filtrar por funcionário — usada pro "Capital
+// geral" (pedido do João, 2026-09-24): um teto compartilhado por todo mundo,
+// além do limite individual. Renova toda semana igual o limite individual
+// (mesma janela segunda-a-domingo, sem estado gravado), e o próprio valor
+// configurado em Configurações → Adiantamentos pode ser aumentado a
+// qualquer momento (só quem tem PIN completo chega em Configurações).
+function _somaSeQualquerAdiantamento(descricao, criadoEm, valor, inicioSemana) {
+  const desc = descricao || "";
+  if (!/^Adiantamento:?\s+/.test(desc)) return 0;
+  const dt = criadoEm && criadoEm.toDate ? criadoEm.toDate() : null;
+  if (!dt || dt < inicioSemana) return 0;
+  return Number(valor || 0);
+}
+
 let _adiantIdAtual = null;
 
 async function abrirAdiantamento(id) {
@@ -244,6 +258,7 @@ async function abrirAdiantamento(id) {
   const segunda = inicioDaSemana();
   const nomeAlvo = (f.nome || "").trim().normalize("NFC");
   let usado = 0;
+  let usadoTotal = 0; // todo mundo, pro Capital geral
 
   try {
     const [lancSnap, apagarSnap] = await Promise.all([
@@ -252,7 +267,8 @@ async function abrirAdiantamento(id) {
     ]);
     lancSnap.docs.forEach(d => {
       const r = d.data();
-      usado += _somaSeAdiantamentoDoFuncionario(r.descricao, r.criadoEm, r.saida, nomeAlvo, segunda, r.funcionarioCpf, f.cpf);
+      usado      += _somaSeAdiantamentoDoFuncionario(r.descricao, r.criadoEm, r.saida, nomeAlvo, segunda, r.funcionarioCpf, f.cpf);
+      usadoTotal += _somaSeQualquerAdiantamento(r.descricao, r.criadoEm, r.saida, segunda);
     });
     apagarSnap.docs.forEach(d => {
       const r = d.data();
@@ -261,43 +277,59 @@ async function abrirAdiantamento(id) {
       // adiantamento pago via Contas a Pagar some do "já usado essa semana"
       // assim que a empresa paga, deixando passar solicitações acima do limite.
       const valorReal = r.status === "baixado" ? (r.valorOriginal !== undefined ? r.valorOriginal : r.valor) : r.valor;
-      usado += _somaSeAdiantamentoDoFuncionario(r.descricao, r.criadoEm, valorReal, nomeAlvo, segunda, r.funcionarioCpf, f.cpf);
+      usado      += _somaSeAdiantamentoDoFuncionario(r.descricao, r.criadoEm, valorReal, nomeAlvo, segunda, r.funcionarioCpf, f.cpf);
+      usadoTotal += _somaSeQualquerAdiantamento(r.descricao, r.criadoEm, valorReal, segunda);
     });
   } catch (e) {
     document.getElementById("adiant-corpo").innerHTML = '<p class="empty">Erro ao consultar. Tente novamente.</p>';
     return;
   }
 
-  renderAdiantCorpo(usado);
+  renderAdiantCorpo(usado, usadoTotal);
 }
 
-function renderAdiantCorpo(usado) {
-  const limite = Number(cfgGeral.limiteAdiantamentoSemanal || 0);
+// Duas travas independentes, a mais apertada das duas vale: o limite
+// individual (igual pra todos) e o Capital geral (compartilhado por todo
+// mundo — o encarregado escolhe pra quem destina, mas nunca passa do que
+// sobrou dos dois). PIN completo libera acima de qualquer uma das duas,
+// igual já funcionava só com o limite individual.
+function renderAdiantCorpo(usado, usadoTotal) {
+  const limite       = Number(cfgGeral.limiteAdiantamentoSemanal || 0);
+  const capitalTotal = Number(cfgGeral.capitalAdiantamentoSemanal || 0);
 
-  if (limite <= 0) {
-    document.getElementById("adiant-corpo").innerHTML = `
-      <div class="adiant-linha"><span>Já usado essa semana</span><strong>${fmtMoeda(usado)}</strong></div>
-      <p class="adiant-aviso">Limite semanal ainda não configurado (Configurações → Adiantamentos).</p>`;
+  const linhas = [`<div class="adiant-linha"><span>Já usado essa semana</span><strong>${fmtMoeda(usado)}</strong></div>`];
+  const restas = [];
+
+  if (limite > 0) {
+    const restaIndividual = Math.max(0, limite - usado);
+    linhas.push(`<div class="adiant-linha"><span>Limite individual</span><strong>${fmtMoeda(limite)}</strong></div>`);
+    linhas.push(`<div class="adiant-linha ${restaIndividual <= 0 ? 'estourado' : ''}"><span>${restaIndividual <= 0 ? 'Limite individual atingido' : 'Resta (individual)'}</span><strong>${fmtMoeda(restaIndividual)}</strong></div>`);
+    restas.push(restaIndividual);
+  }
+  if (capitalTotal > 0) {
+    const restaGeral = Math.max(0, capitalTotal - usadoTotal);
+    linhas.push(`<div class="adiant-linha"><span>Capital geral da empresa</span><strong>${fmtMoeda(capitalTotal)}</strong></div>`);
+    linhas.push(`<div class="adiant-linha ${restaGeral <= 0 ? 'estourado' : ''}"><span>${restaGeral <= 0 ? 'Capital geral esgotado' : 'Resta (capital geral)'}</span><strong>${fmtMoeda(restaGeral)}</strong></div>`);
+    restas.push(restaGeral);
+  }
+
+  if (!restas.length) {
+    document.getElementById("adiant-corpo").innerHTML = linhas.join("") +
+      `<p class="adiant-aviso">Limite semanal e Capital geral ainda não configurados (Configurações → Adiantamentos).</p>`;
     return;
   }
 
-  const resta = Math.max(0, limite - usado);
+  const resta = Math.min(...restas);
   const podeSolicitar = resta > 0 || PIN_COMPLETO;
   document.getElementById("adiant-corpo").innerHTML = `
-    <div class="adiant-resumo">
-      <div class="adiant-linha"><span>Já usado essa semana</span><strong>${fmtMoeda(usado)}</strong></div>
-      <div class="adiant-linha"><span>Limite semanal</span><strong>${fmtMoeda(limite)}</strong></div>
-      <div class="adiant-linha ${resta <= 0 ? 'estourado' : ''}">
-        <span>${resta <= 0 ? 'Limite atingido' : 'Resta disponível'}</span><strong>${fmtMoeda(resta)}</strong>
-      </div>
-    </div>
+    <div class="adiant-resumo">${linhas.join("")}</div>
     ${podeSolicitar ? `
       <button type="button" id="adiant-btn-solicitar" class="btn-solicitar" onclick="mostrarFormSolicitar(${resta})">+ Solicitar novo adiantamento</button>
       <div id="adiant-form-solicitar" style="display:none">
         <input id="adiant-valor-input" class="modal-input" type="text" inputmode="decimal" placeholder="${resta > 0 ? `Valor (R$, até ${fmtMoeda(resta)})` : 'Valor (R$) — acima do limite, liberado por PIN completo'}" />
         <div id="adiant-solicitar-erro" class="modal-erro"></div>
         <button type="button" id="adiant-btn-confirmar" class="btn-save" style="width:100%" onclick="confirmarSolicitar()">Confirmar solicitação</button>
-      </div>` : `<p class="adiant-aviso">Limite semanal atingido. Só o PIN completo pode liberar valor acima do limite.</p>`}`;
+      </div>` : `<p class="adiant-aviso">Limite atingido (individual ou capital geral). Só o PIN completo pode liberar valor acima.</p>`}`;
 }
 
 function mostrarFormSolicitar(resta) {

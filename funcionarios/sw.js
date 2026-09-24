@@ -1,4 +1,4 @@
-const VERSION = "func-v47";
+const VERSION = "func-v48";
 const ASSETS = [
   "./index.html",
   "./style.css?v=16",
