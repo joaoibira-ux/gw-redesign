@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.43";
+const VERSAO = "3.44";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -303,13 +303,13 @@ function renderAdiantCorpo(usado, usadoTotal) {
   if (limite > 0) {
     const restaIndividual = Math.max(0, limite - usado);
     linhas.push(`<div class="adiant-linha"><span>Limite individual</span><strong>${fmtMoeda(limite)}</strong></div>`);
-    linhas.push(`<div class="adiant-linha ${restaIndividual <= 0 ? 'estourado' : ''}"><span>${restaIndividual <= 0 ? 'Limite individual atingido' : 'Resta (individual)'}</span><strong>${fmtMoeda(restaIndividual)}</strong></div>`);
+    linhas.push(`<div class="adiant-linha ${restaIndividual <= 0 ? 'estourado' : ''}"><span>Resta (individual)</span><strong>${fmtMoeda(restaIndividual)}</strong></div>`);
     restas.push(restaIndividual);
   }
   if (capitalTotal > 0) {
     const restaGeral = Math.max(0, capitalTotal - usadoTotal);
     linhas.push(`<div class="adiant-linha"><span>Capital geral da empresa</span><strong>${fmtMoeda(capitalTotal)}</strong></div>`);
-    linhas.push(`<div class="adiant-linha ${restaGeral <= 0 ? 'estourado' : ''}"><span>${restaGeral <= 0 ? 'Capital geral esgotado' : 'Resta (capital geral)'}</span><strong>${fmtMoeda(restaGeral)}</strong></div>`);
+    linhas.push(`<div class="adiant-linha ${restaGeral <= 0 ? 'estourado' : ''}"><span>Resta (capital geral)</span><strong>${fmtMoeda(restaGeral)}</strong></div>`);
     restas.push(restaGeral);
   }
 
