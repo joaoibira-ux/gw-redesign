@@ -1,4 +1,4 @@
-const VERSION = "cfg-v1.13";
+const VERSION = "cfg-v1.14";
 const ASSETS = ["./index.html", "./style.css", "./app.js"];
 
 self.addEventListener("install", e => {

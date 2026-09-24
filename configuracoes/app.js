@@ -1,4 +1,4 @@
-const VERSAO = "1.15";
+const VERSAO = "1.16";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp({
@@ -145,6 +145,7 @@ function renderizar() {
     ${item("Valor do Almoço", fmtMoeda(cfg.valorAlmoco), "valorAlmoco", false)}
 
     <div class="secao-titulo">💵 Adiantamentos</div>
+    ${item("Limite semanal por funcionário", fmtMoeda(cfg.limiteAdiantamentoSemanal), "limiteAdiantamentoSemanal", false)}
     ${item("Total geral disponível (semanal)", fmtMoeda(cfg.capitalAdiantamentoSemanal), "capitalAdiantamentoSemanal", false)}
     ${saldoCapitalGeralItemHtml()}
 
