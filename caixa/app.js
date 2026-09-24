@@ -587,6 +587,21 @@ document.getElementById("form").addEventListener("submit", async function(e) {
 
 document.getElementById("f-data").value = hoje();
 
+// Achado real, 2026-09-24: o campo de data só era preenchido UMA VEZ (linha
+// acima), no carregamento da página. Se a aba/app ficasse aberta passando da
+// meia-noite (comum num PWA que ninguém fecha), o campo continuava travado
+// no dia anterior o dia inteiro — todo lançamento novo saía com a data de
+// ontem, sem ninguém perceber. Reatualiza sozinho quando a tela volta a
+// ficar visível/em foco, mas só enquanto o usuário não tiver digitado nada
+// nele (senão sobrescreveria uma data lançada de propósito no passado).
+let _dataCaixaAutoPreenchida = true;
+document.getElementById("f-data").addEventListener("input", () => { _dataCaixaAutoPreenchida = false; });
+function _atualizarDataCaixaSeAutoPreenchida() {
+  if (_dataCaixaAutoPreenchida) document.getElementById("f-data").value = hoje();
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) _atualizarDataCaixaSeAutoPreenchida(); });
+window.addEventListener("focus", _atualizarDataCaixaSeAutoPreenchida);
+
 // Origem em 2 níveis: escolhe ANE/JOAO primeiro, depois as origens específicas de cada um
 const ORIGEM_GRUPOS = {
   "ANE": [
