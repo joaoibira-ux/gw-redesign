@@ -1,4 +1,4 @@
-const VERSION = "alm-v3";
+const VERSION = "alm-v4";
 const ASSETS = [
   "./index.html",
   "./style.css?v=1",
@@ -25,8 +25,20 @@ self.addEventListener("activate", e => {
 });
 
 self.addEventListener("fetch", e => {
-  if (e.request.mode === "navigate") {
-    e.respondWith(fetch(e.request).catch(() => caches.match("./index.html")));
+  // Navegação (HTML) e app.js: rede primeiro, sem cache de resposta antiga —
+  // mesmo padrão já usado em caixa/funcionarios/locais (achado real,
+  // 2026-09-24/25: sem isso, app.js fica preso no cache do aparelho e
+  // mudanças publicadas somem por dias sem ninguém perceber).
+  const critico = e.request.mode === "navigate" || e.request.url.includes("app.js");
+  if (critico) {
+    e.respondWith(
+      fetch(e.request, { cache: "no-store" })
+        .then(response => {
+          if (response.ok) caches.open(VERSION).then(c => c.put(e.request, response.clone()));
+          return response;
+        })
+        .catch(() => caches.match(e.request).then(r => r || caches.match("./index.html")))
+    );
     return;
   }
   e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
