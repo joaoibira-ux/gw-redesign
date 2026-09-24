@@ -110,16 +110,6 @@ header {
   font-style: italic;
 }
 
-.card-saldo-adiant {
-  margin-top: 6px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: #2e7d32;
-}
-.card-saldo-adiant.zerado {
-  color: #c62828;
-}
-
 .card-acoes {
   display: flex;
   flex-wrap: wrap;

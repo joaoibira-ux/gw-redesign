@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.43";
+const VERSAO = "3.42";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -20,52 +20,7 @@ const col = db.collection("funcionarios");
 let cfgGeral = { limiteAdiantamentoSemanal: 0 };
 db.collection("configuracoes").doc("geral").onSnapshot(snap => {
   if (snap.exists) cfgGeral = { limiteAdiantamentoSemanal: 0, ...snap.data() };
-  rerenderComSaldos();
 });
-
-// Saldo disponível para adiantamentos, exibido direto no card de cada
-// funcionário (pedido do João, 2026-09-24) — mesmo cálculo já usado dentro
-// do modal "💰 Adiantamento" (_somaSeAdiantamentoDoFuncionario/
-// inicioDaSemana, mais abaixo), só que buscado em lote uma vez (não mais
-// uma query por funcionário) pra poder mostrar em todos os cards de uma vez.
-let _lancAdiantDocs = [];
-let _contasPagarDocs = [];
-db.collection("lancamentos").where("origem", "in", ["ANE->ADIANTAMENTO", "JOAO->ADIANTAMENTO"]).onSnapshot(snap => {
-  _lancAdiantDocs = snap.docs.map(d => d.data());
-  rerenderComSaldos();
-});
-db.collection("contasPagar").onSnapshot(snap => {
-  _contasPagarDocs = snap.docs.map(d => d.data());
-  rerenderComSaldos();
-});
-
-function calcularSaldoFuncionario(f) {
-  const limite = Number(cfgGeral.limiteAdiantamentoSemanal || 0);
-  if (limite <= 0) return null; // não configurado — não mostra o selo
-  const segunda = inicioDaSemana();
-  const nomeAlvo = (f.nome || "").trim().normalize("NFC");
-  let usado = 0;
-  _lancAdiantDocs.forEach(r => {
-    usado += _somaSeAdiantamentoDoFuncionario(r.descricao, r.criadoEm, r.saida, nomeAlvo, segunda, r.funcionarioCpf, f.cpf);
-  });
-  _contasPagarDocs.forEach(r => {
-    const valorReal = r.status === "baixado" ? (r.valorOriginal !== undefined ? r.valorOriginal : r.valor) : r.valor;
-    usado += _somaSeAdiantamentoDoFuncionario(r.descricao, r.criadoEm, valorReal, nomeAlvo, segunda, r.funcionarioCpf, f.cpf);
-  });
-  return Math.max(0, limite - usado);
-}
-
-function saldoBadgeHtml(f) {
-  const saldo = calcularSaldoFuncionario(f);
-  if (saldo === null) return "";
-  const zerado = saldo <= 0;
-  return `<div class="card-saldo-adiant ${zerado ? 'zerado' : ''}">${zerado ? '💰 Limite de adiantamento atingido' : `💰 Saldo p/ adiantamento: ${fmtMoeda(saldo)}`}</div>`;
-}
-
-let _ultimosDocsFuncionarios = null;
-function rerenderComSaldos() {
-  if (_ultimosDocsFuncionarios) render(_ultimosDocsFuncionarios);
-}
 
 function escHtml(s) {
   return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
@@ -202,7 +157,6 @@ function render(docs) {
           ${f.telefone ? `<span>📞 ${escHtml(f.telefone)}</span>` : ""}
         </div>
         ${f.obs ? `<div class="card-obs">${escHtml(f.obs)}</div>` : ""}
-        ${ativo ? saldoBadgeHtml(f) : ""}
         <div class="card-acoes">
           <button class="btn-consultar" onclick="consultarFuncionario('${doc.id}')">Consultar</button>
           <button class="btn-adiantamento" onclick="abrirAdiantamento('${doc.id}')">💰 Adiantamento</button>
@@ -405,7 +359,7 @@ function fecharAdiantamento() {
   document.getElementById("adiant-overlay").style.display = "none";
 }
 
-col.orderBy("criadoEm","asc").onSnapshot(snap => { _ultimosDocsFuncionarios = snap.docs; render(snap.docs); }, err => {
+col.orderBy("criadoEm","asc").onSnapshot(snap => render(snap.docs), err => {
   document.getElementById("lista").innerHTML = '<p class="empty">Erro ao conectar.</p>';
 });
 
