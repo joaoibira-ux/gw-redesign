@@ -1,4 +1,4 @@
-const VERSAO = "1.12";
+const VERSAO = "1.13";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp({
@@ -114,6 +114,19 @@ function fmtMoeda(v) {
   return "R$ " + Number(v || 0).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 
+// Mostrado como item de verdade (não legenda pequena) — pedido do João,
+// 2026-09-24: o valor precisa aparecer, não só um texto discreto embaixo.
+function saldoCapitalGeralItemHtml() {
+  const restante = Math.max(0, Number(cfg.capitalAdiantamentoSemanal || 0) - usadoCapitalGeralSemana());
+  return `
+    <div class="cfg-item">
+      <div>
+        <div class="cfg-label">Saldo disponível para adiantamentos (essa semana, somando todo mundo)</div>
+        <div class="cfg-valor" style="color:${restante <= 0 ? '#e57373' : '#66bb6a'}">${fmtMoeda(restante)}</div>
+      </div>
+    </div>`;
+}
+
 function renderizar() {
   const el = document.getElementById("conteudo");
   el.innerHTML = `
@@ -126,9 +139,8 @@ function renderizar() {
     ${item("Valor do Almoço", fmtMoeda(cfg.valorAlmoco), "valorAlmoco", false)}
 
     <div class="secao-titulo">💵 Adiantamentos</div>
-    ${item("Limite semanal por funcionário", fmtMoeda(cfg.limiteAdiantamentoSemanal), "limiteAdiantamentoSemanal", false)}
     ${item("Capital geral disponível (semanal)", fmtMoeda(cfg.capitalAdiantamentoSemanal), "capitalAdiantamentoSemanal", false)}
-    <div class="cfg-subtitulo">Restante essa semana, somando todo mundo: ${fmtMoeda(Math.max(0, Number(cfg.capitalAdiantamentoSemanal || 0) - usadoCapitalGeralSemana()))}</div>
+    ${saldoCapitalGeralItemHtml()}
 
     <div class="secao-titulo">📅 Diárias</div>
     ${item("Máximo de ajudantes por dia", cfg.limiteAjudantesDiaria, "limiteAjudantesDiaria", false)}
