@@ -23,7 +23,7 @@ const EVOLUTION_INSTANCE = "gw";
 const EVOLUTION_DESTINATARIOS = ["5581992114764", "5581988310203"];
 const EVOLUTION_DESTINATARIOS_ADIANTAMENTO = ["5581992114764", "5581993697990"];
 const EVOLUTION_DESTINATARIOS_REFEICOES = ["5581992114764", "5581991725267"];
-const EVOLUTION_DESTINATARIOS_PONTO = ["5581992114764", "5581993697990"];
+const EVOLUTION_DESTINATARIOS_PONTO = ["5581992114764", "5581993104590"]; // João + Welington (era Lucas, trocado 2026-09-25)
 // DESLIGADO em 2026-09-13: WhatsApp reconectado depois da restrição
 // temporária de 2026-09-12 (confirmada oficialmente pelo próprio app,
 // "atividade em massa", 4h30 de bloqueio) ter expirado sozinha. Causa
@@ -4619,7 +4619,7 @@ exports.relatorioRefeicoesHoje = onSchedule(
 // Só manda mensagem se houver alguém faltando; se todo mundo já bateu
 // ponto, fica em silêncio.
 exports.alertaPontoEmAberto = onSchedule(
-  { schedule: "45 9 * * 1-5", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
+  { schedule: "0 9 * * 1-5", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
   async () => {
     const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
     const dataInicio = new Date(hojeISO + "T00:00:00-03:00");
