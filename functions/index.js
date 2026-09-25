@@ -4618,52 +4618,75 @@ exports.relatorioRefeicoesHoje = onSchedule(
 // do dia, tentando casar por funcionarioId e caindo pro nome se precisar).
 // Só manda mensagem se houver alguém faltando; se todo mundo já bateu
 // ponto, fica em silêncio.
+// Mesmo cálculo usado nos dois horários abaixo (9:00 e 9:40) — extraído pra
+// não duplicar a lógica de "quem ainda não bateu entrada hoje".
+async function checarEAvisarPontoEmAberto() {
+  const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+  const dataInicio = new Date(hojeISO + "T00:00:00-03:00");
+  const dataFim = new Date(hojeISO + "T23:59:59-03:00");
+
+  const [funcSnap, pontosSnap] = await Promise.all([
+    db.collection("funcionarios").get(),
+    db.collection("pontos")
+      .where("tipo", "==", "entrada")
+      .where("timestamp", ">=", dataInicio)
+      .where("timestamp", "<=", dataFim)
+      .get()
+  ]);
+
+  const funcAtivos = funcSnap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(f => f.ativo !== false);
+
+  const idsComEntrada = new Set();
+  const nomesComEntrada = new Set();
+  pontosSnap.docs.forEach(d => {
+    const p = d.data();
+    if (p.funcionarioId) idsComEntrada.add(p.funcionarioId);
+    if (p.funcionarioNome) nomesComEntrada.add(p.funcionarioNome);
+  });
+
+  const naoBateram = funcAtivos.filter(f => !idsComEntrada.has(f.id) && !nomesComEntrada.has(f.nome));
+
+  if (naoBateram.length === 0) return 0;
+
+  const texto = [
+    `Funcionários sem bater ponto hoje (${naoBateram.length}):`,
+    "",
+    ...naoBateram.map(f => `- ${f.nome || "(sem nome)"}`)
+  ].join("\n");
+
+  await enviarWhatsAppEvolution(texto, evolutionApiKey.value(), EVOLUTION_DESTINATARIOS_PONTO);
+  return naoBateram.length;
+}
+
 exports.alertaPontoEmAberto = onSchedule(
   { schedule: "0 9 * * 1-5", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
   async () => {
-    const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
-    const dataInicio = new Date(hojeISO + "T00:00:00-03:00");
-    const dataFim = new Date(hojeISO + "T23:59:59-03:00");
-
-    const [funcSnap, pontosSnap] = await Promise.all([
-      db.collection("funcionarios").get(),
-      db.collection("pontos")
-        .where("tipo", "==", "entrada")
-        .where("timestamp", ">=", dataInicio)
-        .where("timestamp", "<=", dataFim)
-        .get()
-    ]);
-
-    const funcAtivos = funcSnap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
-      .filter(f => f.ativo !== false);
-
-    const idsComEntrada = new Set();
-    const nomesComEntrada = new Set();
-    pontosSnap.docs.forEach(d => {
-      const p = d.data();
-      if (p.funcionarioId) idsComEntrada.add(p.funcionarioId);
-      if (p.funcionarioNome) nomesComEntrada.add(p.funcionarioNome);
-    });
-
-    const naoBateram = funcAtivos.filter(f => !idsComEntrada.has(f.id) && !nomesComEntrada.has(f.nome));
-
-    if (naoBateram.length === 0) return;
-
-    const texto = [
-      `Funcionários sem bater ponto hoje (${naoBateram.length}):`,
-      "",
-      ...naoBateram.map(f => `- ${f.nome || "(sem nome)"}`)
-    ].join("\n");
-
     try {
-      await enviarWhatsAppEvolution(texto, evolutionApiKey.value(), EVOLUTION_DESTINATARIOS_PONTO);
+      const total = await checarEAvisarPontoEmAberto();
+      logger.info(`[alertaPontoEmAberto] ${total || 0} funcionário(s) sem ponto`);
     } catch (e) {
       logger.error("Erro ao enviar alerta de ponto em aberto:", e.message);
       throw e;
     }
+  }
+);
 
-    logger.info(`[alertaPontoEmAberto] enviado: ${naoBateram.length} funcionário(s) sem ponto`);
+// Segundo aviso, 40 minutos depois do primeiro — pedido do João, 2026-09-25:
+// se ainda faltar alguém às 9:40, manda a lista de novo pro Welington (mesma
+// lógica, mesmos destinatários do de 9:00; fica em silêncio se todo mundo já
+// bateu ponto entre os dois horários).
+exports.alertaPontoEmAberto940 = onSchedule(
+  { schedule: "40 9 * * 1-5", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
+  async () => {
+    try {
+      const total = await checarEAvisarPontoEmAberto();
+      logger.info(`[alertaPontoEmAberto940] ${total || 0} funcionário(s) sem ponto`);
+    } catch (e) {
+      logger.error("Erro ao enviar segundo alerta de ponto em aberto:", e.message);
+      throw e;
+    }
   }
 );
 
