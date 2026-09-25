@@ -147,6 +147,25 @@ header {
 }
 .btn-adiantamento:active { background: #ffecb3; }
 
+.btn-bloq-adiant {
+  flex-basis: 100%;
+  text-align: center;
+  background: #f5f5f5;
+  color: #888;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-bloq-adiant:active { background: #e0e0e0; }
+.btn-bloq-adiant.bloqueado {
+  background: #ffebee;
+  color: #c62828;
+}
+.btn-bloq-adiant.bloqueado:active { background: #ffcdd2; }
+
 /* Modal Adiantamento */
 .modal-overlay {
   position: fixed;

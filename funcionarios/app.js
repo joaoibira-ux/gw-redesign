@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.46";
+const VERSAO = "3.47";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -137,6 +137,7 @@ function render(docs) {
     // já está em "Consultar", não precisa repetir tudo na lista) e as
     // ações num rodapé de verdade (não mais position:absolute, que na tela
     // estreita do iPhone ficava sobrepondo e cobrindo o nome).
+    const bloqueado = !!f.adiantamentoBloqueado;
     return `
       <div class="card ${ativo ? '' : 'inativo'}">
         <div class="card-top">
@@ -160,6 +161,9 @@ function render(docs) {
         <div class="card-acoes">
           <button class="btn-consultar" onclick="consultarFuncionario('${doc.id}')">Consultar</button>
           <button class="btn-adiantamento" onclick="abrirAdiantamento('${doc.id}')">💰 Adiantamento</button>
+          <button class="btn-bloq-adiant ${bloqueado ? 'bloqueado' : ''}" onclick="toggleBloqueioAdiantamento('${doc.id}')">
+            ${bloqueado ? '🔒 Adiantamento bloqueado' : '🔓 Bloquear adiantamento'}
+          </button>
         </div>
       </div>`;
   }).join("");
@@ -252,8 +256,15 @@ async function abrirAdiantamento(id) {
   _adiantIdAtual = id;
 
   document.getElementById("adiant-nome").textContent = f.nome;
-  document.getElementById("adiant-corpo").innerHTML = '<p class="empty">Calculando...</p>';
   document.getElementById("adiant-overlay").style.display = "flex";
+
+  if (f.adiantamentoBloqueado) {
+    document.getElementById("adiant-corpo").innerHTML =
+      '<p class="adiant-aviso">🔒 Adiantamento bloqueado para este funcionário.</p>';
+    return;
+  }
+
+  document.getElementById("adiant-corpo").innerHTML = '<p class="empty">Calculando...</p>';
 
   const segunda = inicioDaSemana();
   const nomeAlvo = (f.nome || "").trim().normalize("NFC");
@@ -830,6 +841,21 @@ function toggleAtivo(id) {
   if (senha === null) return;
   if (senha !== '4512') { alert('Senha incorreta.'); return; }
   col.doc(id).update({ ativo: f.ativo === false });
+}
+
+// Bloqueia/desbloqueia o funcionário de solicitar adiantamento (pedido do
+// João, 2026-09-25) — independe do limite individual e do capital geral:
+// mesmo com saldo disponível, um funcionário bloqueado não consegue abrir o
+// formulário de solicitação em abrirAdiantamento().
+function toggleBloqueioAdiantamento(id) {
+  const f = funcionariosCache[id];
+  if (!f) return;
+  const bloqueado = !!f.adiantamentoBloqueado;
+  const acao = bloqueado ? 'DESBLOQUEAR' : 'BLOQUEAR';
+  const senha = prompt(`${acao} adiantamento pra este funcionário?\n${f.nome}\n\nDigite a senha:`);
+  if (senha === null) return;
+  if (senha !== '2248') { alert('Senha incorreta.'); return; }
+  col.doc(id).update({ adiantamentoBloqueado: !bloqueado });
 }
 
 function excluir(id) {
