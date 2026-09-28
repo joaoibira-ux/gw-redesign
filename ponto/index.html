@@ -329,7 +329,7 @@ const FIREBASE_CONFIG = {
 };
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 const MATCH_THRESHOLD = 0.55;
-const VERSAO          = '2.16';
+const VERSAO          = '2.17';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let db;
@@ -653,13 +653,19 @@ function mostrarSucesso(ponto) {
   showScreen('s-success');
 
   _ultimoPontoComprovante = ponto;
-  gerarESalvarComprovante(ponto); // não trava a tela — roda em paralelo
+  // Espera 3s mostrando a tela de sucesso antes de abrir o salvamento
+  // automático — pedido do João, 2026-09-28: dá tempo da pessoa ver o
+  // comprovante na tela antes da folha de compartilhamento cobrir tudo.
+  setTimeout(() => gerarESalvarComprovante(ponto), 3000);
 
   if (document.body.classList.contains('sem-menu')) {
     // Aberto direto pelo ícone do PONTO: trava na tela de sucesso, câmera desligada, sem reiniciar
     pararCamera();
   } else {
-    setTimeout(() => { fecharApp(); }, 3500);
+    // Empurrado de 3500 pra 4500 — tinha só 500ms de folga depois do
+    // salvamento automático (que agora só dispara aos 3s), pouco tempo
+    // pra folha de compartilhamento abrir antes do app fechar sozinho.
+    setTimeout(() => { fecharApp(); }, 4500);
   }
 }
 
