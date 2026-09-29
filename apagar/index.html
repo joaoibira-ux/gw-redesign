@@ -9,7 +9,7 @@
   <title>A Pagar</title>
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <link rel="manifest" href="./manifest.json" />
-  <link rel="stylesheet" href="./style.css?v=7" />
+  <link rel="stylesheet" href="./style.css?v=8" />
   <link rel="apple-touch-icon" href="./Logo-gw.png" />
 </head>
 <body>
@@ -38,6 +38,28 @@
     <button class="pagos-fechar" onclick="fecharPagos()">✕</button>
   </div>
   <div id="lista-pagos" class="lista"></div>
+</div>
+
+<!-- Resumo da seleção (modo Somar → Concluir): imagem padronizada pra print -->
+<div class="pagos-overlay resumo-soma-print" id="resumo-soma-overlay" style="display:none">
+  <div class="pagos-header">
+    <span>🧾 Resumo da Seleção</span>
+    <button class="pagos-fechar" onclick="fecharResumoSoma()">✕</button>
+  </div>
+  <div class="resumo-soma-corpo">
+    <div class="resumo-soma-topo">
+      <div class="resumo-soma-titulo">Contas a Pagar</div>
+      <div class="resumo-soma-qtd" id="resumo-soma-qtd">0 contas selecionadas</div>
+    </div>
+    <div id="resumo-soma-lista"></div>
+    <div class="resumo-soma-rodape">
+      <div>
+        <div class="resumo-soma-total-label">Total</div>
+        <div class="resumo-soma-data" id="resumo-soma-data"></div>
+      </div>
+      <div class="resumo-soma-total-valor" id="resumo-soma-total">R$ 0,00</div>
+    </div>
+  </div>
 </div>
 
 <button class="fab" id="fab" onclick="toggleForm()">+</button>
@@ -84,7 +106,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
-<script src="./app.js?v=12"></script>
+<script src="./app.js?v=13"></script>
 <script src="../agente.js"></script>
 <script src="../bfcache-fix.js"></script>
 </body>

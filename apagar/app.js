@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "1.13";
+const VERSAO = "1.14";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -174,7 +174,17 @@ col.orderBy("criadoEm", "asc").onSnapshot(snap => {
 });
 
 // ── Modo Somar ──────────────────────────────────────────────
+// Ao clicar "Concluir" (modoSoma estava true), pedido do João (2026-09-29):
+// antes de limpar a seleção, monta uma tela padronizada com os itens
+// selecionados e o total, pra tirar print. Captura os dados ANTES de
+// selecionados.clear() logo abaixo, senão a seleção já teria sumido.
 function toggleSoma() {
+  if (modoSoma && selecionados.size > 0) {
+    const itens = [...selecionados].map(id => ({ id, ...docsCache[id] }));
+    const total = itens.reduce((acc, c) => acc + (c.valor || 0), 0);
+    mostrarResumoSoma(itens, total);
+  }
+
   modoSoma = !modoSoma;
   selecionados.clear();
   const btn = document.getElementById("btn-somar");
@@ -182,6 +192,25 @@ function toggleSoma() {
   btn.classList.toggle("ativo", modoSoma);
   atualizarResumoSoma();
   render(Object.entries(docsCache).map(([id, c]) => ({ id, data: () => c })));
+}
+
+function mostrarResumoSoma(itens, total) {
+  const ordenados = [...itens].sort((a, b) => parseDataOrdenacao(a.data) - parseDataOrdenacao(b.data));
+  document.getElementById("resumo-soma-lista").innerHTML = ordenados.map(c => `
+    <div class="resumo-soma-item">
+      <div class="resumo-soma-item-desc">${c.numero ? `<span class="card-item-badge">Nº ${escHtml(c.numero)}</span> ` : ""}${escHtml(c.descricao)}</div>
+      <div class="resumo-soma-item-meta">${escHtml(c.data)}</div>
+      <div class="resumo-soma-item-valor">${fmtMoeda(c.valor)}</div>
+    </div>`).join("");
+  document.getElementById("resumo-soma-qtd").textContent =
+    `${itens.length} conta${itens.length !== 1 ? "s" : ""} selecionada${itens.length !== 1 ? "s" : ""}`;
+  document.getElementById("resumo-soma-total").textContent = fmtMoeda(total);
+  document.getElementById("resumo-soma-data").textContent = "Gerado em " + hoje();
+  document.getElementById("resumo-soma-overlay").style.display = "flex";
+}
+
+function fecharResumoSoma() {
+  document.getElementById("resumo-soma-overlay").style.display = "none";
 }
 
 function atualizarResumoSoma() {

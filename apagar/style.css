@@ -439,3 +439,85 @@ header {
   padding: 60px 0;
   font-size: 0.9rem;
 }
+
+/* ── Resumo da Seleção (modo Somar → Concluir) — imagem padronizada pra print ── */
+.resumo-soma-corpo {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  background: white;
+}
+
+.resumo-soma-topo {
+  text-align: center;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 2px solid #1a3322;
+}
+.resumo-soma-titulo {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #1a3322;
+  letter-spacing: 0.5px;
+}
+.resumo-soma-qtd {
+  font-size: 0.8rem;
+  color: #888;
+  margin-top: 2px;
+}
+
+.resumo-soma-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+.resumo-soma-item-desc {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #1a1a2e;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.resumo-soma-item-meta {
+  font-size: 0.72rem;
+  color: #999;
+  flex-shrink: 0;
+}
+.resumo-soma-item-valor {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #1565c0;
+  flex-shrink: 0;
+}
+
+.resumo-soma-rodape {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 2px solid #1a3322;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+.resumo-soma-total-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #888;
+}
+.resumo-soma-data {
+  font-size: 0.72rem;
+  color: #aaa;
+  margin-top: 2px;
+}
+.resumo-soma-total-valor {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #1a3322;
+}
