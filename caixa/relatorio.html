@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.34";
+  const VERSAO = "2.35";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1417,10 +1417,22 @@
   // aparecia com falta total (5/5) mesmo tendo trabalhado normal. Agora casa
   // primeiro por funcionarioId (sempre gravado e estável, não muda com
   // renomeação), só cai pro nome como último recurso.
+  //
+  // Bug real encontrado em 2026-09-30: a versão anterior exigia que a SEXTA
+  // inteira da semana estivesse dentro da quinzena pra contar qualquer dia
+  // daquela semana. Como a quinzena nem sempre termina numa sexta (ex:
+  // termina 30/09, uma quarta), a última semana (28/09 seg a 02/10 sex)
+  // ficava de fora por inteiro — os dias 28, 29 e 30/09 (que SÃO da
+  // quinzena) nunca eram checados, faltas nesses dias ficavam invisíveis
+  // (achado real: Marcos Cauann faltou 30/09 e Leandro Barbosa faltou 29/09,
+  // nenhum dos dois apareceu como falta). Agora cada DIA útil dentro da
+  // quinzena é exigido individualmente (mesmo em semana cortada pela virada
+  // de quinzena); só o sábado (pra compensação/crédito) continua ligado à
+  // semana como um todo, não importa se ela está inteira dentro da quinzena.
   async function calcularFaltasQuinzenaAtual(hoje) {
     const { inicio: qIni, fim: qFim } = limitesQuinzenaAtual(hoje);
-    // Janela de busca com folga de 1 semana pra cada lado, pra pegar a
-    // semana cuja sexta cai bem no início/fim da quinzena.
+    // Janela de busca com folga de 1 semana pra cada lado, pra pegar o
+    // sábado de uma semana cortada pela virada da quinzena.
     const buscaIni = new Date(qIni); buscaIni.setDate(buscaIni.getDate() - 7);
     const buscaFimExclusiva = new Date(qFim); buscaFimExclusiva.setDate(buscaFimExclusiva.getDate() + 8);
 
@@ -1437,62 +1449,64 @@
     const idPorNomeAtual = new Map();
     funcSnap.docs.forEach(fd => idPorNomeAtual.set(normNome(fd.data().nome), fd.id));
 
-    // Por (funcionário, semana): dias únicos de segunda a sexta + se bateu
-    // ponto no sábado daquela semana (sábado não conta como dia exigido,
-    // só como compensação/crédito — ver regra no comentário acima).
-    const semanaPorChave = new Map(); // key: chave|segundaISO -> { chave, diasUteis: Set, sabado: bool }
+    // Por funcionário: quais dias de segunda a sexta (dentro da quinzena)
+    // ele bateu ponto, e em quais segundas-feiras (chave da semana) ele
+    // bateu ponto no sábado daquela semana.
+    const presencaPorChave = new Map(); // chave -> { dias: Set(dateString seg-sex), sabados: Set(segundaISO) }
+    function entradaDe(chave) {
+      if (!presencaPorChave.has(chave)) presencaPorChave.set(chave, { dias: new Set(), sabados: new Set() });
+      return presencaPorChave.get(chave);
+    }
     snap.docs.forEach(doc => {
       const r = doc.data();
       if (!r.timestamp) return;
       const ts = r.timestamp.toDate();
       const diaSemana = ts.getDay(); // 0=domingo ... 6=sábado
       if (diaSemana === 0) return; // domingo fora
-      const segunda = segundaDaSemanaDe(ts);
-      const sexta = new Date(segunda); sexta.setDate(sexta.getDate() + 4);
-      if (sexta < qIni || sexta > qFim) return; // semana não pertence a essa quinzena
       const chave = r.funcionarioId || idPorNomeAtual.get(normNome(r.funcionarioNome)) || normNome(r.funcionarioNome);
-      const key = `${chave}|${segunda.toISOString().slice(0, 10)}`;
-      if (!semanaPorChave.has(key)) semanaPorChave.set(key, { chave, diasUteis: new Set(), sabado: false });
-      const entry = semanaPorChave.get(key);
-      if (diaSemana === 6) entry.sabado = true;
-      else entry.diasUteis.add(ts.toDateString());
+      const entry = entradaDe(chave);
+      if (diaSemana === 6) {
+        entry.sabados.add(segundaDaSemanaDe(ts).toISOString().slice(0, 10));
+        return;
+      }
+      const dia0h = new Date(ts.getFullYear(), ts.getMonth(), ts.getDate());
+      if (dia0h >= qIni && dia0h <= qFim) entry.dias.add(dia0h.toDateString());
     });
 
-    // Garante que TODA semana da quinzena entra no cálculo pra todo funcionário
-    // ativo já admitido — sem isso, uma semana inteira sem nenhum ponto batido
-    // (falta total) ficava invisível. Enumera as segundas cuja sexta fecha
-    // dentro da quinzena e força uma entrada (mesmo vazia) pra cada uma.
-    const segundasDaQuinzena = [];
+    // Enumera todo dia útil (seg-sex) da quinzena, agrupado pela segunda-
+    // feira da semana a que pertence (grupo pode ficar incompleto numa
+    // semana cortada pela virada de quinzena — e tudo bem, só exige os dias
+    // que realmente estão dentro dela).
+    const diasExigidosPorSemana = new Map(); // segundaISO -> [Date, ...]
     for (let d = new Date(qIni); d <= qFim; d.setDate(d.getDate() + 1)) {
-      if (d.getDay() === 5) { // sexta fecha o ciclo exigido da semana
-        const seg = new Date(d); seg.setDate(seg.getDate() - 4);
-        segundasDaQuinzena.push(seg);
+      if (d.getDay() >= 1 && d.getDay() <= 5) {
+        const segISO = segundaDaSemanaDe(d).toISOString().slice(0, 10);
+        if (!diasExigidosPorSemana.has(segISO)) diasExigidosPorSemana.set(segISO, []);
+        diasExigidosPorSemana.get(segISO).push(new Date(d));
       }
     }
+
+    const resultado = new Map();
     funcSnap.docs.forEach(fd => {
       const f = fd.data();
       if (f.ativo === false) return;
       const admissao = parseDataBRparaDate(f.admissao);
-      segundasDaQuinzena.forEach(seg => {
-        const sexta = new Date(seg); sexta.setDate(sexta.getDate() + 4);
-        if (admissao && sexta < admissao) return; // ainda não tinha sido admitido nessa semana
-        const key = `${fd.id}|${seg.toISOString().slice(0, 10)}`;
-        if (!semanaPorChave.has(key)) semanaPorChave.set(key, { chave: fd.id, diasUteis: new Set(), sabado: false });
+      const entry = presencaPorChave.get(fd.id) || { dias: new Set(), sabados: new Set() };
+      diasExigidosPorSemana.forEach((datas, segISO) => {
+        const exigidos = admissao ? datas.filter(dt => dt >= admissao) : datas;
+        if (exigidos.length === 0) return; // ainda não admitido em nenhum desses dias
+        const presentes = exigidos.filter(dt => entry.dias.has(dt.toDateString())).length;
+        let faltasSemana = exigidos.length - presentes;
+        const atual = resultado.get(fd.id) || { faltas: 0, creditos: 0 };
+        if (entry.sabados.has(segISO)) {
+          if (faltasSemana > 0) faltasSemana -= 1; // sábado compensa 1 falta da semana
+          else atual.creditos += 1;                // sem falta pra compensar: vira crédito
+        }
+        atual.faltas += faltasSemana;
+        resultado.set(fd.id, atual);
       });
     });
 
-    const resultado = new Map();
-    semanaPorChave.forEach(({ chave, diasUteis, sabado }) => {
-      const n = diasUteis.size;
-      const atual = resultado.get(chave) || { faltas: 0, creditos: 0 };
-      let faltasSemana = Math.max(0, 5 - n);
-      if (sabado) {
-        if (faltasSemana > 0) faltasSemana -= 1; // sábado compensa 1 falta da semana
-        else atual.creditos += 1;                // sem falta pra compensar: vira crédito
-      }
-      atual.faltas += faltasSemana;
-      resultado.set(chave, atual);
-    });
     return resultado;
   }
 
