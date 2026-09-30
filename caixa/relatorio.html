@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.32";
+  const VERSAO = "2.33";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1371,6 +1371,23 @@
     return { inicio, fim: fimProxima };
   }
 
+  // Conta dias úteis (segunda a sexta, sem contar sábado) entre duas datas,
+  // inclusive — pedido do João, 2026-09-30: o valor de Passagens virou "por
+  // dia útil" (antes era um valor fixo de quinzena, aproximado como se toda
+  // quinzena tivesse exatamente 10 dias úteis, o que nem sempre batia com a
+  // realidade).
+  function contarDiasUteis(inicio, fim) {
+    let dias = 0;
+    const cursor = new Date(inicio); cursor.setHours(0, 0, 0, 0);
+    const fimLimite = new Date(fim); fimLimite.setHours(0, 0, 0, 0);
+    while (cursor <= fimLimite) {
+      const dia = cursor.getDay();
+      if (dia >= 1 && dia <= 5) dias++;
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return dias;
+  }
+
   function segundaDaSemanaDe(date) {
     const d = new Date(date);
     const diff = (d.getDay() + 6) % 7; // segunda=0 ... domingo=6
@@ -1492,26 +1509,34 @@
   }).catch(e => console.error('Falha ao calcular faltas da quinzena atual:', e));
 
   // ── Passagens da Quinzena ──
+  // "passagens" no cadastro agora é o valor por dia útil (não mais o total
+  // fixo da quinzena) — pedido do João, 2026-09-30. O bruto de cada pessoa é
+  // esse valor diário vezes os dias úteis (seg-sex) da PRÓXIMA quinzena (a
+  // que está sendo paga antecipadamente), e cada falta líquida desconta
+  // exatamente um dia, sem aproximação.
   function renderPrevisaoPassagens(snap) {
     const el = document.getElementById('previsao-passagens');
     if (!el) return;
+    const { inicio: proxIni, fim: proxFim } = limitesProximaQuinzena(new Date());
+    const diasUteisProxima = contarDiasUteis(proxIni, proxFim);
     const linhas = [];
     let total = 0, totalDescontoFaltas = 0, totalDias = 0;
     snap.docs.forEach(d => {
       const f = d.data();
       if (f.ativo === false) return;
-      const valor = Number(f.passagens || 0);
-      if (valor <= 0) return;
+      const valorDiario = Number(f.passagens || 0);
+      if (valorDiario <= 0) return;
       const { faltasLiquidas } = combinarFaltasComCredito(_faltasMap, d.id, f.nome, f.creditoFaltas || 0);
-      const descontoFaltas = Math.min(valor, faltasLiquidas * (valor / 10));
-      const liquido = valor - descontoFaltas;
-      total += valor;
+      const bruto = diasUteisProxima * valorDiario;
+      const descontoFaltas = Math.min(diasUteisProxima, faltasLiquidas) * valorDiario;
+      const liquido = bruto - descontoFaltas;
+      total += bruto;
       totalDescontoFaltas += descontoFaltas;
       totalDias += faltasLiquidas;
       linhas.push(`
         <div class="prev-linha prev-cols-pass">
           <div class="prev-nome">${escHtml(f.nome)} <span class="prev-cargo">${escHtml(f.cargo||'')}</span></div>
-          <div class="prev-valor">${fmt(valor)}</div>
+          <div class="prev-valor">${fmt(bruto)}</div>
           <div class="prev-dias">${faltasLiquidas > 0 ? faltasLiquidas : '—'}</div>
           <div class="prev-adiant">${descontoFaltas > 0 ? '- '+fmt(descontoFaltas) : '—'}</div>
           <div class="prev-liq">${fmt(liquido)}</div>
@@ -2133,16 +2158,21 @@
     return totalBruto - totalInss - totalPassagens - totalAdiant;
   }
 
+  // "passagens" = valor por dia útil (ver renderPrevisaoPassagens) — mesmo
+  // cálculo, só o total geral.
   function calcularTotalPassagensQuinzena() {
     if (!_funcionariosSnap) return 0;
+    const { inicio: proxIni, fim: proxFim } = limitesProximaQuinzena(new Date());
+    const diasUteisProxima = contarDiasUteis(proxIni, proxFim);
     let total = 0;
     _funcionariosSnap.docs.forEach(d => {
       const f = d.data();
       if (f.ativo === false) return;
-      const bruto = Number(f.passagens || 0);
-      if (bruto <= 0) return;
+      const valorDiario = Number(f.passagens || 0);
+      if (valorDiario <= 0) return;
       const { faltasLiquidas } = combinarFaltasComCredito(_faltasMap, d.id, f.nome, f.creditoFaltas || 0);
-      total += Math.max(0, bruto - faltasLiquidas * (bruto / 10));
+      const dias = Math.max(0, diasUteisProxima - faltasLiquidas);
+      total += dias * valorDiario;
     });
     return total;
   }
@@ -2700,18 +2730,24 @@
         buscarEntradaHojeSet()
       ]);
       const faltasMap = await calcularFaltasQuinzenaAtual(new Date());
+      const { inicio: proxIni, fim: proxFim } = limitesProximaQuinzena(new Date());
+      const diasUteisProxima = contarDiasUteis(proxIni, proxFim);
+      // "Falta hoje" só conta se hoje for dia útil (seg-sex) — sábado não
+      // entra mais na conta de passagens.
+      const hojeEhDiaUtil = new Date().getDay() >= 1 && new Date().getDay() <= 5;
 
       let totalPassagens = 0;
       const passagensPorFunc = {}; // id -> { liquido, creditoRestante }
       funcSnap.docs.forEach(d => {
         const f = d.data();
         if (f.ativo === false) return;
-        const bruto = Number(f.passagens || 0);
-        if (bruto <= 0) return;
+        const valorDiario = Number(f.passagens || 0);
+        if (valorDiario <= 0) return;
         const { faltasLiquidas, creditoRestante } = combinarFaltasComCredito(faltasMap, d.id, f.nome, f.creditoFaltas || 0);
         const bateuHoje = entradaHoje.ids.has(d.id) || entradaHoje.nomes.has(normNome(f.nome));
-        const faltaHoje = (!entradaHoje.ehDomingo && !bateuHoje) ? 1 : 0;
-        const liquido = Math.max(0, bruto - (faltasLiquidas + faltaHoje) * (bruto / 10));
+        const faltaHoje = (hojeEhDiaUtil && !bateuHoje) ? 1 : 0;
+        const dias = Math.max(0, diasUteisProxima - faltasLiquidas - faltaHoje);
+        const liquido = dias * valorDiario;
         totalPassagens += liquido;
         passagensPorFunc[d.id] = { liquido, creditoRestante };
       });
@@ -2721,10 +2757,9 @@
         return;
       }
 
-      const { inicio: proxIni, fim: proxFim } = limitesProximaQuinzena(new Date());
       const periodoLabel = `${fmtDataBR(proxIni)} a ${fmtDataBR(proxFim)}`;
       const dataVencimento = fmtDataBR(proximaSexta());
-      const resumo = `Passagens (pagamento antecipado, dias úteis de ${periodoLabel}): R$ ${fmt(totalPassagens)}\n\nVai ser criada uma conta a pagar com vencimento em ${dataVencimento}.\nAs passagens serão zeradas (a Folha continua aberta, sem ser fechada).\nQuem ainda não bateu entrada hoje entra como falta de hoje.`;
+      const resumo = `Passagens (pagamento antecipado, dias úteis de ${periodoLabel}): R$ ${fmt(totalPassagens)}\n\nVai ser criada uma conta a pagar com vencimento em ${dataVencimento}.\nA Folha continua aberta, sem ser fechada.\nQuem ainda não bateu entrada hoje entra como falta de hoje.`;
       if (!confirm('Fechar Passagens da Quinzena?\n\n' + resumo)) return;
 
       btn.textContent = '⏳ Fechando...';
@@ -2735,9 +2770,13 @@
         status: 'aberto', criadoEm: firebase.firestore.FieldValue.serverTimestamp()
       });
 
-      Object.entries(passagensPorFunc).forEach(([id, { liquido, creditoRestante }]) => {
+      // "passagens" não é mais zerado aqui — agora é o valor por dia útil,
+      // um dado de cadastro estável (só muda quando o João edita), não um
+      // total que se consome a cada fechamento. Só o crédito de faltas
+      // continua sendo atualizado.
+      Object.entries(passagensPorFunc).forEach(([id, { creditoRestante }]) => {
         batch.update(db.collection('funcionarios').doc(id), {
-          passagens: 0, passagensUltimoPago: liquido, creditoFaltas: creditoRestante
+          creditoFaltas: creditoRestante
         });
       });
 
