@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.33";
+  const VERSAO = "2.34";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1342,12 +1342,14 @@
   db.collection('servicos').onSnapshot(snap => { _servicosSnap = snap; renderPrevisaoMedicao(); });
 
   // ── Faltas da quinzena que está terminando hoje (descontam das Passagens) ──
-  // Regra: cada funcionário deve bater ponto pelo menos 5 dias (segunda a
-  // sábado) por semana. 4 registros = 1 falta, 3 = 2 faltas (padrão
-  // 5-registros), e assim por diante. 6 registros = 1 crédito de falta, que
-  // fica acumulado (funcionarios/{id}.creditoFaltas) até ser usado para
-  // compensar uma falta futura. Uma semana segunda-sábado conta pra quinzena
-  // em que cai o sábado dela (fecha o ciclo de trabalho). Usa normNome
+  // Regra (ajustada 2026-09-30, pedido do João): cada funcionário deve bater
+  // ponto de segunda a sexta (5 dias) por semana — sábado NÃO é mais exigido,
+  // porque Passagens agora só paga dias úteis seg-sex. Mas se ele bater
+  // ponto no sábado daquela semana, isso compensa uma falta de segunda a
+  // sexta da MESMA semana; se não houver falta pra compensar, o sábado vira
+  // 1 crédito de falta, que fica acumulado (funcionarios/{id}.creditoFaltas)
+  // até ser usado numa falta futura. Uma semana segunda-sexta conta pra
+  // quinzena em que cai a sexta dela (fecha o ciclo exigido). Usa normNome
   // (definida mais abaixo, hoisted) pra casar nomes igual ao resto do arquivo.
   //
   // Pedido do João (2026-09-15): fechar Passagens é sempre um pagamento
@@ -1418,7 +1420,7 @@
   async function calcularFaltasQuinzenaAtual(hoje) {
     const { inicio: qIni, fim: qFim } = limitesQuinzenaAtual(hoje);
     // Janela de busca com folga de 1 semana pra cada lado, pra pegar a
-    // semana cujo sábado cai bem no início/fim da quinzena.
+    // semana cuja sexta cai bem no início/fim da quinzena.
     const buscaIni = new Date(qIni); buscaIni.setDate(buscaIni.getDate() - 7);
     const buscaFimExclusiva = new Date(qFim); buscaFimExclusiva.setDate(buscaFimExclusiva.getDate() + 8);
 
@@ -1435,33 +1437,35 @@
     const idPorNomeAtual = new Map();
     funcSnap.docs.forEach(fd => idPorNomeAtual.set(normNome(fd.data().nome), fd.id));
 
-    // Dias únicos com registro, agrupados por (funcionário, semana).
-    const diasPorSemana = new Map(); // key: chave|segundaISO -> { chave, dias: Set }
+    // Por (funcionário, semana): dias únicos de segunda a sexta + se bateu
+    // ponto no sábado daquela semana (sábado não conta como dia exigido,
+    // só como compensação/crédito — ver regra no comentário acima).
+    const semanaPorChave = new Map(); // key: chave|segundaISO -> { chave, diasUteis: Set, sabado: bool }
     snap.docs.forEach(doc => {
       const r = doc.data();
       if (!r.timestamp) return;
       const ts = r.timestamp.toDate();
-      if (ts.getDay() === 0) return; // domingo fora do ciclo segunda-sábado
+      const diaSemana = ts.getDay(); // 0=domingo ... 6=sábado
+      if (diaSemana === 0) return; // domingo fora
       const segunda = segundaDaSemanaDe(ts);
-      const sabado = new Date(segunda); sabado.setDate(sabado.getDate() + 5);
-      if (sabado < qIni || sabado > qFim) return; // semana não pertence a essa quinzena
+      const sexta = new Date(segunda); sexta.setDate(sexta.getDate() + 4);
+      if (sexta < qIni || sexta > qFim) return; // semana não pertence a essa quinzena
       const chave = r.funcionarioId || idPorNomeAtual.get(normNome(r.funcionarioNome)) || normNome(r.funcionarioNome);
       const key = `${chave}|${segunda.toISOString().slice(0, 10)}`;
-      if (!diasPorSemana.has(key)) diasPorSemana.set(key, { chave, dias: new Set() });
-      diasPorSemana.get(key).dias.add(ts.toDateString());
+      if (!semanaPorChave.has(key)) semanaPorChave.set(key, { chave, diasUteis: new Set(), sabado: false });
+      const entry = semanaPorChave.get(key);
+      if (diaSemana === 6) entry.sabado = true;
+      else entry.diasUteis.add(ts.toDateString());
     });
 
     // Garante que TODA semana da quinzena entra no cálculo pra todo funcionário
     // ativo já admitido — sem isso, uma semana inteira sem nenhum ponto batido
-    // (falta total, 6 dias) ficava invisível: só "diasPorSemana" via pontos
-    // reais contava falta de quem tinha ALGUM registro na semana (falta
-    // parcial); ausência completa nunca gerava uma entrada nesse Map, então
-    // nunca virava falta. Enumera as segundas cujo sábado fecha dentro da
-    // quinzena e força uma entrada (mesmo vazia) pra cada uma.
+    // (falta total) ficava invisível. Enumera as segundas cuja sexta fecha
+    // dentro da quinzena e força uma entrada (mesmo vazia) pra cada uma.
     const segundasDaQuinzena = [];
     for (let d = new Date(qIni); d <= qFim; d.setDate(d.getDate() + 1)) {
-      if (d.getDay() === 6) { // sábado fecha o ciclo da semana
-        const seg = new Date(d); seg.setDate(seg.getDate() - 5);
+      if (d.getDay() === 5) { // sexta fecha o ciclo exigido da semana
+        const seg = new Date(d); seg.setDate(seg.getDate() - 4);
         segundasDaQuinzena.push(seg);
       }
     }
@@ -1470,19 +1474,23 @@
       if (f.ativo === false) return;
       const admissao = parseDataBRparaDate(f.admissao);
       segundasDaQuinzena.forEach(seg => {
-        const sabado = new Date(seg); sabado.setDate(sabado.getDate() + 5);
-        if (admissao && sabado < admissao) return; // ainda não tinha sido admitido nessa semana
+        const sexta = new Date(seg); sexta.setDate(sexta.getDate() + 4);
+        if (admissao && sexta < admissao) return; // ainda não tinha sido admitido nessa semana
         const key = `${fd.id}|${seg.toISOString().slice(0, 10)}`;
-        if (!diasPorSemana.has(key)) diasPorSemana.set(key, { chave: fd.id, dias: new Set() });
+        if (!semanaPorChave.has(key)) semanaPorChave.set(key, { chave: fd.id, diasUteis: new Set(), sabado: false });
       });
     });
 
     const resultado = new Map();
-    diasPorSemana.forEach(({ chave, dias }) => {
-      const n = dias.size;
+    semanaPorChave.forEach(({ chave, diasUteis, sabado }) => {
+      const n = diasUteis.size;
       const atual = resultado.get(chave) || { faltas: 0, creditos: 0 };
-      if (n >= 6) atual.creditos += (n - 5);
-      else if (n < 5) atual.faltas += (5 - n);
+      let faltasSemana = Math.max(0, 5 - n);
+      if (sabado) {
+        if (faltasSemana > 0) faltasSemana -= 1; // sábado compensa 1 falta da semana
+        else atual.creditos += 1;                // sem falta pra compensar: vira crédito
+      }
+      atual.faltas += faltasSemana;
       resultado.set(chave, atual);
     });
     return resultado;
