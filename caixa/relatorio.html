@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.35";
+  const VERSAO = "2.36";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -2747,13 +2747,41 @@
     btn.textContent = '⏳ Calculando...';
 
     try {
-      const [funcSnap, entradaHoje] = await Promise.all([
+      const [funcSnap, entradaHoje, configSnap] = await Promise.all([
         db.collection('funcionarios').get(),
-        buscarEntradaHojeSet()
+        buscarEntradaHojeSet(),
+        db.collection('configuracoes').doc('geral').get()
       ]);
       const faltasMap = await calcularFaltasQuinzenaAtual(new Date());
       const { inicio: proxIni, fim: proxFim } = limitesProximaQuinzena(new Date());
       const diasUteisProxima = contarDiasUteis(proxIni, proxFim);
+
+      // Achado real, 2026-09-30: esse botão sempre calcula o período "daqui
+      // pra frente" a partir de HOJE — se o fechamento atrasar um dia (ou
+      // for feito cedo demais), o período que devia ser pago fica pulado (ou
+      // sobreposto) de vez, sem nenhum aviso, e ninguém percebe até faltar
+      // passagem de alguém. Guarda em configuracoes/geral.passagensPagasAte
+      // o fim do último período fechado, e confere se o de agora começa
+      // exatamente no dia seguinte — se não bater, só segue com o PIN
+      // completo confirmando que é intencional.
+      const passagensPagasAte = configSnap.exists ? (configSnap.data().passagensPagasAte || null) : null;
+      if (passagensPagasAte) {
+        const ultimoFim = parseDataBRparaDate(passagensPagasAte);
+        const esperadoInicio = new Date(ultimoFim); esperadoInicio.setDate(esperadoInicio.getDate() + 1);
+        if (ultimoFim && esperadoInicio.getTime() !== proxIni.getTime()) {
+          const comparacao = esperadoInicio < proxIni
+            ? `pulando o período de ${fmtDataBR(esperadoInicio)} a ${fmtDataBR(new Date(proxIni.getTime() - 86400000))} — ninguém receberia passagens adiantadas desses dias`
+            : `período que se sobrepõe ao que já foi pago até ${fmtDataBR(ultimoFim)} — risco de pagar passagens em dobro`;
+          const pin = prompt(
+            `⚠️ O último fechamento de Passagens cobriu até ${fmtDataBR(ultimoFim)}.\n\n` +
+            `Fechando agora, o período seria ${fmtDataBR(proxIni)} a ${fmtDataBR(proxFim)} — ${comparacao}.\n\n` +
+            `O sistema nunca avisa sozinho quando isso acontece, porque o botão sempre calcula a partir de hoje, não do que já foi pago.\n\n` +
+            `Se é intencional, digite o PIN completo pra confirmar:`
+          );
+          if (pin === null) return;
+          if (pin !== '2248') { alert('PIN incorreto. Fechamento cancelado.'); return; }
+        }
+      }
       // "Falta hoje" só conta se hoje for dia útil (seg-sex) — sábado não
       // entra mais na conta de passagens.
       const hojeEhDiaUtil = new Date().getDay() >= 1 && new Date().getDay() <= 5;
@@ -2801,6 +2829,10 @@
           creditoFaltas: creditoRestante
         });
       });
+
+      batch.set(db.collection('configuracoes').doc('geral'), {
+        passagensPagasAte: fmtDataBR(proxFim)
+      }, { merge: true });
 
       await batch.commit();
       alert('Passagens fechadas com sucesso! Conta a pagar gerada para ' + dataVencimento + '.');
