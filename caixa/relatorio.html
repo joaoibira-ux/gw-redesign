@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.36";
+  const VERSAO = "2.37";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1831,7 +1831,7 @@
     const diariaPorFunc = new Map();
     if (_diariasSnap) _diariasSnap.docs.forEach(d => {
       const doc = d.data();
-      const subtotal = (doc.dias || []).reduce((s, dia) => s + Number(dia.valor || 0), 0);
+      const subtotal = diasPassadoDeDiaria(doc.dias).reduce((s, dia) => s + Number(dia.valor || 0), 0);
       if (subtotal <= 0) return;
       const key = normNome(doc.funcionarioNome);
       const atual = diariaPorFunc.get(key) || { total: 0, nome: doc.funcionarioNome, cargo: doc.cargo || 'Ajudante', id: doc.funcionarioId || '' };
@@ -2100,7 +2100,7 @@
     const diariaPorFunc = new Map();
     if (_diariasSnap) _diariasSnap.docs.forEach(d => {
       const doc = d.data();
-      const subtotal = (doc.dias || []).reduce((s, dia) => s + Number(dia.valor || 0), 0);
+      const subtotal = diasPassadoDeDiaria(doc.dias).reduce((s, dia) => s + Number(dia.valor || 0), 0);
       if (subtotal <= 0) return;
       const key = normNome(doc.funcionarioNome);
       const atual = diariaPorFunc.get(key) || { total: 0, nome: doc.funcionarioNome, cargo: doc.cargo || 'Ajudante', id: doc.funcionarioId || '' };
@@ -2314,6 +2314,35 @@
     });
   }
 
+  // Resolve o ano de um localId 'dd/mm' (a coleção 'diarias' não guarda
+  // ano) tentando o ano da referência e os vizinhos, escolhendo o mais
+  // próximo — mesma lógica usada nas Cloud Functions pra decidir "esse dia
+  // é antes ou depois de hoje".
+  function resolverDataDiaMes(localId, referencia) {
+    const [ddStr, mmStr] = String(localId || '').replace(' ½', '').trim().split('/');
+    const dd = Number(ddStr), mm = Number(mmStr) - 1;
+    if (!dd || isNaN(mm)) return null;
+    let melhor = null, menorDiff = Infinity;
+    [-1, 0, 1].forEach(deltaAno => {
+      const candidato = new Date(referencia.getFullYear() + deltaAno, mm, dd);
+      const diff = Math.abs(candidato - referencia);
+      if (diff < menorDiff) { menorDiff = diff; melhor = candidato; }
+    });
+    return melhor;
+  }
+
+  // Dias de diária que já são "passado" (antes de hoje) — os únicos que um
+  // fechamento de folha hoje pode legitimamente incluir/apagar. Usado tanto
+  // na prévia (pra não mostrar um total que o fechamento de verdade não vai
+  // bater) quanto no fechamento real.
+  function diasPassadoDeDiaria(dias) {
+    const hojeSemHora = new Date(); hojeSemHora.setHours(0, 0, 0, 0);
+    return (dias || []).filter(dia => {
+      const data = resolverDataDiaMes(dia.localId, hojeSemHora);
+      return !(data && data >= hojeSemHora);
+    });
+  }
+
   async function fecharMedicaoFolha() {
     const btn = document.getElementById('btn-fechar-medicao');
     const textoOriginal = btn.textContent;
@@ -2335,6 +2364,28 @@
       const fdoc  = folhaSnap.docs[0];
       const folha = fdoc.data();
       if (folha.status === 'paga') { alert('A última folha já foi fechada.'); return; }
+
+      // 'diarias' não tem período fixo — pode já ter dia(s) de HOJE em
+      // diante sincronizados (ciclo novo, ainda nem decidido se vai entrar
+      // nessa folha). Separa cada documento em "passado" (entra nessa
+      // folha e é apagado) e "hoje em diante" (não entra, sobrevive ao
+      // fechamento intacto pro próximo ciclo) — sem isso, fechar a folha
+      // hoje varreria por engano a diária de amanhã de um ajudante
+      // diarista que já bateu ponto antes do fechamento (achado real,
+      // 2026-10-01, mesma classe do buraco de 16-30/09).
+      const hojeSemHora = new Date(); hojeSemHora.setHours(0, 0, 0, 0);
+      const diariasPassadoPorDoc = new Map(); // docId -> dias (array)
+      const diariasFuturoPorDoc  = new Map(); // docId -> dias (array)
+      diariasSnap.docs.forEach(d => {
+        const dias = d.data().dias || [];
+        const passado = [], futuro = [];
+        dias.forEach(dia => {
+          const data = resolverDataDiaMes(dia.localId, hojeSemHora);
+          (data && data >= hojeSemHora ? futuro : passado).push(dia);
+        });
+        diariasPassadoPorDoc.set(d.id, passado);
+        if (futuro.length) diariasFuturoPorDoc.set(d.id, futuro);
+      });
 
       // Recalcula o total da folha (mesmo cálculo do pagarFolha em caixa/app.js)
       const servById   = {};
@@ -2430,12 +2481,13 @@
       const diariaPorFunc = new Map();
       diariasSnap.docs.forEach(d => {
         const doc = d.data();
-        const subtotal = (doc.dias || []).reduce((s, dia) => s + Number(dia.valor || 0), 0);
+        const diasPassado = diariasPassadoPorDoc.get(d.id) || [];
+        const subtotal = diasPassado.reduce((s, dia) => s + Number(dia.valor || 0), 0);
         if (subtotal <= 0) return;
         const key = normNome(doc.funcionarioNome);
         const atual = diariaPorFunc.get(key) || { total: 0, nome: doc.funcionarioNome, cargo: doc.cargo || 'Ajudante', id: doc.funcionarioId || '', dias: [] };
         atual.total += subtotal;
-        atual.dias.push(...(doc.dias || []));
+        atual.dias.push(...diasPassado);
         diariaPorFunc.set(key, atual);
       });
 
@@ -2661,7 +2713,11 @@
         batch.update(db.collection('locais').doc(doc.id), { servicos: novos });
       });
 
-      diariasSnap.docs.forEach(doc => batch.delete(doc.ref));
+      diariasSnap.docs.forEach(doc => {
+        const futuro = diariasFuturoPorDoc.get(doc.id);
+        if (futuro && futuro.length) batch.update(doc.ref, { dias: futuro });
+        else batch.delete(doc.ref);
+      });
 
       adSnap.docs.forEach(doc => {
         const novaOrigem = doc.data().origem === 'JOAO->ADIANTAMENTO' ? 'JOAO->ANTECIPACAO' : 'ANE->ANTECIPACAO';
