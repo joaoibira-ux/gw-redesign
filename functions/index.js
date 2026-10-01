@@ -3919,16 +3919,16 @@ function ehAjudanteDiaria(func) {
   return ehAjudante(func && func.cargo) && porDiariaEfetivo(func);
 }
 
-async function sincronizarDiariasAjudantesPorPonto() {
+async function sincronizarDiariasAjudantesPorPonto(periodoForcado, ignorarChecagemFechamento) {
   process.env.TZ = "America/Sao_Paulo";
   const hoje = new Date();
   const hojeSemHora = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
   const ano = hoje.getFullYear(), mes = hoje.getMonth();
-  const quinzenaInicio = new Date(ano, mes, hoje.getDate() <= 15 ? 1 : 16);
-  const quinzenaFim    = hoje.getDate() <= 15 ? new Date(ano, mes, 15) : new Date(ano, mes + 1, 0);
+  const quinzenaInicio = periodoForcado ? periodoForcado.inicio : new Date(ano, mes, hoje.getDate() <= 15 ? 1 : 16);
+  const quinzenaFim    = periodoForcado ? periodoForcado.fim    : (hoje.getDate() <= 15 ? new Date(ano, mes, 15) : new Date(ano, mes + 1, 0));
 
   const pagasSnap = await db.collection("folhas").where("status", "==", "paga").get();
-  const jaFechouEssaQuinzena = pagasSnap.docs.some(doc => {
+  const jaFechouEssaQuinzena = !ignorarChecagemFechamento && pagasSnap.docs.some(doc => {
     const p = doc.data();
     const dt = p.pagaEm || p.criadoEm;
     if (!dt) return false;
@@ -4007,6 +4007,7 @@ async function sincronizarDiariasAjudantesPorPonto() {
   }
 
   let totalSincronizados = 0;
+  const detalhes = [];
 
   for (const func of ajudantes) {
     const novosDias = new Map();
@@ -4090,9 +4091,10 @@ async function sincronizarDiariasAjudantesPorPonto() {
       dias:            [...diasAtuais, ...diasParaAdicionar]
     }, { merge: true });
     totalSincronizados++;
+    detalhes.push({ funcionario: func.nome, diasAdicionados: diasParaAdicionar });
   }
 
-  return { sincronizados: totalSincronizados };
+  return { sincronizados: totalSincronizados, detalhes };
 }
 
 // Roda toda noite — garante que a coleção 'diarias' fique sempre em dia
