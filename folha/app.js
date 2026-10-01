@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.31";
+const VERSAO = "5.32";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -544,16 +544,36 @@ async function sincronizarDiariasAjudantesPorPonto() {
     function valorDiaria(func, date) { return (func.salario || 0) / diasNoMes(date.getFullYear(), date.getMonth()); }
     function fmtDiaMes(date) { return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}`; }
 
-    // Pedido do João (2026-09-15): a partir de hoje, diária de ajudante deixa
-    // de ser valor cheio fixo por dia trabalhado e passa a ser proporcional
-    // às horas realmente batidas no ponto: valor_hora = diária/8 (dias
-    // normais) ou diária/7 (sextas), multiplicado pelas horas do dia
-    // (limitado a 8h/7h — hora extra não é paga aqui). Dias ANTES de hoje que
-    // ainda não tinham diária lançada continuam pela regra antiga (valor
-    // cheio se bateu entrada+saída) — não mexe em nada já apurado.
-    function valorDiariaPorHoras(func, date, horas) {
-      const divisor = date.getDay() === 5 ? 7 : 8; // sexta = 7, resto (seg-qui e sáb) = 8
-      const horasPagas = Math.min(horas, divisor);
+    // Divisor líquido (horas de trabalho, já sem o almoço) de um dia cheio:
+    // 8h na sexta, 9h nos demais (seg-qui e sáb) — confirmado pelo João,
+    // 2026-10-01: bate exato com "44h trabalhadas = semana cheia" (4 dias×9h
+    // + 1 sexta×8h = 44h, seg a sexta, sem precisar do sábado).
+    function divisorLiquidoDia(date) { return date.getDay() === 5 ? 8 : 9; }
+
+    // horasTrabalhadasDia mede o intervalo bruto do ponto (entrada até
+    // saída) — como ninguém bate ponto pro almoço separado, esse intervalo
+    // sempre inclui 1h de almoço no meio. horasLiquidasDia desconta essa 1h,
+    // pra comparar com o divisor líquido (8h/9h) nos dois lugares que usam
+    // isso: o valor da diária do dia e o total semanal do bônus de domingo.
+    // null = sem ponto apurado nesse dia (mantém o null, não vira 0).
+    function horasLiquidasDia(funcionarioId, date) {
+      const brutas = horasTrabalhadasDia(funcionarioId, date);
+      if (brutas === null) return null;
+      return Math.max(0, brutas - 1);
+    }
+
+    // Pedido do João (2026-09-15, divisor líquido + desconto de almoço
+    // ajustados em 2026-10-01): diária de ajudante deixa de ser valor cheio
+    // fixo por dia trabalhado e passa a ser proporcional às horas líquidas
+    // batidas no ponto (já descontada 1h de almoço): valor_hora = diária/9
+    // (dias normais) ou diária/8 (sextas), multiplicado pelas horas líquidas
+    // do dia (limitado ao divisor — hora extra não é paga aqui). Dias ANTES
+    // de hoje que ainda não tinham diária lançada continuam pela regra
+    // antiga (valor cheio se bateu entrada+saída) — não mexe em nada já
+    // apurado.
+    function valorDiariaPorHoras(func, date, horasLiquidas) {
+      const divisor = divisorLiquidoDia(date);
+      const horasPagas = Math.min(horasLiquidas, divisor);
       return Math.round((valorDiaria(func, date) / divisor) * horasPagas * 100) / 100;
     }
 
@@ -570,8 +590,9 @@ async function sincronizarDiariasAjudantesPorPonto() {
           continue;
         }
 
-        // Hoje em diante: valor proporcional às horas batidas no ponto
-        const horas = horasTrabalhadasDia(func.id, d);
+        // Hoje em diante: valor proporcional às horas líquidas (já sem o
+        // almoço) batidas no ponto
+        const horas = horasLiquidasDia(func.id, d);
         if (horas !== null && horas > 0) {
           novosDias.set(fmtDiaMes(d), { valor: valorDiariaPorHoras(func, d, horas), horas: Math.round(horas * 10) / 10 });
         }
@@ -588,13 +609,16 @@ async function sincronizarDiariasAjudantesPorPonto() {
 
         if (domingo >= hojeSemHora) {
           // Regra nova: domingo só entra como Repouso Remunerado (valor
-          // cheio) se o total de horas batidas de segunda a sábado daquela
-          // semana for >= 44. Sábado em si já foi tratado no passo 1 (por
-          // horas, como qualquer outro dia) — aqui só decide o domingo.
+          // cheio) se o total de horas LÍQUIDAS (já sem almoço) batidas de
+          // segunda a sábado daquela semana for >= 44 — confirmado pelo
+          // João, 2026-10-01: 4 dias×9h líquidas + sexta×8h líquidas = 44h
+          // bate exato com a semana cheia (seg-sex, sábado nem precisa).
+          // Sábado em si já foi tratado no passo 1 (por horas, como
+          // qualquer outro dia) — aqui só decide o domingo.
           let totalHorasSemana = 0;
           for (let i = 0; i < 6; i++) { // 0=segunda ... 5=sábado
             const dia = new Date(segundaAnterior); dia.setDate(dia.getDate() + i);
-            totalHorasSemana += horasTrabalhadasDia(func.id, dia) || 0;
+            totalHorasSemana += horasLiquidasDia(func.id, dia) || 0;
           }
           if (totalHorasSemana >= 44) {
             novosDias.set(fmtDiaMes(domingo), { valor: valorDiaria(func, domingo) });
