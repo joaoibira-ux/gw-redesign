@@ -3900,6 +3900,218 @@ exports.protegerDiariasFechadas = onDocumentWritten("diarias/{funcionarioId}", a
   }
 });
 
+// ── Sincronização automática de diárias de ajudantes (por ponto) ───────────
+// Porte de sincronizarDiariasAjudantesPorPonto (folha/app.js), que antes só
+// rodava quando alguém abria a tela do Folha — pedido do João, 2026-10-01,
+// depois da quinzena de 16 a 30/09 ter ficado sem ninguém abrir a tela e os
+// ajudantes diaristas sumirem do relatório. Mesmas regras, mesmo
+// comportamento incremental (só adiciona dias que ainda não existem em
+// 'diarias', nunca mexe em dia já lançado).
+function ehAjudante(cargo) {
+  return (cargo || "").toLowerCase().includes("ajudante");
+}
+function porDiariaEfetivo(func) {
+  if (!func) return true;
+  if (func.porDiaria !== undefined) return func.porDiaria !== false;
+  return !func.porProducao;
+}
+function ehAjudanteDiaria(func) {
+  return ehAjudante(func && func.cargo) && porDiariaEfetivo(func);
+}
+
+async function sincronizarDiariasAjudantesPorPonto() {
+  process.env.TZ = "America/Sao_Paulo";
+  const hoje = new Date();
+  const hojeSemHora = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+  const ano = hoje.getFullYear(), mes = hoje.getMonth();
+  const quinzenaInicio = new Date(ano, mes, hoje.getDate() <= 15 ? 1 : 16);
+  const quinzenaFim    = hoje.getDate() <= 15 ? new Date(ano, mes, 15) : new Date(ano, mes + 1, 0);
+
+  const pagasSnap = await db.collection("folhas").where("status", "==", "paga").get();
+  const jaFechouEssaQuinzena = pagasSnap.docs.some(doc => {
+    const p = doc.data();
+    const dt = p.pagaEm || p.criadoEm;
+    if (!dt) return false;
+    const dtPagamento = dt.toDate();
+    return dtPagamento >= quinzenaInicio && dtPagamento <= quinzenaFim;
+  });
+  if (jaFechouEssaQuinzena) return { sincronizados: 0, motivo: "quinzena já fechada" };
+
+  const janelaInicio = new Date(quinzenaInicio);
+  janelaInicio.setDate(janelaInicio.getDate() - 14);
+  const janelaFimExclusiva = new Date(quinzenaFim);
+  janelaFimExclusiva.setDate(janelaFimExclusiva.getDate() + 1);
+
+  const [snapPontos, snapFunc] = await Promise.all([
+    db.collection("pontos")
+      .where("timestamp", ">=", admin.firestore.Timestamp.fromDate(janelaInicio))
+      .where("timestamp", "<",  admin.firestore.Timestamp.fromDate(janelaFimExclusiva))
+      .get(),
+    db.collection("funcionarios").get()
+  ]);
+
+  const ajudantes = snapFunc.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(f => f.ativo !== false && ehAjudanteDiaria(f));
+  if (!ajudantes.length) return { sincronizados: 0, motivo: "nenhum ajudante diarista ativo" };
+
+  const registrosPorFunc = new Map();
+  snapPontos.docs.forEach(doc => {
+    const d = doc.data();
+    if (!d.funcionarioId || !d.timestamp || !d.tipo) return;
+    const dt = d.timestamp.toDate();
+    const diaKey = `${dt.getFullYear()}-${dt.getMonth()}-${dt.getDate()}`;
+    if (!registrosPorFunc.has(d.funcionarioId)) registrosPorFunc.set(d.funcionarioId, new Map());
+    const dias = registrosPorFunc.get(d.funcionarioId);
+    if (!dias.has(diaKey)) dias.set(diaKey, { entrada: null, saida: null });
+    const info = dias.get(diaKey);
+    if (d.tipo === "entrada" && (!info.entrada || dt < info.entrada)) info.entrada = dt;
+    if (d.tipo === "saida"   && (!info.saida   || dt > info.saida))   info.saida   = dt;
+  });
+
+  function trabalhou(funcionarioId, date) {
+    const dias = registrosPorFunc.get(funcionarioId);
+    if (!dias) return false;
+    const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+    const info = dias.get(key);
+    return !!(info && info.entrada && info.saida);
+  }
+
+  function horasTrabalhadasDia(funcionarioId, date) {
+    const dias = registrosPorFunc.get(funcionarioId);
+    if (!dias) return null;
+    const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+    const info = dias.get(key);
+    if (!info || !info.entrada || !info.saida) return null;
+    const pisoEntrada = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 7, 0, 0);
+    const entradaEfetiva = info.entrada > pisoEntrada ? info.entrada : pisoEntrada;
+    const horas = (info.saida - entradaEfetiva) / 3600000;
+    return horas > 0 ? horas : 0;
+  }
+
+  function diasNoMes(a, m) { return new Date(a, m + 1, 0).getDate(); }
+  function valorDiaria(func, date) { return (func.salario || 0) / diasNoMes(date.getFullYear(), date.getMonth()); }
+  function fmtDiaMes(date) { return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}`; }
+  function divisorLiquidoDia(date) { return date.getDay() === 5 ? 8 : 9; }
+
+  function horasLiquidasDia(funcionarioId, date) {
+    const brutas = horasTrabalhadasDia(funcionarioId, date);
+    if (brutas === null) return null;
+    return Math.max(0, brutas - 1);
+  }
+
+  function valorDiariaPorHoras(func, date, horasLiquidas) {
+    const divisor = divisorLiquidoDia(date);
+    const horasPagas = Math.min(horasLiquidas, divisor);
+    return Math.round((valorDiaria(func, date) / divisor) * horasPagas * 100) / 100;
+  }
+
+  let totalSincronizados = 0;
+
+  for (const func of ajudantes) {
+    const novosDias = new Map();
+
+    for (let d = new Date(quinzenaInicio); d <= quinzenaFim; d.setDate(d.getDate() + 1)) {
+      if (d.getDay() === 0) continue;
+
+      if (d < hojeSemHora) {
+        if (trabalhou(func.id, d)) novosDias.set(fmtDiaMes(d), { valor: valorDiaria(func, d) });
+        continue;
+      }
+
+      const horas = horasLiquidasDia(func.id, d);
+      if (horas !== null && horas > 0) {
+        novosDias.set(fmtDiaMes(d), { valor: valorDiariaPorHoras(func, d, horas), horas: Math.round(horas * 10) / 10 });
+      }
+    }
+
+    for (let d = new Date(quinzenaInicio); d <= quinzenaFim; d.setDate(d.getDate() + 1)) {
+      if (d.getDay() !== 1) continue;
+
+      const segunda         = new Date(d);
+      const domingo         = new Date(segunda); domingo.setDate(domingo.getDate() - 1);
+      const sabado          = new Date(segunda); sabado.setDate(sabado.getDate() - 2);
+      const segundaAnterior = new Date(segunda); segundaAnterior.setDate(segundaAnterior.getDate() - 7);
+
+      if (domingo >= hojeSemHora) {
+        let totalHorasSemana = 0;
+        for (let i = 0; i < 6; i++) {
+          const dia = new Date(segundaAnterior); dia.setDate(dia.getDate() + i);
+          totalHorasSemana += horasLiquidasDia(func.id, dia) || 0;
+        }
+        if (totalHorasSemana >= 44) {
+          novosDias.set(fmtDiaMes(domingo), { valor: valorDiaria(func, domingo) });
+        }
+        continue;
+      }
+
+      let diasUteisTrabalhados = 0;
+      let sabadoTrabalhado = false;
+      for (let i = 0; i < 6; i++) {
+        const dia  = new Date(segundaAnterior); dia.setDate(dia.getDate() + i);
+        const trab = trabalhou(func.id, dia);
+        if (i <= 4 && trab) diasUteisTrabalhados++;
+        if (i === 5) sabadoTrabalhado = trab;
+      }
+
+      const faltasSemana    = 5 - diasUteisTrabalhados;
+      const sabadoGarantido = faltasSemana <= 2;
+      if (sabadoGarantido || sabadoTrabalhado) {
+        novosDias.set(fmtDiaMes(sabado), { valor: valorDiaria(func, sabado) });
+      }
+
+      const totalRealTrabalhado = diasUteisTrabalhados + (sabadoTrabalhado ? 1 : 0);
+      if (totalRealTrabalhado >= 5) {
+        novosDias.set(fmtDiaMes(domingo), { valor: (sabadoTrabalhado ? 2 : 1) * valorDiaria(func, domingo) });
+      }
+    }
+
+    if (novosDias.size === 0) continue;
+
+    const docRef  = db.collection("diarias").doc(func.id || func.nome);
+    const docSnap = await docRef.get();
+    const diasAtuais   = docSnap.exists ? (docSnap.data().dias || []) : [];
+    const chavesAtuais = new Set(diasAtuais.map(dd => (dd.localId || "").replace(" ½", "").trim()));
+
+    const diasParaAdicionar = [];
+    novosDias.forEach((info, localId) => {
+      if (chavesAtuais.has(localId)) return;
+      const item = { localId, valor: info.valor };
+      if (info.horas) item.horas = info.horas;
+      diasParaAdicionar.push(item);
+    });
+    if (!diasParaAdicionar.length) continue;
+
+    await docRef.set({
+      funcionarioId:   func.id || "",
+      funcionarioNome: func.nome,
+      cargo:           func.cargo || "",
+      diaria:          docSnap.exists ? (docSnap.data().diaria ?? valorDiaria(func, hoje)) : valorDiaria(func, hoje),
+      dias:            [...diasAtuais, ...diasParaAdicionar]
+    }, { merge: true });
+    totalSincronizados++;
+  }
+
+  return { sincronizados: totalSincronizados };
+}
+
+// Roda toda noite — garante que a coleção 'diarias' fique sempre em dia
+// mesmo que ninguém abra a tela do Folha (foi exatamente isso que deixou a
+// quinzena de 16-30/09/2026 sem diárias de ajudante nenhuma). Horário fora
+// de :00/:30 de propósito, pra não coincidir com outros gatilhos agendados.
+exports.sincronizarDiariasAjudantesAgendado = onSchedule(
+  { schedule: "7 22 * * *", timeZone: "America/Sao_Paulo" },
+  async () => {
+    try {
+      const resultado = await sincronizarDiariasAjudantesPorPonto();
+      logger.info("sincronizarDiariasAjudantesAgendado", resultado);
+    } catch (e) {
+      logger.error("Erro ao sincronizar diárias de ajudantes (agendado):", e.message);
+      throw e;
+    }
+  }
+);
+
 // Todo dia 01, lança no Contas a Pagar uma cópia de cada despesa
 // recorrente cadastrada em Configurações, com a data de vencimento no
 // dia cadastrado (dentro do mesmo mês do lançamento; se o mês for mais
