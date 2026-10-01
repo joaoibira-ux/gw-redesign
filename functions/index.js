@@ -3872,62 +3872,40 @@ exports.backupQuinzenalNoFechamento = onDocumentUpdated(
   }
 );
 
-// Auto-corretor: sempre que um documento em 'diarias' é criado/atualizado,
-// verifica se a quinzena atual já foi fechada (última folha paga criada
-// dentro dela) — se foi, apaga o documento de novo. Protege contra clientes
-// desatualizados (cache de service worker antigo) recriando diárias que o
-// fechamento já zerou de propósito, não importa qual aparelho/navegador
-// tenha feito a escrita.
-// 'diarias' não tem período fixo: o botão "Fechar Medição/Folha" apaga TODOS
-// os documentos que existirem no momento em que roda, seja lá qual dia for.
-// Por isso a proteção certa não é "a quinzena atual já foi fechada" (que se
-// confundia quando um fechamento atrasava pro meio da quinzena seguinte —
-// causou o buraco de 16-30/09/2026), e sim "esse DIA específico, dentro do
-// array 'dias' que acabou de ser escrito, é de antes do último pagamento?"
-// — se for, já deve ter sido varrido naquele fechamento; remove só esse dia
-// (não o documento inteiro, que pode ter outros dias legítimos do ciclo
-// novo). Pedido do João, 2026-10-01.
-function resolverAnoDiaMes(localIdLimpo, referencia) {
-  const [ddStr, mmStr] = localIdLimpo.split("/");
-  const dd = Number(ddStr), mm = Number(mmStr) - 1;
-  if (!dd || isNaN(mm)) return null;
-  let melhor = null, menorDiff = Infinity;
-  for (const deltaAno of [-1, 0, 1]) {
-    const candidato = new Date(referencia.getFullYear() + deltaAno, mm, dd);
-    const diff = Math.abs(candidato - referencia);
-    if (diff < menorDiff) { menorDiff = diff; melhor = candidato; }
-  }
-  return melhor;
-}
-
+// Auto-corretor: sempre que um documento em 'diarias' é criado/atualizado
+// MUITO PRÓXIMO (poucos minutos) de um fechamento de folha, apaga o
+// documento de novo. Protege contra clientes desatualizados (cache de
+// service worker antigo, ou uma aba que já estava aberta no momento do
+// fechamento) recriando diárias que o "Fechar Medição/Folha" acabou de
+// zerar de propósito, não importa qual aparelho/navegador tenha feito a
+// escrita.
+// Importante: a janela é por TEMPO (desde quando o pagamento aconteceu),
+// não por comparação de data de calendário do próprio dia da diária —
+// 'diarias' não tem período fixo (o fechamento apaga TUDO que existir no
+// momento, de qualquer data) e o bônus semanal de ajudante olha de
+// propósito para trás, pro sábado/domingo da semana anterior à quinzena
+// atual (ver sincronizarDiariasAjudantesPorPonto) — isso é NORMAL mesmo em
+// fechamentos no prazo, não é sinal de duplicidade. Comparar por data de
+// calendário apagaria esse bônus legítimo na maioria das quinzenas.
+// Corrigido pelo Claude a pedido do João, 2026-10-01.
 exports.protegerDiariasFechadas = onDocumentWritten("diarias/{funcionarioId}", async (event) => {
   const depois = event.data.after;
   if (!depois.exists) return; // documento foi deletado, nada a corrigir
 
-  process.env.TZ = "America/Sao_Paulo";
-
   const pagasSnap = await db.collection("folhas").where("status", "==", "paga").get();
   let ultimoPagamento = null;
   pagasSnap.docs.forEach(doc => {
-    const p = doc.data();
-    const dt = p.pagaEm || p.criadoEm;
+    const dt = doc.data().pagaEm;
     if (!dt) return;
     const dtPagamento = dt.toDate();
     if (!ultimoPagamento || dtPagamento > ultimoPagamento) ultimoPagamento = dtPagamento;
   });
   if (!ultimoPagamento) return;
-  const ultimoPagamentoSemHora = new Date(ultimoPagamento.getFullYear(), ultimoPagamento.getMonth(), ultimoPagamento.getDate());
 
-  const dias = depois.data().dias || [];
-  const restantes = dias.filter(d => {
-    const localIdLimpo = (d.localId || "").replace(" ½", "").trim();
-    const data = resolverAnoDiaMes(localIdLimpo, ultimoPagamentoSemHora);
-    return !data || data > ultimoPagamentoSemHora;
-  });
-
-  if (restantes.length === dias.length) return; // nada pra remover
-  if (restantes.length === 0) await depois.ref.delete();
-  else await depois.ref.update({ dias: restantes });
+  const minutosDesdeOPagamento = (new Date() - ultimoPagamento) / 60000;
+  if (minutosDesdeOPagamento >= 0 && minutosDesdeOPagamento <= 10) {
+    await depois.ref.delete();
+  }
 });
 
 // ── Sincronização automática de diárias de ajudantes (por ponto) ───────────
@@ -4087,7 +4065,13 @@ async function sincronizarDiariasAjudantesPorPonto(periodoForcado) {
           const dia = new Date(segundaAnterior); dia.setDate(dia.getDate() + i);
           totalHorasSemana += horasLiquidasDia(func.id, dia) || 0;
         }
-        if (totalHorasSemana >= 44 && !jaPago(domingo)) {
+        // Sem corte de jaPago aqui de propósito: essa semana (seg-sáb) é
+        // SEMPRE a anterior à quinzena atual, por desenho (olhar pra trás a
+        // partir da 1ª segunda) — então ela cai antes do último pagamento
+        // na maioria das quinzenas (inclusive no caso normal, sem atraso
+        // nenhum), não é sinal de duplicidade. O guarda de duplicidade real
+        // pra esse bônus é o chavesAtuais (só abaixo, no upsert incremental).
+        if (totalHorasSemana >= 44) {
           novosDias.set(fmtDiaMes(domingo), { valor: valorDiaria(func, domingo) });
         }
         continue;
@@ -4104,12 +4088,12 @@ async function sincronizarDiariasAjudantesPorPonto(periodoForcado) {
 
       const faltasSemana    = 5 - diasUteisTrabalhados;
       const sabadoGarantido = faltasSemana <= 2;
-      if ((sabadoGarantido || sabadoTrabalhado) && !jaPago(sabado)) {
+      if (sabadoGarantido || sabadoTrabalhado) {
         novosDias.set(fmtDiaMes(sabado), { valor: valorDiaria(func, sabado) });
       }
 
       const totalRealTrabalhado = diasUteisTrabalhados + (sabadoTrabalhado ? 1 : 0);
-      if (totalRealTrabalhado >= 5 && !jaPago(domingo)) {
+      if (totalRealTrabalhado >= 5) {
         novosDias.set(fmtDiaMes(domingo), { valor: (sabadoTrabalhado ? 2 : 1) * valorDiaria(func, domingo) });
       }
     }

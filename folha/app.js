@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.33";
+const VERSAO = "5.34";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -629,7 +629,13 @@ async function sincronizarDiariasAjudantesPorPonto() {
             const dia = new Date(segundaAnterior); dia.setDate(dia.getDate() + i);
             totalHorasSemana += horasLiquidasDia(func.id, dia) || 0;
           }
-          if (totalHorasSemana >= 44 && !jaPago(domingo)) {
+          // Sem corte de jaPago aqui de propósito: essa semana (seg-sáb) é
+          // SEMPRE a anterior à quinzena atual, por desenho (olha pra trás
+          // a partir da 1ª segunda) — cai antes do último pagamento na
+          // maioria das quinzenas (até nas fechadas no prazo, sem atraso
+          // nenhum), não é sinal de duplicidade. O guarda de duplicidade
+          // real pra esse bônus é o chavesAtuais, no upsert incremental.
+          if (totalHorasSemana >= 44) {
             novosDias.set(fmtDiaMes(domingo), { valor: valorDiaria(func, domingo) });
           }
           continue;
@@ -650,7 +656,7 @@ async function sincronizarDiariasAjudantesPorPonto() {
         // ele realmente trabalhou nesse sábado.
         const faltasSemana    = 5 - diasUteisTrabalhados;
         const sabadoGarantido = faltasSemana <= 2;
-        if ((sabadoGarantido || sabadoTrabalhado) && !jaPago(sabado)) {
+        if (sabadoGarantido || sabadoTrabalhado) {
           novosDias.set(fmtDiaMes(sabado), { valor: valorDiaria(func, sabado) });
         }
 
@@ -658,7 +664,7 @@ async function sincronizarDiariasAjudantesPorPonto() {
         // seg-sex completo (5/5) → 1 diária; se além disso trabalhou o sábado
         // de verdade (compensando falta) → 2 diárias.
         const totalRealTrabalhado = diasUteisTrabalhados + (sabadoTrabalhado ? 1 : 0);
-        if (totalRealTrabalhado >= 5 && !jaPago(domingo)) {
+        if (totalRealTrabalhado >= 5) {
           novosDias.set(fmtDiaMes(domingo), { valor: (sabadoTrabalhado ? 2 : 1) * valorDiaria(func, domingo) });
         }
       }
