@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.32";
+const VERSAO = "5.33";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -462,22 +462,31 @@ async function sincronizarDiariasAjudantesPorPonto() {
     const quinzenaInicio = new Date(ano, mes, hoje.getDate() <= 15 ? 1 : 16);
     const quinzenaFim    = hoje.getDate() <= 15 ? new Date(ano, mes, 15) : new Date(ano, mes + 1, 0);
 
-    // Se alguma folha PAGA cobre esta quinzena, ela já foi fechada — não
-    // recria as diárias que o fechamento zerou de propósito. Checa TODAS as
-    // folhas pagas (não só "a mais recente por criadoEm"): assim que uma
-    // folha nova (ainda sem status paga) é criada — mesmo sem querer, só de
-    // abrir a tela — ela passa a ser "a mais recente", e checar só essa
-    // escondia o fechamento anterior, recriando dias já pagos (bug real,
-    // já causou diária duplicada em 2026-08-15).
+    // 'diarias' não tem período fixo: "Fechar Medição/Folha" apaga TODOS os
+    // documentos que existirem no momento em que roda, seja lá qual dia for.
+    // Por isso a checagem certa não é "essa quinzena já foi fechada"
+    // (comparar com a data de pagamento engana quando o fechamento atrasa
+    // pro meio da quinzena seguinte — foi isso que deixou 16-30/09/2026 sem
+    // sincronizar, mesmo abrindo a tela), e sim "esse DIA específico já foi
+    // varrido por algum fechamento posterior?" — usa o pagamento mais
+    // recente como corte: dias até essa data (inclusive) não recria, dias
+    // depois são do ciclo novo. Corrigido pelo Claude a pedido do João,
+    // 2026-10-01 (mesma lógica espelhada na Cloud Function agendada).
     const pagasSnap = await db.collection('folhas').where('status', '==', 'paga').get();
-    const jaFechouEssaQuinzena = pagasSnap.docs.some(doc => {
+    let ultimoPagamento = null;
+    pagasSnap.docs.forEach(doc => {
       const p = doc.data();
       const dt = p.pagaEm || p.criadoEm;
-      if (!dt) return false;
+      if (!dt) return;
       const dtPagamento = dt.toDate();
-      return dtPagamento >= quinzenaInicio && dtPagamento <= quinzenaFim;
+      if (!ultimoPagamento || dtPagamento > ultimoPagamento) ultimoPagamento = dtPagamento;
     });
-    if (jaFechouEssaQuinzena) return;
+    const ultimoPagamentoSemHora = ultimoPagamento
+      ? new Date(ultimoPagamento.getFullYear(), ultimoPagamento.getMonth(), ultimoPagamento.getDate())
+      : null;
+    function jaPago(date) {
+      return !!ultimoPagamentoSemHora && date <= ultimoPagamentoSemHora;
+    }
 
     // Margem generosa: mesmo que a quinzena comece no meio da semana (ex:
     // quarta), garante que segunda/terça daquela semana — que podem cair na
@@ -582,7 +591,7 @@ async function sincronizarDiariasAjudantesPorPonto() {
 
       // 1. Dias da quinzena (domingo fica de fora, é tratado à parte no bônus semanal)
       for (let d = new Date(quinzenaInicio); d <= quinzenaFim; d.setDate(d.getDate() + 1)) {
-        if (d.getDay() === 0) continue;
+        if (d.getDay() === 0 || jaPago(d)) continue;
 
         if (d < hojeSemHora) {
           // Dia já passado: regra antiga, valor cheio se bateu entrada+saída
@@ -620,7 +629,7 @@ async function sincronizarDiariasAjudantesPorPonto() {
             const dia = new Date(segundaAnterior); dia.setDate(dia.getDate() + i);
             totalHorasSemana += horasLiquidasDia(func.id, dia) || 0;
           }
-          if (totalHorasSemana >= 44) {
+          if (totalHorasSemana >= 44 && !jaPago(domingo)) {
             novosDias.set(fmtDiaMes(domingo), { valor: valorDiaria(func, domingo) });
           }
           continue;
@@ -641,7 +650,7 @@ async function sincronizarDiariasAjudantesPorPonto() {
         // ele realmente trabalhou nesse sábado.
         const faltasSemana    = 5 - diasUteisTrabalhados;
         const sabadoGarantido = faltasSemana <= 2;
-        if (sabadoGarantido || sabadoTrabalhado) {
+        if ((sabadoGarantido || sabadoTrabalhado) && !jaPago(sabado)) {
           novosDias.set(fmtDiaMes(sabado), { valor: valorDiaria(func, sabado) });
         }
 
@@ -649,7 +658,7 @@ async function sincronizarDiariasAjudantesPorPonto() {
         // seg-sex completo (5/5) → 1 diária; se além disso trabalhou o sábado
         // de verdade (compensando falta) → 2 diárias.
         const totalRealTrabalhado = diasUteisTrabalhados + (sabadoTrabalhado ? 1 : 0);
-        if (totalRealTrabalhado >= 5) {
+        if (totalRealTrabalhado >= 5 && !jaPago(domingo)) {
           novosDias.set(fmtDiaMes(domingo), { valor: (sabadoTrabalhado ? 2 : 1) * valorDiaria(func, domingo) });
         }
       }

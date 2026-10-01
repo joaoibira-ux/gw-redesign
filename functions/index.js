@@ -3878,26 +3878,56 @@ exports.backupQuinzenalNoFechamento = onDocumentUpdated(
 // desatualizados (cache de service worker antigo) recriando diárias que o
 // fechamento já zerou de propósito, não importa qual aparelho/navegador
 // tenha feito a escrita.
+// 'diarias' não tem período fixo: o botão "Fechar Medição/Folha" apaga TODOS
+// os documentos que existirem no momento em que roda, seja lá qual dia for.
+// Por isso a proteção certa não é "a quinzena atual já foi fechada" (que se
+// confundia quando um fechamento atrasava pro meio da quinzena seguinte —
+// causou o buraco de 16-30/09/2026), e sim "esse DIA específico, dentro do
+// array 'dias' que acabou de ser escrito, é de antes do último pagamento?"
+// — se for, já deve ter sido varrido naquele fechamento; remove só esse dia
+// (não o documento inteiro, que pode ter outros dias legítimos do ciclo
+// novo). Pedido do João, 2026-10-01.
+function resolverAnoDiaMes(localIdLimpo, referencia) {
+  const [ddStr, mmStr] = localIdLimpo.split("/");
+  const dd = Number(ddStr), mm = Number(mmStr) - 1;
+  if (!dd || isNaN(mm)) return null;
+  let melhor = null, menorDiff = Infinity;
+  for (const deltaAno of [-1, 0, 1]) {
+    const candidato = new Date(referencia.getFullYear() + deltaAno, mm, dd);
+    const diff = Math.abs(candidato - referencia);
+    if (diff < menorDiff) { menorDiff = diff; melhor = candidato; }
+  }
+  return melhor;
+}
+
 exports.protegerDiariasFechadas = onDocumentWritten("diarias/{funcionarioId}", async (event) => {
   const depois = event.data.after;
   if (!depois.exists) return; // documento foi deletado, nada a corrigir
 
   process.env.TZ = "America/Sao_Paulo";
-  const hoje = new Date();
-  const ano = hoje.getFullYear(), mes = hoje.getMonth(), dia = hoje.getDate();
-  const quinzenaInicio = new Date(ano, mes, dia <= 15 ? 1 : 16);
-  const quinzenaFim    = dia <= 15 ? new Date(ano, mes, 15, 23, 59, 59, 999) : new Date(ano, mes + 1, 0, 23, 59, 59, 999);
 
-  const ultimaFolhaSnap = await db.collection("folhas").orderBy("criadoEm", "desc").limit(1).get();
-  if (ultimaFolhaSnap.empty) return;
+  const pagasSnap = await db.collection("folhas").where("status", "==", "paga").get();
+  let ultimoPagamento = null;
+  pagasSnap.docs.forEach(doc => {
+    const p = doc.data();
+    const dt = p.pagaEm || p.criadoEm;
+    if (!dt) return;
+    const dtPagamento = dt.toDate();
+    if (!ultimoPagamento || dtPagamento > ultimoPagamento) ultimoPagamento = dtPagamento;
+  });
+  if (!ultimoPagamento) return;
+  const ultimoPagamentoSemHora = new Date(ultimoPagamento.getFullYear(), ultimoPagamento.getMonth(), ultimoPagamento.getDate());
 
-  const ultima = ultimaFolhaSnap.docs[0].data();
-  if (ultima.status !== "paga" || !ultima.criadoEm) return;
+  const dias = depois.data().dias || [];
+  const restantes = dias.filter(d => {
+    const localIdLimpo = (d.localId || "").replace(" ½", "").trim();
+    const data = resolverAnoDiaMes(localIdLimpo, ultimoPagamentoSemHora);
+    return !data || data > ultimoPagamentoSemHora;
+  });
 
-  const dtCriacao = ultima.criadoEm.toDate();
-  if (dtCriacao >= quinzenaInicio && dtCriacao <= quinzenaFim) {
-    await depois.ref.delete();
-  }
+  if (restantes.length === dias.length) return; // nada pra remover
+  if (restantes.length === 0) await depois.ref.delete();
+  else await depois.ref.update({ dias: restantes });
 });
 
 // ── Sincronização automática de diárias de ajudantes (por ponto) ───────────
@@ -3919,7 +3949,7 @@ function ehAjudanteDiaria(func) {
   return ehAjudante(func && func.cargo) && porDiariaEfetivo(func);
 }
 
-async function sincronizarDiariasAjudantesPorPonto(periodoForcado, ignorarChecagemFechamento) {
+async function sincronizarDiariasAjudantesPorPonto(periodoForcado) {
   process.env.TZ = "America/Sao_Paulo";
   const hoje = new Date();
   const hojeSemHora = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
@@ -3927,15 +3957,32 @@ async function sincronizarDiariasAjudantesPorPonto(periodoForcado, ignorarChecag
   const quinzenaInicio = periodoForcado ? periodoForcado.inicio : new Date(ano, mes, hoje.getDate() <= 15 ? 1 : 16);
   const quinzenaFim    = periodoForcado ? periodoForcado.fim    : (hoje.getDate() <= 15 ? new Date(ano, mes, 15) : new Date(ano, mes + 1, 0));
 
+  // 'diarias' não tem período fixo: é um balde que o botão "Fechar
+  // Medição/Folha" esvazia por completo (apaga TODOS os documentos) sempre
+  // que roda, seja lá qual dia for. Por isso a checagem certa não é "essa
+  // quinzena já foi fechada" (comparar com a data de pagamento engana
+  // quando o fechamento atrasa pro meio da quinzena seguinte — foi
+  // exatamente isso que deixou 16-30/09/2026 sem sincronizar), e sim "esse
+  // DIA específico já foi varrido por algum fechamento posterior?" — usa o
+  // pagamento mais recente como corte: qualquer dia até essa data (inclusive)
+  // já pode ter sido incluído naquele fechamento, não recria. Dias depois
+  // do corte são do ciclo novo, sincroniza normalmente. Pedido do João,
+  // 2026-10-01.
   const pagasSnap = await db.collection("folhas").where("status", "==", "paga").get();
-  const jaFechouEssaQuinzena = !ignorarChecagemFechamento && pagasSnap.docs.some(doc => {
+  let ultimoPagamento = null;
+  pagasSnap.docs.forEach(doc => {
     const p = doc.data();
     const dt = p.pagaEm || p.criadoEm;
-    if (!dt) return false;
+    if (!dt) return;
     const dtPagamento = dt.toDate();
-    return dtPagamento >= quinzenaInicio && dtPagamento <= quinzenaFim;
+    if (!ultimoPagamento || dtPagamento > ultimoPagamento) ultimoPagamento = dtPagamento;
   });
-  if (jaFechouEssaQuinzena) return { sincronizados: 0, motivo: "quinzena já fechada" };
+  const ultimoPagamentoSemHora = ultimoPagamento
+    ? new Date(ultimoPagamento.getFullYear(), ultimoPagamento.getMonth(), ultimoPagamento.getDate())
+    : null;
+  function jaPago(date) {
+    return !!ultimoPagamentoSemHora && date <= ultimoPagamentoSemHora;
+  }
 
   const janelaInicio = new Date(quinzenaInicio);
   janelaInicio.setDate(janelaInicio.getDate() - 14);
@@ -4013,7 +4060,7 @@ async function sincronizarDiariasAjudantesPorPonto(periodoForcado, ignorarChecag
     const novosDias = new Map();
 
     for (let d = new Date(quinzenaInicio); d <= quinzenaFim; d.setDate(d.getDate() + 1)) {
-      if (d.getDay() === 0) continue;
+      if (d.getDay() === 0 || jaPago(d)) continue;
 
       if (d < hojeSemHora) {
         if (trabalhou(func.id, d)) novosDias.set(fmtDiaMes(d), { valor: valorDiaria(func, d) });
@@ -4040,7 +4087,7 @@ async function sincronizarDiariasAjudantesPorPonto(periodoForcado, ignorarChecag
           const dia = new Date(segundaAnterior); dia.setDate(dia.getDate() + i);
           totalHorasSemana += horasLiquidasDia(func.id, dia) || 0;
         }
-        if (totalHorasSemana >= 44) {
+        if (totalHorasSemana >= 44 && !jaPago(domingo)) {
           novosDias.set(fmtDiaMes(domingo), { valor: valorDiaria(func, domingo) });
         }
         continue;
@@ -4057,12 +4104,12 @@ async function sincronizarDiariasAjudantesPorPonto(periodoForcado, ignorarChecag
 
       const faltasSemana    = 5 - diasUteisTrabalhados;
       const sabadoGarantido = faltasSemana <= 2;
-      if (sabadoGarantido || sabadoTrabalhado) {
+      if ((sabadoGarantido || sabadoTrabalhado) && !jaPago(sabado)) {
         novosDias.set(fmtDiaMes(sabado), { valor: valorDiaria(func, sabado) });
       }
 
       const totalRealTrabalhado = diasUteisTrabalhados + (sabadoTrabalhado ? 1 : 0);
-      if (totalRealTrabalhado >= 5) {
+      if (totalRealTrabalhado >= 5 && !jaPago(domingo)) {
         novosDias.set(fmtDiaMes(domingo), { valor: (sabadoTrabalhado ? 2 : 1) * valorDiaria(func, domingo) });
       }
     }
