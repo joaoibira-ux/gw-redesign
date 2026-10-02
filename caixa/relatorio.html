@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.37";
+  const VERSAO = "2.38";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1776,7 +1776,14 @@
     // fechar depois do dia 16, esse corte por data (não por qual quinzena a
     // folha realmente representa) fazia o desconto da quinzena seguinte
     // aparecer cedo demais.
-    const descontaInssPassagens = !dataFolha || dataFolha.getDate() >= 20;
+    // Achado real, 2026-10-02: o mesmo problema do outro lado — se a folha
+    // 16-fim do mês atrasar pros primeiros dias do mês SEGUINTE, dia 2 é
+    // "< 20" e o desconto sumia, mesmo essa sendo a folha que deveria
+    // descontar. Considera também os primeiros dias do mês seguinte;
+    // só os dias 11-19 (claramente dentro do ciclo 1-15) ficam de fora.
+    const refDataGatilho = dataFolha || new Date();
+    const diaGatilho = refDataGatilho.getDate();
+    const descontaInssPassagens = !(diaGatilho > 10 && diaGatilho < 20);
     const CARGOS_POR_PRODUCAO_REL = ['PINTOR', 'RASPADOR'];
 
     // Quem foi admitido DENTRO da quinzena 16-fim do mês não trabalhou o
@@ -1784,9 +1791,11 @@
     // isso, um funcionário admitido no meio do mês levava o desconto cheio
     // como se tivesse trabalhado a quinzena toda. Proporcional aos dias
     // efetivamente admitido dentro do período.
-    const refDataProrata = dataFolha || new Date();
-    const periodoIni = new Date(refDataProrata.getFullYear(), refDataProrata.getMonth(), 16);
-    const periodoFim = new Date(refDataProrata.getFullYear(), refDataProrata.getMonth() + 1, 0);
+    // Período 16-fim do mês que a folha representa: se o fechamento está
+    // nos primeiros dias do mês (atrasado), o período é do mês ANTERIOR.
+    const mesPeriodoProrata = diaGatilho <= 10 ? refDataGatilho.getMonth() - 1 : refDataGatilho.getMonth();
+    const periodoIni = new Date(refDataGatilho.getFullYear(), mesPeriodoProrata, 16);
+    const periodoFim = new Date(refDataGatilho.getFullYear(), mesPeriodoProrata + 1, 0);
     const diasPeriodo = Math.round((periodoFim - periodoIni) / 86400000) + 1;
     function fatorProrata(admissaoStr) {
       const admissao = parseDataBRparaDate(admissaoStr);

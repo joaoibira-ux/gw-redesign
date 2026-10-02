@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.35";
+const VERSAO = "5.36";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -1836,11 +1836,19 @@ function calcularDescontosFixos(func) {
   // quinzena 1-15 atrasar (ainda estava aberta no dia 17), o desconto de
   // INSS/Passagens da quinzena seguinte já aparecia cedo demais só porque
   // "hoje" já tinha passado do dia 16 — mesmo a folha 1-15 ainda não tendo
-  // fechado. Movido pra dia 20, dando mais folga. Continua sendo baseado
-  // na data de hoje (não em qual quinzena a folha realmente representa) —
-  // se o fechamento atrasar além do dia 20 num mês, o mesmo efeito pode
-  // se repetir.
-  if (hoje.getDate() < 20) return { inss: 0, passagens: 0 };
+  // fechado. Movido pra dia 20, dando mais folga.
+  // Achado real, 2026-10-02: o mesmo problema pode acontecer do outro lado
+  // — se o fechamento da quinzena 16-fim do mês atrasar pros primeiros
+  // dias do mês SEGUINTE (ex: fechando em 02/10 a folha de 16-30/09), dia
+  // 2 é "< 20" e o desconto sumia, mesmo essa sendo exatamente a folha que
+  // deveria descontar. Considera também os primeiros dias do mês seguinte
+  // como "ainda fechando a quinzena 16-fim" — só os dias 11-19 (claramente
+  // dentro do ciclo 1-15, antes de qualquer fechamento atrasado fazer
+  // sentido) ficam de fora.
+  if (hoje.getDate() > 10 && hoje.getDate() < 20) return { inss: 0, passagens: 0 };
+  // Período 16-fim do mês que a folha representa: se estamos nos
+  // primeiros dias do mês (fechamento atrasado), é o mês ANTERIOR.
+  const mesPeriodo = hoje.getDate() <= 10 ? hoje.getMonth() - 1 : hoje.getMonth();
 
   let f = (_todosFunc || []).find(x => x.id === func?.id);
   if (!f) {
@@ -1857,8 +1865,8 @@ function calcularDescontosFixos(func) {
   }
   if (!f) return { inss: 0, passagens: 0 };
 
-  const periodoIni = new Date(hoje.getFullYear(), hoje.getMonth(), 16);
-  const periodoFim = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+  const periodoIni = new Date(hoje.getFullYear(), mesPeriodo, 16);
+  const periodoFim = new Date(hoje.getFullYear(), mesPeriodo + 1, 0);
   const diasPeriodo = Math.round((periodoFim - periodoIni) / 86400000) + 1;
   const admissao = parseDataBRparaDate(f.admissao);
   let fator = 1;
@@ -1990,7 +1998,16 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
     const totalDeduc = adiant + inss + passagens;
     const liquido = sub - totalDeduc;
     totalDeducoes += totalDeduc;
-    const proventosPessoa = g.itens.map(e => {
+    // Ordena por data: produção primeiro (ordem original), diária depois
+    // em ordem cronológica (localId 'dd/mm') — pedido do João, 2026-10-02.
+    const chaveDiaMesRecibo = localId => { const [d, m] = String(localId || '').replace(' ½', '').trim().split('/').map(Number); return (m || 0) * 100 + (d || 0); };
+    const itensOrdenados = g.itens.slice().sort((a, b) => {
+      const aProd = !!a.firestoreLocalId, bProd = !!b.firestoreLocalId;
+      if (aProd !== bProd) return aProd ? -1 : 1;
+      if (!aProd) return chaveDiaMesRecibo(a.localId) - chaveDiaMesRecibo(b.localId);
+      return 0;
+    });
+    const proventosPessoa = itensOrdenados.map(e => {
       const isProd = !!e.firestoreLocalId;
       return {
         label: `${e.localId} · ${isProd ? nomeExibicaoServico(e.servico) : e.servico}`,
