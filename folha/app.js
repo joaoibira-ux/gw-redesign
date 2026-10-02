@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.37";
+const VERSAO = "5.38";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -112,6 +112,7 @@ let _locaisCarregado      = false;
 let _diariasCarregado     = false;
 let _funcionariosCarregado = false;
 let _relatorioMostrado    = false;
+let _servicosCarregado    = false;
 
 function _tentarRelatorio() {
   if (!_isRelatorioLink || _relatorioMostrado) return;
@@ -225,6 +226,8 @@ function calcValor(nomeServico, cargo, servicoId) {
 db.collection('servicos').onSnapshot(snap => {
   servicosCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   render(locaisData);
+  _servicosCarregado = true;
+  tentarIniciarFolha();
 
   // Repreça a produção já adicionada à folha em aberto sempre que o
   // catálogo mudar — sem isso, o valor ficava congelado no momento do
@@ -284,8 +287,18 @@ function labelDiaria(d) {
 
 function sincronizarDiaristas() {
   entradas = entradas.filter(e => e.firestoreLocalId);
+  // 'diarias' não tem período fixo: pode já ter dia(s) da quinzena ATUAL
+  // (em andamento, ainda não decidida pra nenhum fechamento) sincronizados
+  // — exclui esses da tela de edição da folha, mesmo filtro aplicado na
+  // prévia de recibo (verRelatorio). Achado real, 2026-10-02.
+  const quinzenaAtualInicioSync = (() => {
+    const h = new Date();
+    return new Date(h.getFullYear(), h.getMonth(), h.getDate() <= 15 ? 1 : 16);
+  })();
   _diariasCache.forEach(doc => {
     (doc.dias || []).forEach(d => {
+      const dataDia = resolverDataDiaMes(d.localId, quinzenaAtualInicioSync);
+      if (dataDia && dataDia >= quinzenaAtualInicioSync) return; // quinzena em andamento, não entra
       entradas.push({
         funcionario:      { id: doc.funcionarioId || '', nome: doc.funcionarioNome, cargo: doc.cargo || '' },
         firestoreLocalId: '',
@@ -1211,34 +1224,34 @@ function render(data) {
     }).join("");
 }
 
-db.collection("locais").orderBy("identificacao", "asc").onSnapshot(snap => {
-  locaisData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  render(locaisData);
-
-  esconderLoading();
-  _locaisCarregado = true;
-
-  // ── Detecção de folha existente — roda na 1ª snapshot ──
-  if (!folhaCarregada) {
-    folhaCarregada = true;
-    const amarelos = [];
-    snap.docs.forEach(doc => {
-      const local = doc.data();
-      (local.servicos || []).forEach(s => {
-        if (s.status === 'em_pagamento') {
-          amarelos.push({
-            firestoreLocalId: doc.id,
-            localId:          local.identificacao,
-            servico:          s.nome,
-            servicoId:        s.id || null,
-            funcionario:      s.funcionario || null,
-            dataRegistro:     s.dataRegistro || null
-          });
-        }
-      });
+// Detecção de folha existente — precisa do catálogo de serviços JÁ
+// carregado pra calcValor acertar de primeira (achado real, 2026-10-02):
+// se 'locais' chegasse antes de 'servicos', calcValor rodava com o
+// catálogo ainda vazio e travava o item em R$0 pra sempre — o listener
+// permanente mais abaixo só corrige valor de item que já tem par salvo em
+// 'folhas', então itens novos (sem par salvo ainda) ficavam presos.
+// Chamada tanto pelo snapshot de 'locais' quanto pelo de 'servicos', só
+// roda de verdade quando os dois já carregaram.
+function tentarIniciarFolha() {
+  if (folhaCarregada || !_locaisCarregado || !_servicosCarregado) return;
+  folhaCarregada = true;
+  const amarelos = [];
+  locaisData.forEach(local => {
+    (local.servicos || []).forEach(s => {
+      if (s.status === 'em_pagamento') {
+        amarelos.push({
+          firestoreLocalId: local.id,
+          localId:          local.identificacao,
+          servico:          s.nome,
+          servicoId:        s.id || null,
+          funcionario:      s.funcionario || null,
+          dataRegistro:     s.dataRegistro || null
+        });
+      }
     });
+  });
 
-    if (amarelos.length) {
+  if (amarelos.length) {
       // 1. Monta produção
       entradas = amarelos.map(s => ({
         funcionario:      s.funcionario || { nome: '(desconhecido)', cargo: '' },
@@ -1296,8 +1309,16 @@ db.collection("locais").orderBy("identificacao", "asc").onSnapshot(snap => {
         renderizarFolha();
         atualizarHeader();
       });
-    }
   }
+}
+
+db.collection("locais").orderBy("identificacao", "asc").onSnapshot(snap => {
+  locaisData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  render(locaisData);
+
+  esconderLoading();
+  _locaisCarregado = true;
+  tentarIniciarFolha();
 
   // ── Atualiza folha em tempo real se estiver visível ──
   if (entradas.length && document.getElementById('view-folha').classList.contains('ativa')) {
