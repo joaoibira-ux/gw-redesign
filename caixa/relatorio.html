@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.38";
+  const VERSAO = "2.39";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -2340,15 +2340,27 @@
     return melhor;
   }
 
-  // Dias de diária que já são "passado" (antes de hoje) — os únicos que um
-  // fechamento de folha hoje pode legitimamente incluir/apagar. Usado tanto
-  // na prévia (pra não mostrar um total que o fechamento de verdade não vai
-  // bater) quanto no fechamento real.
+  // Início da quinzena ATUALMENTE em andamento (muda só no dia 1 e no dia
+  // 16 de cada mês) — corte estável pra decidir o que um fechamento pode
+  // legitimamente incluir. Comparar direto com "hoje" tinha um bug real:
+  // um dia excluído hoje (ex: 01/10, "hoje ou depois") reaparecia sozinho
+  // no dia seguinte, assim que "hoje" avançava e o dia virava "passado" —
+  // mesmo a quinzena 16-30 anterior ainda não tendo sido fechada. Achado
+  // real, 2026-10-02.
+  function inicioQuinzenaAtual() {
+    const hoje = new Date();
+    return new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() <= 15 ? 1 : 16);
+  }
+
+  // Dias de diária que já são de uma quinzena ANTERIOR à atual — os únicos
+  // que um fechamento de folha hoje pode legitimamente incluir/apagar.
+  // Usado tanto na prévia (pra não mostrar um total que o fechamento de
+  // verdade não vai bater) quanto no fechamento real.
   function diasPassadoDeDiaria(dias) {
-    const hojeSemHora = new Date(); hojeSemHora.setHours(0, 0, 0, 0);
+    const corte = inicioQuinzenaAtual();
     return (dias || []).filter(dia => {
-      const data = resolverDataDiaMes(dia.localId, hojeSemHora);
-      return !(data && data >= hojeSemHora);
+      const data = resolverDataDiaMes(dia.localId, corte);
+      return !(data && data >= corte);
     });
   }
 
@@ -2374,23 +2386,24 @@
       const folha = fdoc.data();
       if (folha.status === 'paga') { alert('A última folha já foi fechada.'); return; }
 
-      // 'diarias' não tem período fixo — pode já ter dia(s) de HOJE em
-      // diante sincronizados (ciclo novo, ainda nem decidido se vai entrar
-      // nessa folha). Separa cada documento em "passado" (entra nessa
-      // folha e é apagado) e "hoje em diante" (não entra, sobrevive ao
-      // fechamento intacto pro próximo ciclo) — sem isso, fechar a folha
-      // hoje varreria por engano a diária de amanhã de um ajudante
-      // diarista que já bateu ponto antes do fechamento (achado real,
-      // 2026-10-01, mesma classe do buraco de 16-30/09).
-      const hojeSemHora = new Date(); hojeSemHora.setHours(0, 0, 0, 0);
+      // 'diarias' não tem período fixo — pode já ter dia(s) da quinzena
+      // ATUAL (em andamento, ainda nem decidida) sincronizados. Separa cada
+      // documento em "passado" (entra nessa folha e é apagado) e "quinzena
+      // atual" (não entra, sobrevive ao fechamento intacto pro próximo
+      // ciclo). Corte pelo INÍCIO da quinzena atual, não por "hoje" direto
+      // — comparar com "hoje" tinha um bug real: um dia excluído hoje
+      // (ex: 01/10) reaparecia sozinho no dia seguinte, assim que "hoje"
+      // avançava e ele virava "passado" (achado real, 2026-10-01 e
+      // 2026-10-02, mesma classe do buraco de 16-30/09).
+      const corteQuinzena = inicioQuinzenaAtual();
       const diariasPassadoPorDoc = new Map(); // docId -> dias (array)
       const diariasFuturoPorDoc  = new Map(); // docId -> dias (array)
       diariasSnap.docs.forEach(d => {
         const dias = d.data().dias || [];
         const passado = [], futuro = [];
         dias.forEach(dia => {
-          const data = resolverDataDiaMes(dia.localId, hojeSemHora);
-          (data && data >= hojeSemHora ? futuro : passado).push(dia);
+          const data = resolverDataDiaMes(dia.localId, corteQuinzena);
+          (data && data >= corteQuinzena ? futuro : passado).push(dia);
         });
         diariasPassadoPorDoc.set(d.id, passado);
         if (futuro.length) diariasFuturoPorDoc.set(d.id, futuro);

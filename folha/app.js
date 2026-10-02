@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.36";
+const VERSAO = "5.37";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -2374,19 +2374,25 @@ async function verRelatorio() {
     });
 
     // Diaristas (diretamente de _diariasCache — sem depender do timing de sincronizarDiaristas).
-    // 'diarias' não tem período fixo: pode já ter dia(s) de HOJE em diante
-    // sincronizados (ciclo novo, que só vai entrar num fechamento futuro) —
-    // exclui esses da prévia, senão ela mostra um valor que o fechamento de
-    // verdade não vai bater (mesmo filtro aplicado no fechamento real, em
-    // caixa/relatorio.html). Achado real, 2026-10-02.
-    const hojeSemHoraRelatorio = new Date(); hojeSemHoraRelatorio.setHours(0, 0, 0, 0);
+    // 'diarias' não tem período fixo: pode já ter dia(s) da quinzena ATUAL
+    // (em andamento, ainda não decidida pra nenhum fechamento) sincronizados
+    // — exclui esses da prévia, senão ela mostra um valor que o fechamento
+    // de verdade não vai bater. Corte pelo INÍCIO da quinzena atual (não por
+    // "hoje" direto): comparar com "hoje" reincluía um dia já passado assim
+    // que "hoje" avançava um dia (ex: 01/10 reaparecia no dia 02/10) — o
+    // início da quinzena só muda no dia 1 e no dia 16 de cada mês, então é
+    // um corte estável enquanto a folha atrasada não for fechada. Achado
+    // real, 2026-10-02 (mesmo filtro aplicado no fechamento real, em
+    // caixa/relatorio.html).
+    const hojeRelatorio = new Date();
+    const quinzenaAtualInicio = new Date(hojeRelatorio.getFullYear(), hojeRelatorio.getMonth(), hojeRelatorio.getDate() <= 15 ? 1 : 16);
     _diariasCache.forEach(doc => {
       const func = { id: doc.funcionarioId || '', nome: doc.funcionarioNome, cargo: doc.cargo || '' };
       const key  = doc.funcionarioId || doc.funcionarioNome;
       if (!grupos.has(key)) grupos.set(key, { funcionario: func, itens: [] });
       (doc.dias || []).forEach(d => {
-        const dataDia = resolverDataDiaMes(d.localId, hojeSemHoraRelatorio);
-        if (dataDia && dataDia >= hojeSemHoraRelatorio) return; // hoje em diante, não entra
+        const dataDia = resolverDataDiaMes(d.localId, quinzenaAtualInicio);
+        if (dataDia && dataDia >= quinzenaAtualInicio) return; // quinzena em andamento, não entra
         grupos.get(key).itens.push({
           funcionario: func, firestoreLocalId: '', localId: d.localId,
           servico: labelDiaria(d), valor: d.valor, horas: d.horas || null
