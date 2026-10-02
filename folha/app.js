@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.38";
+const VERSAO = "5.39";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -375,6 +375,12 @@ function ehAjudanteProducao(func) {
 // Para ajudante, se no mesmo dia houver diária e produção, a diária prevalece:
 // o valor da produção daquele dia é zerado (não soma no total), mas o serviço
 // continua aparecendo na folha (com valor R$ 0,00) para efeito de registro.
+// Exceção: quem está marcado "Remunerar por Produção" no cadastro é pago
+// pela produção mesmo tendo diária no mesmo dia — essa marcação já significa
+// que a pessoa deve ser remunerada pelo trabalho de produção que fizer,
+// então a regra de "diária substitui" não deveria se aplicar a ela. Achado
+// real, 2026-10-02 (Gustavo, ajudante diarista, marcado pontualmente como
+// também remunerado por produção num dia específico).
 function filtrarProducaoConflitanteComDiaria() {
   const diasComDiaria = new Set();
   entradas.forEach(e => {
@@ -387,6 +393,8 @@ function filtrarProducaoConflitanteComDiaria() {
     if (!e.firestoreLocalId) return e; // mantém diárias
     if (!ehAjudante(e.funcionario.cargo)) return e; // regra é só para ajudante
     if (!e.dataRegistro) return e;
+    const func = (_todosFunc || []).find(x => x.id === e.funcionario.id);
+    if (func && func.porProducao === true) return e; // exceção: remunerado por produção
     const diaMes = e.dataRegistro.split('/').slice(0, 2).join('/');
     if (!diasComDiaria.has(`${e.funcionario.id || e.funcionario.nome}|${diaMes}`)) return e;
     return { ...e, valor: 0 };
