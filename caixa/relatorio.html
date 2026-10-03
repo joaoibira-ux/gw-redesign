@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.39";
+  const VERSAO = "2.40";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1783,7 +1783,7 @@
     // só os dias 11-19 (claramente dentro do ciclo 1-15) ficam de fora.
     const refDataGatilho = dataFolha || new Date();
     const diaGatilho = refDataGatilho.getDate();
-    const descontaInssPassagens = !(diaGatilho > 10 && diaGatilho < 20);
+    let descontaInssPassagens = !(diaGatilho > 10 && diaGatilho < 20);
     const CARGOS_POR_PRODUCAO_REL = ['PINTOR', 'RASPADOR'];
 
     // Quem foi admitido DENTRO da quinzena 16-fim do mês não trabalhou o
@@ -1796,6 +1796,24 @@
     const mesPeriodoProrata = diaGatilho <= 10 ? refDataGatilho.getMonth() - 1 : refDataGatilho.getMonth();
     const periodoIni = new Date(refDataGatilho.getFullYear(), mesPeriodoProrata, 16);
     const periodoFim = new Date(refDataGatilho.getFullYear(), mesPeriodoProrata + 1, 0);
+
+    // Folha complementar do mesmo período: se já existe uma folha PAGA cujo
+    // fechamento caiu dentro da mesma janela de gatilho (dia 20 do mês do
+    // período até dia 10 do mês seguinte), o INSS/Passagens dessa quinzena
+    // já foi descontado — não desconta de novo. Achado real, 2026-10-03
+    // (João fechando uma folha complementar de 16-30/09 um dia depois da
+    // principal, que já tinha descontado).
+    if (descontaInssPassagens && _folhasPagasSnap) {
+      const janelaIni = new Date(refDataGatilho.getFullYear(), mesPeriodoProrata, 20);
+      const janelaFim = new Date(refDataGatilho.getFullYear(), mesPeriodoProrata + 1, 10, 23, 59, 59, 999);
+      const jaDescontou = _folhasPagasSnap.docs.some(d => {
+        const c = d.data().criadoEm;
+        if (!c || !c.toDate) return false;
+        const dt = c.toDate();
+        return dt >= janelaIni && dt <= janelaFim;
+      });
+      if (jaDescontou) descontaInssPassagens = false;
+    }
     const diasPeriodo = Math.round((periodoFim - periodoIni) / 86400000) + 1;
     function fatorProrata(admissaoStr) {
       const admissao = parseDataBRparaDate(admissaoStr);
@@ -1984,6 +2002,16 @@
     renderPrevisaoFolha();
     _rlFontes.folhas = true;
     _verificarTudo();
+  });
+
+  // Folhas pagas — usado por montarDescontosMap pra saber se o INSS/
+  // Passagens da quinzena 16-fim do mês já foi descontado numa folha
+  // ANTERIOR (ex: folha complementar fechada depois da principal, mesmo
+  // período) e não descontar de novo. Achado real, 2026-10-03.
+  let _folhasPagasSnap = null;
+  db.collection('folhas').where('status', '==', 'paga').onSnapshot(snap => {
+    _folhasPagasSnap = snap;
+    renderPrevisaoFolha();
   });
 
   db.collection('diarias').onSnapshot(snap => { _diariasSnap = snap; renderPrevisaoFolha(); });
