@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.39";
+const VERSAO = "5.40";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -926,6 +926,16 @@ async function confirmarDias() {
 
 // ── View Funcionários ──────────────────────────────────────
 let _todosFunc = [];
+
+// Folhas pagas — usado por calcularDescontosFixos pra saber se o INSS/
+// Passagens da quinzena 16-fim do mês já foi descontado numa folha
+// ANTERIOR (ex: folha complementar fechada depois da principal, mesmo
+// período) e não descontar de novo. Mesmo filtro em caixa/relatorio.html.
+// Achado real, 2026-10-03.
+let _folhasPagasCache = [];
+db.collection('folhas').where('status', '==', 'paga').onSnapshot(snap => {
+  _folhasPagasCache = snap.docs.map(d => d.data());
+});
 
 function renderFuncionarios() {
   const lista = document.getElementById('lista-funcionarios');
@@ -1878,6 +1888,20 @@ function calcularDescontosFixos(func) {
   // Período 16-fim do mês que a folha representa: se estamos nos
   // primeiros dias do mês (fechamento atrasado), é o mês ANTERIOR.
   const mesPeriodo = hoje.getDate() <= 10 ? hoje.getMonth() - 1 : hoje.getMonth();
+
+  // Folha complementar do mesmo período: se já existe uma folha PAGA cujo
+  // fechamento caiu na mesma janela de gatilho (dia 20 do mês do período
+  // até dia 10 do mês seguinte), o INSS/Passagens dessa quinzena já foi
+  // descontado — não desconta de novo. Achado real, 2026-10-03.
+  const janelaIni = new Date(hoje.getFullYear(), mesPeriodo, 20);
+  const janelaFim = new Date(hoje.getFullYear(), mesPeriodo + 1, 10, 23, 59, 59, 999);
+  const jaDescontou = (_folhasPagasCache || []).some(p => {
+    const c = p.criadoEm;
+    if (!c || !c.toDate) return false;
+    const dt = c.toDate();
+    return dt >= janelaIni && dt <= janelaFim;
+  });
+  if (jaDescontou) return { inss: 0, passagens: 0 };
 
   let f = (_todosFunc || []).find(x => x.id === func?.id);
   if (!f) {
