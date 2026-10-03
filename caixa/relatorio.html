@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.40";
+  const VERSAO = "2.41";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1251,8 +1251,12 @@
         // real: 83 serviços desse tipo foram fechados a R$100 em vez dos
         // R$80 corretos do catálogo). id é estável e não muda com renomeação.
         const valores = servById[s.id] || servByName[s.nome] || catFallback[cat] || { medicao: 0, mdo: 0 };
-        let custoApto = valores.mdo;
-        if (cat === 0 && s.funcionario && (s.funcionario.cargo || '').toLowerCase().includes('pintor')) {
+        // valorManual: ajuste pontual gravado direto no item (locais/{id}.
+        // servicos[].valorManual) — substitui o preço do catálogo só pra
+        // essa ocorrência, sem mudar o catálogo pra todo mundo. Pedido do
+        // João, 2026-10-03.
+        let custoApto = s.valorManual != null ? Number(s.valorManual) : valores.mdo;
+        if (s.valorManual == null && cat === 0 && s.funcionario && (s.funcionario.cargo || '').toLowerCase().includes('pintor')) {
           custoApto += 10;
         }
 
@@ -2506,8 +2510,11 @@
           // (achado real, 2026-09-17: nome congelado desatualizado por
           // renomeação no catálogo causava preço errado/ambíguo).
           const valores = servById[s.id] || servByName[s.nome] || catFallback[cat] || { medicao: 0, mdo: 0 };
-          let custoApto = valores.mdo;
-          if (cat === 0 && s.funcionario && (s.funcionario.cargo || '').toLowerCase().includes('pintor')) custoApto += 10;
+          // valorManual: ajuste pontual gravado direto no item (ver
+          // comentário equivalente em renderPrevisaoMedicao). Pedido do
+          // João, 2026-10-03.
+          let custoApto = s.valorManual != null ? Number(s.valorManual) : valores.mdo;
+          if (s.valorManual == null && cat === 0 && s.funcionario && (s.funcionario.cargo || '').toLowerCase().includes('pintor')) custoApto += 10;
           custoPorServico.set(`${d.id}:${s.nome}`, { valor: custoApto, funcionario: s.funcionario || null });
           const func = s.funcionario;
           if (func && funcTemProducaoLocal(func.cargo, func.nome, func.id)) {
