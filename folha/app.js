@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.40";
+const VERSAO = "5.41";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -215,7 +215,12 @@ function getMdo(nomeServico, servicoId) {
   return match ? (match.mdo || 0) : 0;
 }
 
-function calcValor(nomeServico, cargo, servicoId) {
+// valorManual: ajuste pontual gravado direto no item (locais/{id}.
+// servicos[].valorManual) — substitui o cálculo do catálogo só pra essa
+// ocorrência específica, sem mudar o preço do serviço pra ninguém mais.
+// Mesmo mecanismo usado em caixa/relatorio.html. Pedido do João, 2026-10-03.
+function calcValor(nomeServico, cargo, servicoId, valorManual) {
+  if (valorManual != null) return Number(valorManual);
   const base        = getMdo(nomeServico, servicoId);
   const tratamento  = (nomeServico || '').toLowerCase().includes('tratamento');
   const pintor      = (cargo || '').toLowerCase().includes('pintor');
@@ -240,7 +245,7 @@ db.collection('servicos').onSnapshot(snap => {
     let mudou = false;
     entradas = entradas.map(e => {
       if (!e.firestoreLocalId) return e; // diárias não usam catálogo
-      const novoValor = calcValor(e.servico, e.funcionario.cargo, e.servicoId);
+      const novoValor = calcValor(e.servico, e.funcionario.cargo, e.servicoId, e.valorManual);
       if (novoValor !== e.valor) mudou = true;
       return novoValor !== e.valor ? { ...e, valor: novoValor } : e;
     });
@@ -1263,7 +1268,8 @@ function tentarIniciarFolha() {
           servico:          s.nome,
           servicoId:        s.id || null,
           funcionario:      s.funcionario || null,
-          dataRegistro:     s.dataRegistro || null
+          dataRegistro:     s.dataRegistro || null,
+          valorManual:      s.valorManual != null ? s.valorManual : null
         });
       }
     });
@@ -1277,7 +1283,8 @@ function tentarIniciarFolha() {
         localId:          s.localId,
         servico:          s.servico,
         servicoId:        s.servicoId,
-        valor:            calcValor(s.servico, (s.funcionario || {}).cargo, s.servicoId),
+        valorManual:      s.valorManual,
+        valor:            calcValor(s.servico, (s.funcionario || {}).cargo, s.servicoId, s.valorManual),
         dataRegistro:     s.dataRegistro || null
       }));
       // 2. Adiciona diaristas por cima (depois da produção, para não ser sobrescrito)
@@ -1315,7 +1322,7 @@ function tentarIniciarFolha() {
                      || lookup.get(`${e.firestoreLocalId}:${nomeAbrev(e.servico)}`);
           if (!found) return e;
           const novoFn    = found.fn ? { ...e.funcionario, cargo: found.fn.cargo || e.funcionario.cargo || '' } : e.funcionario;
-          const novoValor = calcValor(e.servico, novoFn.cargo, e.servicoId);
+          const novoValor = calcValor(e.servico, novoFn.cargo, e.servicoId, e.valorManual);
           if (novoFn !== e.funcionario || novoValor !== e.valor) refinado = true;
           return { ...e, funcionario: novoFn, valor: novoValor, dataRegistro: found.dataRegistro || e.dataRegistro || null };
         });
@@ -2491,7 +2498,7 @@ async function verRelatorio() {
           // usado ao abrir o relatório sem a folha estar em edição ao
           // vivo — nunca atualizava o valor depois de uma correção de
           // preço no catálogo).
-          return { ...item, valor: calcValor(s.nome, (s.funcionario || {}).cargo, s.id) };
+          return { ...item, valor: calcValor(s.nome, (s.funcionario || {}).cargo, s.id, s.valorManual) };
         }).filter(Boolean);
         return { funcionario: g.funcionario, itens: itensVivos };
       }).filter(g => g.itens.length > 0 || buscarAdiantamentoDoFuncionario(adiantLista, g.funcionario).itens.length > 0);
