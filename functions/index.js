@@ -4128,18 +4128,6 @@ async function sincronizarDiariasAjudantesPorPonto(periodoForcado) {
   return { sincronizados: totalSincronizados, detalhes };
 }
 
-exports.ativarProducaoGustavoTemp2026 = onCall(async () => {
-  const ref = db.collection("funcionarios").doc("yWA4GWGM0dWUwbGx7GP1");
-  await ref.update({ porProducao: true, salarioReferencia: 1790 });
-  return { ok: true };
-});
-
-exports.reverterProducaoGustavoTemp2026 = onCall(async () => {
-  const ref = db.collection("funcionarios").doc("yWA4GWGM0dWUwbGx7GP1");
-  await ref.update({ porProducao: false, salarioReferencia: 0 });
-  return { ok: true };
-});
-
 // Roda toda noite — garante que a coleção 'diarias' fique sempre em dia
 // mesmo que ninguém abra a tela do Folha (foi exatamente isso que deixou a
 // quinzena de 16-30/09/2026 sem diárias de ajudante nenhuma). Horário fora
