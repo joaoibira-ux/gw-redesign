@@ -4967,6 +4967,79 @@ exports.alertaPontoEmAberto940 = onSchedule(
   }
 );
 
+// Avisa quem esqueceu de bater a SAÍDA hoje — substitui o fechamento
+// automático que existia em index.html (fecharSaidasPendentesPonto),
+// removido a pedido do João, 2026-10-06: aquele mecanismo inventava um
+// horário de saída (sempre 12:00 do dia seguinte), o que distorcia o
+// cálculo de diária por hora dos ajudantes (vários casos reais de valor
+// errado ou R$0 por causa de um horário chutado). Agora só avisa — quem
+// esqueceu continua sem saída até alguém corrigir de verdade.
+// Mesmos destinatários do alerta de entrada em aberto (João + Welington).
+// Horário (19:10) escolhido pra dar folga depois do fim do expediente
+// normal, fora de :00/:30 de propósito.
+async function checarEAvisarSaidaEmAberto() {
+  const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+  const dataInicio = new Date(hojeISO + "T00:00:00-03:00");
+  const dataFim = new Date(hojeISO + "T23:59:59-03:00");
+
+  const [funcSnap, pontosSnap] = await Promise.all([
+    db.collection("funcionarios").get(),
+    db.collection("pontos")
+      .where("timestamp", ">=", dataInicio)
+      .where("timestamp", "<=", dataFim)
+      .get()
+  ]);
+
+  const funcAtivos = funcSnap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(f => f.ativo !== false);
+
+  // Pareia entrada->saída em ordem, por funcionário — mesma lógica de
+  // calcularExtratoPonto: sobra entrada sem saída = dia incompleto.
+  const eventosPorFunc = new Map();
+  pontosSnap.docs.forEach(d => {
+    const p = d.data();
+    if (!p.funcionarioId || !p.timestamp || !p.tipo) return;
+    if (!eventosPorFunc.has(p.funcionarioId)) eventosPorFunc.set(p.funcionarioId, []);
+    eventosPorFunc.get(p.funcionarioId).push({ tipo: p.tipo, ts: p.timestamp.toDate() });
+  });
+
+  const semSaida = funcAtivos.filter(f => {
+    const eventos = (eventosPorFunc.get(f.id) || []).sort((a, b) => a.ts - b.ts);
+    if (!eventos.some(e => e.tipo === "entrada")) return false; // nem bateu entrada hoje
+    let abertura = null;
+    eventos.forEach(e => {
+      if (e.tipo === "entrada") abertura = e.ts;
+      else if (e.tipo === "saida" && abertura) abertura = null;
+    });
+    return abertura !== null; // sobrou entrada sem saída
+  });
+
+  if (semSaida.length === 0) return 0;
+
+  const texto = [
+    `Funcionários sem bater a saída hoje (${semSaida.length}):`,
+    "",
+    ...semSaida.map(f => `- ${f.nome || "(sem nome)"}`)
+  ].join("\n");
+
+  await enviarWhatsAppEvolution(texto, evolutionApiKey.value(), EVOLUTION_DESTINATARIOS_PONTO);
+  return semSaida.length;
+}
+
+exports.alertaSaidaEmAberto = onSchedule(
+  { schedule: "10 19 * * 1-5", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
+  async () => {
+    try {
+      const total = await checarEAvisarSaidaEmAberto();
+      logger.info(`[alertaSaidaEmAberto] ${total || 0} funcionário(s) sem saída`);
+    } catch (e) {
+      logger.error("Erro ao enviar alerta de saída em aberto:", e.message);
+      throw e;
+    }
+  }
+);
+
 // Feriados nacionais (fixos + móveis, calculados a partir da Páscoa) que a
 // GW observa. Ajustar manualmente aqui se a empresa trocar algum feriado
 // por outro dia específico (o João avisou que isso acontece).
