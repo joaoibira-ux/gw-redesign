@@ -646,7 +646,7 @@
     // Substituído por um alerta (Cloud Function alertaSaidaEmAberto) que
     // avisa quem esqueceu, em vez de inventar um horário.
 
-    const VERSAO = '7.40';
+    const VERSAO = '7.41';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -857,7 +857,10 @@
         return;
       }
 
-      if (ehDesktop()) {
+      // PINs de cadastro nunca veem o Dashboard Desktop (que não filtra por
+      // nível de acesso) — caem direto na tela de menu simples, igual ao
+      // celular, mesmo em telas largas. Pedido do João, 2026-10-08.
+      if (ehDesktop() && modo !== 'cadastro') {
         mostrarDashboardDesktop();
         return;
       }
@@ -1347,11 +1350,11 @@
       const home = document.getElementById('home-screen');
       const jaEntrou = dd.classList.contains('visible') || home.classList.contains('visible');
       if (!jaEntrou) return;
-      if (ehDesktop() && !dd.classList.contains('visible')) {
+      if (ehDesktop() && modo !== 'cadastro' && !dd.classList.contains('visible')) {
         home.classList.remove('visible');
         home.style.display = 'none';
         mostrarDashboardDesktop();
-      } else if (!ehDesktop() && dd.classList.contains('visible')) {
+      } else if ((!ehDesktop() || modo === 'cadastro') && dd.classList.contains('visible')) {
         dd.classList.remove('visible', 'show');
         home.style.display = 'flex';
         renderApps();
