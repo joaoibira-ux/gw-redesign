@@ -1,5 +1,16 @@
-const VERSAO = "1.17";
+const VERSAO = "1.18";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
+
+// Gate de entrada — só abre a tela de Configurações com a senha certa,
+// não importa o nível de acesso do PIN usado pra chegar até aqui. Pedido
+// do João, 2026-10-08.
+(function gateEntradaConfiguracoes() {
+  const senha = prompt("Senha de acesso às Configurações:");
+  if (senha !== "6535") {
+    window.location.href = "https://sistema.gwrevestimentos.com.br/";
+    throw new Error("Senha de Configurações incorreta ou não informada.");
+  }
+})();
 
 firebase.initializeApp({
   apiKey: "AIzaSyBaqROPsywPgtKjQU7cs1ke1WaqDFhWwn0",
