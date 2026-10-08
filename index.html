@@ -595,6 +595,7 @@
     let PIN_RESTRITO = '3733';
     let PIN_LIMITADO = '0000';
     let PIN_CADASTRO = '2912';
+    let PIN_CADASTRO2 = '1176'; // segundo PIN com os mesmos acessos do PIN_CADASTRO — pedido do João, 2026-10-08
     const pinsCarregados = firebase.firestore().collection('configuracoes').doc('geral').get()
       .then(doc => {
         if (!doc.exists) return;
@@ -604,6 +605,7 @@
         if (d.pinRestrito) PIN_RESTRITO = d.pinRestrito;
         if (d.pinLimitado) PIN_LIMITADO = d.pinLimitado;
         if (d.pinCadastro) PIN_CADASTRO = d.pinCadastro;
+        if (d.pinCadastro2) PIN_CADASTRO2 = d.pinCadastro2;
       }).catch(() => {});
 
     // Relatório de ponto via WhatsApp: dispara no 1º acesso ao sistema após 9:30, seg a sex.
@@ -644,7 +646,7 @@
     // Substituído por um alerta (Cloud Function alertaSaidaEmAberto) que
     // avisa quem esqueceu, em vez de inventar um horário.
 
-    const VERSAO = '7.39';
+    const VERSAO = '7.40';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -731,7 +733,7 @@
 
     async function verificarPin() {
       await pinsCarregados;
-      const pins = { [PIN_COMPLETO]: 'completo', [PIN_PARCIAL]: 'parcial', [PIN_RESTRITO]: 'restrito', [PIN_LIMITADO]: 'limitado', [PIN_CADASTRO]: 'cadastro' };
+      const pins = { [PIN_COMPLETO]: 'completo', [PIN_PARCIAL]: 'parcial', [PIN_RESTRITO]: 'restrito', [PIN_LIMITADO]: 'limitado', [PIN_CADASTRO]: 'cadastro', [PIN_CADASTRO2]: 'cadastro' };
       if (pins[digitado]) {
         modo = pins[digitado];
         sessionStorage.setItem('gw_auth', modo);
