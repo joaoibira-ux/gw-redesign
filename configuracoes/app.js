@@ -1,4 +1,4 @@
-const VERSAO = "1.18";
+const VERSAO = "1.19";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 // Gate de entrada — só abre a tela de Configurações com a senha certa,
@@ -181,10 +181,10 @@ function renderizar() {
     ${item("Alterar Banco de Dados", cfg.senhaAlterarBanco, "senhaAlterarBanco", true)}
 
     <div class="secao-titulo">🔐 PINs de Acesso</div>
-    ${item("PIN Completo (acesso total)", cfg.pinCompleto, "pinCompleto", true)}
-    ${item("PIN Parcial (acesso limitado)", cfg.pinParcial, "pinParcial", true)}
-    ${item("PIN Restrito (acesso mínimo)", cfg.pinRestrito, "pinRestrito", true)}
-    ${item("PIN Limitado (ponto, folha, funcionários, mapa)", cfg.pinLimitado, "pinLimitado", true)}
+    ${item("PIN Completo (acesso total)", cfg.pinCompleto, "pinCompleto", false)}
+    ${item("PIN Parcial (acesso limitado)", cfg.pinParcial, "pinParcial", false)}
+    ${item("PIN Restrito (acesso mínimo)", cfg.pinRestrito, "pinRestrito", false)}
+    ${item("PIN Limitado (ponto, folha, funcionários, mapa)", cfg.pinLimitado, "pinLimitado", false)}
   `;
 }
 
