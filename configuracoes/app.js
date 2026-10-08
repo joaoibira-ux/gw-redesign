@@ -1,4 +1,4 @@
-const VERSAO = "1.20";
+const VERSAO = "1.21";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 // Gate de entrada — só abre a tela de Configurações com a senha certa,
@@ -43,6 +43,7 @@ const DEFAULTS = {
   senhaAlterarBanco: "6535",
   salarioEncarregado: 3000,
   salarioAjudante:    1850,
+  valorServicoEncarregado: 5,
   valorCafe:          0,
   valorAlmoco:        0,
   limiteAdiantamentoSemanal: 0,
@@ -152,6 +153,7 @@ function renderizar() {
     <div class="secao-titulo">💰 Salários de Referência</div>
     ${item("Encarregado (salário bruto)", fmtMoeda(cfg.salarioEncarregado), "salarioEncarregado", false)}
     ${item("Ajudante (salário bruto)", fmtMoeda(cfg.salarioAjudante), "salarioAjudante", false)}
+    ${item("Encarregado — valor por serviço executado pelos pintores", fmtMoeda(cfg.valorServicoEncarregado), "valorServicoEncarregado", false)}
 
     <div class="secao-titulo">☕ Benefícios</div>
     ${item("Valor do Café", fmtMoeda(cfg.valorCafe), "valorCafe", false)}
@@ -241,11 +243,12 @@ function item(label, valor, campo, oculto) {
 }
 
 // ── Modal ─────────────────────────────────────────────────────
-const CAMPOS_MOEDA   = ["salarioEncarregado", "salarioAjudante", "valorCafe", "valorAlmoco", "limiteAdiantamentoSemanal", "capitalAdiantamentoSemanal"];
+const CAMPOS_MOEDA   = ["salarioEncarregado", "salarioAjudante", "valorServicoEncarregado", "valorCafe", "valorAlmoco", "limiteAdiantamentoSemanal", "capitalAdiantamentoSemanal"];
 const CAMPOS_SENHAS  = ["senhaExcluir", "senhaAlterarBanco", "pinCompleto", "pinParcial", "pinRestrito", "pinLimitado", "pinCadastro", "pinCadastro2"];
 const CAMPOS_INTEIRO = ["limiteAjudantesDiaria", "limitePintoresDiaria"];
 const LABELS = {
   salarioEncarregado: "Salário Encarregado (R$)",
+  valorServicoEncarregado: "Encarregado — valor por serviço dos pintores (R$)",
   salarioAjudante:    "Salário Ajudante (R$)",
   valorCafe:          "Valor do Café (R$)",
   valorAlmoco:        "Valor do Almoço (R$)",

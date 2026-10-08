@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.42";
+  const VERSAO = "2.43";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -2405,15 +2405,18 @@
     btn.textContent = '⏳ Calculando...';
 
     try {
-      const [folhaSnap, locaisSnap, servicosSnap, diariasSnap, adSnap, cpAdSnap, funcSnap] = await Promise.all([
+      const [folhaSnap, locaisSnap, servicosSnap, diariasSnap, adSnap, cpAdSnap, funcSnap, cfgGeralSnap] = await Promise.all([
         db.collection('folhas').orderBy('criadoEm', 'desc').limit(1).get(),
         db.collection('locais').get(),
         db.collection('servicos').get(),
         db.collection('diarias').get(),
         db.collection('lancamentos').where('origem', 'in', ['ANE->ADIANTAMENTO', 'JOAO->ADIANTAMENTO']).get(),
         db.collection('contasPagar').get(),
-        db.collection('funcionarios').get()
+        db.collection('funcionarios').get(),
+        db.collection('configuracoes').doc('geral').get()
       ]);
+      const valorPorServicoEnc = (cfgGeralSnap.exists && cfgGeralSnap.data().valorServicoEncarregado != null)
+        ? Number(cfgGeralSnap.data().valorServicoEncarregado) : 5;
 
       if (folhaSnap.empty) { alert('Nenhuma folha encontrada.'); return; }
       const fdoc  = folhaSnap.docs[0];
@@ -2634,10 +2637,10 @@
         const proventos = [];
         if (g.isEncarregado) {
           const quinzena = (g.itens || []).find(i => i.servico === 'Quinzena 50%');
-          bruto = quinzena ? Number(quinzena.valor || 0) + 5 * nServTotal : 0;
+          bruto = quinzena ? Number(quinzena.valor || 0) + valorPorServicoEnc * nServTotal : 0;
           if (bruto > 0) {
             proventos.push({ label: 'Quinzena 50%', valor: Number(quinzena.valor || 0) });
-            proventos.push({ label: `${nServTotal} serviço${nServTotal !== 1 ? 's' : ''} × R$5`, valor: 5 * nServTotal });
+            proventos.push({ label: `${nServTotal} serviço${nServTotal !== 1 ? 's' : ''} × R$${fmt(valorPorServicoEnc)}`, valor: valorPorServicoEnc * nServTotal });
           }
         } else {
           bruto = 0;

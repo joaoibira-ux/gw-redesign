@@ -10,13 +10,13 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.41";
+const VERSAO = "5.42";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
 // valor só protege quem tenta INSERIR um dia novo além do limite; dias já
 // gravados antes do limite existir/mudar nunca são removidos automaticamente.
-let _cfgGeral = { limiteAjudantesDiaria: 2, limitePintoresDiaria: 2 };
+let _cfgGeral = { limiteAjudantesDiaria: 2, limitePintoresDiaria: 2, valorServicoEncarregado: 5 };
 db.collection('configuracoes').doc('geral').onSnapshot(snap => {
   if (snap.exists) _cfgGeral = { ..._cfgGeral, ...snap.data() };
 });
@@ -1494,7 +1494,7 @@ function renderizarFolha() {
   let valorEncarregado = 0;
   if (encarregadoCache) {
     const quinzena = (encarregadoCache.salario || 0) / 2;
-    const bonus    = 5 * nServ;
+    const bonus    = (_cfgGeral.valorServicoEncarregado ?? 5) * nServ;
     valorEncarregado = quinzena + bonus;
     encarregadoHtml = `
       <div class="grupo-func grupo-encarregado">
@@ -1506,7 +1506,7 @@ function renderizarFolha() {
           <thead><tr><th colspan="2">Descrição</th><th>Valor</th></tr></thead>
           <tbody>
             <tr><td colspan="2">Quinzena (50% do salário)</td><td class="td-valor">${fmtMoeda(quinzena)}</td></tr>
-            <tr><td colspan="2">${nServ} serviço${nServ !== 1 ? 's' : ''} × R$ 5,00</td><td class="td-valor">${fmtMoeda(bonus)}</td></tr>
+            <tr><td colspan="2">${nServ} serviço${nServ !== 1 ? 's' : ''} × ${fmtMoeda(_cfgGeral.valorServicoEncarregado ?? 5)}</td><td class="td-valor">${fmtMoeda(bonus)}</td></tr>
           </tbody>
           <tfoot>
             <tr>
@@ -1608,7 +1608,7 @@ function atualizarHeader() {
   const totalProd = entradas.reduce((acc, e) => acc + Number(e.valor), 0);
   const nServHeader = entradas.filter(e => e.firestoreLocalId).length;
   const totalEnc  = encarregadoCache
-    ? ((encarregadoCache.salario || 0) / 2) + (5 * nServHeader)
+    ? ((encarregadoCache.salario || 0) / 2) + ((_cfgGeral.valorServicoEncarregado ?? 5) * nServHeader)
     : 0;
   const total = totalProd + totalEnc;
   el.textContent = `${entradas.length} item${entradas.length > 1 ? 's' : ''} · R$ ${total.toFixed(2)}`;
@@ -1663,8 +1663,9 @@ async function salvarFolha(silencioso = false, completarAjudantes = true) {
 
   const nServMapa        = entradas.filter(e => e.firestoreLocalId).length;
   const totalProducao    = entradas.reduce((acc, e) => acc + Number(e.valor), 0);
+  const valorPorServico  = _cfgGeral.valorServicoEncarregado ?? 5;
   const valorEncarregado = encarregadoCache
-    ? ((encarregadoCache.salario || 0) / 2) + (5 * nServMapa) : 0;
+    ? ((encarregadoCache.salario || 0) / 2) + (valorPorServico * nServMapa) : 0;
   const totalGeral = totalProducao + valorEncarregado;
 
   const gruposProducao = [...grupos.values()].map(g => ({
@@ -1679,7 +1680,7 @@ async function salvarFolha(silencioso = false, completarAjudantes = true) {
     subtotal: valorEncarregado,
     itens: [
       { firestoreLocalId: '', localId: '—', servico: 'Quinzena 50%',            valor: (encarregadoCache.salario || 0) / 2 },
-      { firestoreLocalId: '', localId: '—', servico: `${nServMapa} serv × R$5`, valor: 5 * nServMapa }
+      { firestoreLocalId: '', localId: '—', servico: `${nServMapa} serv × ${fmtMoeda(valorPorServico)}`, valor: valorPorServico * nServMapa }
     ]
   }] : [];
 
@@ -2021,7 +2022,8 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
   let encHtml = '';
   if (encData) {
     const quinzena  = (encData.salario || 0) / 2;
-    const bonus     = 5 * nServ;
+    const valorPorServicoEnc = _cfgGeral.valorServicoEncarregado ?? 5;
+    const bonus     = valorPorServicoEnc * nServ;
     const adiantEnc = adiantTotal(adiantLista, encData);
     const { inss: inssEnc, passagens: passagensEnc } = calcularDescontosFixos(encData);
     const totalDeducEnc = adiantEnc + inssEnc + passagensEnc;
@@ -2037,7 +2039,7 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
     }));
     const proventosEnc = [
       { label: 'Quinzena 50%', valor: quinzena },
-      { label: `${nServ} serviço${nServ !== 1 ? 's' : ''} × R$5`, valor: bonus }
+      { label: `${nServ} serviço${nServ !== 1 ? 's' : ''} × ${fmtMoeda(valorPorServicoEnc)}`, valor: bonus }
     ];
     const idxEnc = detalhes.length;
     detalhes.push({
@@ -2463,7 +2465,7 @@ async function verRelatorio() {
     nServMapa        = entradas.filter(e => e.firestoreLocalId).length;
     const totalProd  = [...grupos.values()].reduce((acc, g) => acc + g.itens.reduce((s, e) => s + Number(e.valor), 0), 0);
     valorEncarregado = encarregadoCache
-      ? ((encarregadoCache.salario || 0) / 2) + (5 * nServMapa) : 0;
+      ? ((encarregadoCache.salario || 0) / 2) + ((_cfgGeral.valorServicoEncarregado ?? 5) * nServMapa) : 0;
     totalGeral       = totalProd + valorEncarregado;
     gruposData       = [...grupos.values()].map(g => ({ funcionario: g.funcionario, itens: g.itens }));
   } else {
@@ -2481,7 +2483,7 @@ async function verRelatorio() {
       nServMapa = Object.values(locaisCache).reduce((acc, local) =>
         acc + (local.servicos || []).filter(s => s.status === 'em_pagamento').length, 0);
       valorEncarregado = encarregadoCache
-        ? ((encarregadoCache.salario || 0) / 2) + (5 * nServMapa) : 0;
+        ? ((encarregadoCache.salario || 0) / 2) + ((_cfgGeral.valorServicoEncarregado ?? 5) * nServMapa) : 0;
 
       gruposData = gList.filter(g => !g.isEncarregado).map(g => {
         const itensVivos = (g.itens || []).map(item => {
