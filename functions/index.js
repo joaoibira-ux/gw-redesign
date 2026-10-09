@@ -36,6 +36,12 @@ const WHATSAPP_INDISPONIVEL = false;
 // WhatsApp só responde na conversa "Mensagens para você mesmo" desse número.
 const NUMERO_AGENTE_WHATSAPP = "5581992114764";
 
+// Grupo onde o assistente também responde (além da conversa "Mensagens
+// para você mesmo" acima), mas SÓ quando mencionado (@) — pedido do João,
+// 2026-10-09. Resolvido pelo nome a cada passada do polling (não hardcoda
+// o JID, que muda se o grupo for recriado).
+const GRUPO_AGENTE_WHATSAPP_NOME = "sistema gw";
+
 // O JID do WhatsApp às vezes vem sem o "9" extra dos celulares brasileiros
 // (ex: 558192114764 em vez de 5581992114764) — normaliza os dois lados antes
 // de comparar números, senão a checagem de remetente nunca bate.
@@ -3794,11 +3800,30 @@ async function passadaPollingWhatsApp(apiKeyValue) {
   const mensagens = (resultBusca && resultBusca.messages && resultBusca.messages.records) || [];
 
   const alvoNorm = normalizarNumeroBR(NUMERO_AGENTE_WHATSAPP);
+
+  // Resolve o JID do grupo designado pelo nome — se falhar (ex: Evolution
+  // fora do ar), segue só com a conversa individual, não trava o polling.
+  let grupoJid = null;
+  try {
+    const achadoGrupo = await buscarGrupoWhatsAppPorNome(GRUPO_AGENTE_WHATSAPP_NOME, apiKeyValue);
+    if (achadoGrupo.grupo) grupoJid = achadoGrupo.grupo.id;
+  } catch (e) {
+    logger.error("[pollingAgenteWhatsApp] falha ao resolver grupo designado", { erro: e.message });
+  }
+
+  function mencionaAgente(msg) {
+    const ctx = msg.message && msg.message.extendedTextMessage && msg.message.extendedTextMessage.contextInfo;
+    const mentioned = ctx && ctx.mentionedJid;
+    if (!Array.isArray(mentioned)) return false;
+    return mentioned.some(jid => normalizarNumeroBR((jid || "").split("@")[0]) === alvoNorm);
+  }
+
   const novas = mensagens
     .filter(m => !m.key.fromMe)
     .filter(m => m.messageTimestamp > ultimoTimestamp)
     .filter(m => !idsProcessados.includes(m.key.id))
     .filter(m => {
+      if (grupoJid && m.key.remoteJid === grupoJid) return mencionaAgente(m);
       const numero = normalizarNumeroBR((m.key.remoteJidAlt || m.key.remoteJid || "").split("@")[0]);
       return numero === alvoNorm;
     })
@@ -3806,7 +3831,6 @@ async function passadaPollingWhatsApp(apiKeyValue) {
 
   if (novas.length === 0) return 0;
 
-  const histRef = db.collection("agenteWhatsappHistorico").doc(NUMERO_AGENTE_WHATSAPP);
   let maiorTimestamp = ultimoTimestamp;
   const novosIds = [];
 
@@ -3814,10 +3838,21 @@ async function passadaPollingWhatsApp(apiKeyValue) {
     maiorTimestamp = Math.max(maiorTimestamp, msg.messageTimestamp);
     novosIds.push(msg.key.id);
 
+    const ehGrupo = !!(grupoJid && msg.key.remoteJid === grupoJid);
+    // Conversa do grupo tem seu próprio histórico (não mistura com a DM
+    // individual) e a resposta vai pro grupo, não pro número fixo.
+    const destinoResposta = ehGrupo ? grupoJid : NUMERO_AGENTE_WHATSAPP;
+    const histRef = db.collection("agenteWhatsappHistorico").doc(ehGrupo ? `grupo-${grupoJid}` : NUMERO_AGENTE_WHATSAPP);
+
     let texto = (msg.message && (
       msg.message.conversation ||
       (msg.message.extendedTextMessage && msg.message.extendedTextMessage.text)
     )) || "";
+
+    // Remove a marcação "@5581992114764" (ou variação) que o WhatsApp
+    // embute no texto quando o remetente menciona o bot no grupo — o
+    // modelo não precisa ver isso, só o conteúdo real da pergunta/pedido.
+    if (ehGrupo) texto = texto.replace(/@\d{10,15}\b/g, "").trim();
 
     // Boletos encaminhados/enviados como documento chegam em
     // msg.message.documentMessage — ou, quando encaminhados com legenda,
@@ -3869,7 +3904,7 @@ Houve uma falha técnica ao processar a imagem (${e.message}). Avise o usuário 
       await fetch(`${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
         method: "POST",
         headers: { "apikey": apiKeyValue, "Content-Type": "application/json" },
-        body: JSON.stringify({ number: NUMERO_AGENTE_WHATSAPP, text: resposta })
+        body: JSON.stringify({ number: destinoResposta, text: resposta })
       });
     } catch (e) {
       logger.error("[pollingAgenteWhatsApp] erro ao processar mensagem", { erro: e.message, msgId: msg.key.id });
