@@ -259,6 +259,17 @@ const TOOLS_GW = [
     }
   },
   {
+    name: "relatorio_ponto_hoje_imagem_grupo",
+    description: "Gera uma imagem com o resumo de ponto de HOJE de todos os funcionários ativos (quem já bateu entrada, com horário, e quem ainda não bateu) e manda pra um GRUPO de WhatsApp — busca o grupo pelo nome entre os grupos que a instância participa. Use quando o usuário pedir o relatório/resumo de ponto de hoje de todo mundo pra um grupo (ex: 'manda o relatório de ponto de hoje pro grupo da obra'). Se nomeGrupo bater com mais de um grupo, retorna erro 'nome_ambiguo' com a lista de nomes encontrados — NUNCA escolha um por conta própria, pergunte ao usuário qual e chame de novo. Se não bater com nenhum grupo, retorna 'grupo_nao_encontrado'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        nomeGrupo: { type: "string", description: "Nome (parcial ou completo) do grupo de WhatsApp" }
+      },
+      required: ["nomeGrupo"]
+    }
+  },
+  {
     name: "criar_contato",
     description: "Cadastra UM novo contato (nome + telefone) no cadastro de Contatos do sistema — pessoas que NÃO são funcionário (ex: outro sócio, terceiro). É o cadastro que enviar_extrato_adiantamentos_whatsapp consulta quando o destinatário não é encontrado em Funcionários. Use quando o usuário pedir pra inserir/cadastrar/adicionar um contato (ex: 'Inserir contato: Horacio 81994903673', 'cadastra a Fernanda como contato, número 81999998888'). Se já existir um contato com esse mesmo nome, ATUALIZA o telefone dele em vez de criar um duplicado. Só aceita UM contato por chamada — se o usuário mandar vários de uma vez (ex: 'Inserir contato: Horacio 81994903673, Ane 81988888888, Pedro 81977777777'), chame esta ferramenta uma vez PARA CADA contato da lista. ALTERA O BANCO DE DADOS: exige o campo senha, que deve ser pedido ao usuário antes de chamar esta ferramenta.",
     input_schema: {
@@ -1025,6 +1036,156 @@ function construirSVGRefeicoesHoje(dados, logoBase64) {
 async function gerarImagemRefeicoesHoje(dados) {
   const logoBase64 = fs.readFileSync(path.join(__dirname, "Logo-gw.png")).toString("base64");
   const svg = construirSVGRefeicoesHoje(dados, logoBase64);
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+// ── Resumo de ponto de hoje (todo mundo) ─────────────────────────────────
+// Quem bateu entrada hoje (com horário) e quem ainda não bateu, entre os
+// funcionários ativos — mesma base de dados do alerta checarEAvisarPontoEm
+// Aberto, só que como imagem (pra mandar pra um grupo) em vez de lista de
+// texto pro número fixo. Pedido do João, 2026-10-09.
+async function calcularPontoHojeComNomes(hojeISO) {
+  const inicio = new Date(hojeISO + "T00:00:00-03:00");
+  const fim    = new Date(hojeISO + "T23:59:59-03:00");
+
+  const [snap, funcSnap] = await Promise.all([
+    db.collection("pontos")
+      .where("tipo", "==", "entrada")
+      .where("timestamp", ">=", inicio)
+      .where("timestamp", "<=", fim)
+      .orderBy("timestamp")
+      .get(),
+    db.collection("funcionarios").get()
+  ]);
+
+  const funcAtivos = funcSnap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(f => f.ativo !== false);
+
+  const entradaPorId = {};
+  snap.docs.forEach(d => {
+    const p = d.data();
+    if (!p.funcionarioId || !p.timestamp) return;
+    const ts = p.timestamp.toDate().getTime();
+    const atual = entradaPorId[p.funcionarioId];
+    if (!atual || ts < atual) entradaPorId[p.funcionarioId] = ts;
+  });
+
+  const bateram = [], naoBateram = [];
+  funcAtivos.forEach(f => {
+    const ts = entradaPorId[f.id];
+    if (ts) {
+      const hora = new Date(ts).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+      bateram.push({ nome: f.nome, hora });
+    } else {
+      naoBateram.push(f.nome);
+    }
+  });
+
+  bateram.sort((a, b) => a.hora.localeCompare(b.hora));
+  naoBateram.sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+  return { data: hojeISO, bateram, naoBateram, totalAtivos: funcAtivos.length };
+}
+
+function construirSVGPontoHoje(dados, logoBase64) {
+  const fmtDataBR = iso => iso.split("-").reverse().join("/");
+
+  const LARGURA = 800;
+  const PAD = 44;
+  const ALT_HEADER = 200;
+  const ALT_COL_HEADER = 40;
+  const ALT_LINHA_NOME = 30;
+  const ALT_TOTAIS = 110;
+  const ALT_FOOTER = 50;
+
+  const linhas = Math.max(dados.bateram.length, dados.naoBateram.length, 1);
+  const ALTURA = ALT_HEADER + ALT_COL_HEADER + linhas * ALT_LINHA_NOME + ALT_TOTAIS + ALT_FOOTER + PAD;
+
+  const larguraTabela = LARGURA - PAD * 2;
+  const colEsquerda = PAD + larguraTabela * 0.02;
+  const colDireita  = PAD + larguraTabela * 0.54;
+  const larguraCol  = larguraTabela * 0.44;
+
+  let y = ALT_HEADER;
+
+  const cabecalhoColunas = `
+    <text x="${colEsquerda}" y="${y + 26}" font-size="13" font-weight="700" letter-spacing="1.5" fill="#7fb88a" font-family="Arial, Helvetica, sans-serif">BATERAM PONTO (${dados.bateram.length})</text>
+    <text x="${colDireita}" y="${y + 26}" font-size="13" font-weight="700" letter-spacing="1.5" fill="#ff8a80" font-family="Arial, Helvetica, sans-serif">NÃO BATERAM (${dados.naoBateram.length})</text>
+    <line x1="${PAD}" y1="${y + 36}" x2="${PAD + larguraTabela}" y2="${y + 36}" stroke="rgba(165,214,167,0.25)" stroke-width="1"/>
+  `;
+  y += ALT_COL_HEADER;
+
+  const bateramLista = dados.bateram.length > 0 ? dados.bateram : [{ nome: "—", hora: "" }];
+  const naoBateramLista = dados.naoBateram.length > 0 ? dados.naoBateram : ["—"];
+
+  const colunaBateram = bateramLista.map((item, i) => `
+    <text x="${colEsquerda}" y="${y + i * ALT_LINHA_NOME + 21}" font-size="14" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif">${escXml(item.nome)}${item.hora ? ` <tspan fill="#8fbf99" font-size="12">${item.hora}</tspan>` : ""}</text>
+  `).join("");
+  const colunaNaoBateram = naoBateramLista.map((nome, i) => `
+    <text x="${colDireita}" y="${y + i * ALT_LINHA_NOME + 21}" font-size="14" fill="#e8f5e9" font-family="Arial, Helvetica, sans-serif">${escXml(nome)}</text>
+  `).join("");
+
+  const colunas = `
+    <rect x="${PAD}" y="${y - 6}" width="${larguraCol}" height="${linhas * ALT_LINHA_NOME + 6}" fill="rgba(255,255,255,0.03)" rx="10"/>
+    <rect x="${colDireita - (colEsquerda - PAD)}" y="${y - 6}" width="${larguraCol}" height="${linhas * ALT_LINHA_NOME + 6}" fill="rgba(255,255,255,0.03)" rx="10"/>
+    ${colunaBateram}
+    ${colunaNaoBateram}
+  `;
+  y += linhas * ALT_LINHA_NOME;
+
+  const totaisY = y + 20;
+  const totaisAltura = ALT_TOTAIS - 20;
+  const blocoTotais = `
+    <rect x="${PAD}" y="${totaisY}" width="${larguraTabela}" height="${totaisAltura}" rx="16" fill="rgba(105,240,174,0.08)" stroke="rgba(105,240,174,0.35)" stroke-width="1.5"/>
+    <text x="${PAD + 28}" y="${totaisY + 34}" font-size="14" font-weight="700" letter-spacing="1" fill="#a5d6a7" font-family="Arial, Helvetica, sans-serif">TOTAL DE HOJE</text>
+    <text x="${PAD + larguraTabela - 28}" y="${totaisY + 40}" font-size="30" font-weight="800" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="end">${dados.bateram.length}/${dados.totalAtivos}</text>
+  `;
+
+  const footerY = totaisY + totaisAltura + 34;
+  const footer = `
+    <text x="${LARGURA / 2}" y="${footerY}" font-size="11" letter-spacing="1" fill="#5a8a63" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">Ponto de Hoje • Sistema GW • Gerado em ${new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</text>
+  `;
+
+  const logoW = 64, logoH = 64 * (1106 / 1422);
+
+  return `
+<svg width="${LARGURA}" height="${ALTURA}" viewBox="0 0 ${LARGURA} ${ALTURA}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#12331f"/>
+      <stop offset="45%" stop-color="#0c2417"/>
+      <stop offset="100%" stop-color="#06120b"/>
+    </linearGradient>
+    <clipPath id="logoClip"><rect x="0" y="0" width="${logoW}" height="${logoH}" rx="10"/></clipPath>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#69f0ae" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#69f0ae" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="${LARGURA}" height="${ALTURA}" fill="url(#bg)"/>
+
+  <circle cx="${LARGURA / 2}" cy="${40 + logoH / 2}" r="90" fill="url(#glow)"/>
+
+  <g transform="translate(${LARGURA / 2 - logoW / 2}, 40)">
+    <image href="data:image/png;base64,${logoBase64}" width="${logoW}" height="${logoH}" clip-path="url(#logoClip)"/>
+  </g>
+
+  <text x="${LARGURA / 2}" y="${40 + logoH + 34}" font-size="26" font-weight="800" letter-spacing="3" fill="#f1f8f2" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">GREEN WALL</text>
+  <text x="${LARGURA / 2}" y="${40 + logoH + 58}" font-size="13" font-weight="700" letter-spacing="4" fill="#69f0ae" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">PONTO DE HOJE</text>
+  <text x="${LARGURA / 2}" y="${40 + logoH + 82}" font-size="14" fill="#a5d6a7" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">${fmtDataBR(dados.data)}</text>
+
+  ${cabecalhoColunas}
+  ${colunas}
+  ${blocoTotais}
+  ${footer}
+</svg>`;
+}
+
+async function gerarImagemPontoHoje(dados) {
+  const logoBase64 = fs.readFileSync(path.join(__dirname, "Logo-gw.png")).toString("base64");
+  const svg = construirSVGPontoHoje(dados, logoBase64);
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
@@ -2354,6 +2515,32 @@ async function executarFerramenta(nome, input, apiKeyValue) {
     }
 
     return { sucesso: true, mensagem: `Imagem enviada pro grupo "${achado.grupo.subject}".`, grupoNome: achado.grupo.subject };
+  }
+
+  if (nome === "relatorio_ponto_hoje_imagem_grupo") {
+    const { nomeGrupo } = input;
+
+    const achado = await buscarGrupoWhatsAppPorNome(nomeGrupo, apiKeyValue);
+    if (achado.erro) return { sucesso: false, ...achado };
+
+    const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const dados = await calcularPontoHojeComNomes(hojeISO);
+    const buffer = await gerarImagemPontoHoje(dados);
+
+    try {
+      await enviarImagemEvolution(buffer, `ponto-${hojeISO}.png`, "Ponto de Hoje", apiKeyValue, [achado.grupo.id]);
+    } catch (err) {
+      console.error(err);
+      return { sucesso: false, erro: "falha_envio", mensagem: err.message };
+    }
+
+    return {
+      sucesso: true,
+      mensagem: `Relatório de ponto de hoje enviado pro grupo "${achado.grupo.subject}" (${dados.bateram.length}/${dados.totalAtivos} bateram ponto).`,
+      grupoNome: achado.grupo.subject,
+      bateram: dados.bateram.length,
+      totalAtivos: dados.totalAtivos
+    };
   }
 
   if (nome === "criar_contato") {
