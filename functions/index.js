@@ -234,6 +234,18 @@ const TOOLS_GW = [
     }
   },
   {
+    name: "enviar_mensagem_whatsapp_grupo",
+    description: "Manda uma mensagem de TEXTO pra um GRUPO de WhatsApp (não uma pessoa) — busca o grupo pelo nome entre os grupos que a instância do WhatsApp da GW participa. Use quando o usuário pedir pra mandar/enviar uma mensagem pra um grupo (ex: 'manda pro grupo da obra: ...', 'envia essa mensagem pro grupo Equipe Pintura'). Se nomeGrupo bater com mais de um grupo, retorna erro 'nome_ambiguo' com a lista de nomes encontrados — NUNCA escolha um por conta própria, pergunte ao usuário qual e chame de novo com o nome completo/exato. Se não bater com nenhum grupo, retorna 'grupo_nao_encontrado'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        nomeGrupo: { type: "string", description: "Nome (parcial ou completo) do grupo de WhatsApp" },
+        mensagem:  { type: "string", description: "Texto da mensagem a enviar pro grupo" }
+      },
+      required: ["nomeGrupo", "mensagem"]
+    }
+  },
+  {
     name: "criar_contato",
     description: "Cadastra UM novo contato (nome + telefone) no cadastro de Contatos do sistema — pessoas que NÃO são funcionário (ex: outro sócio, terceiro). É o cadastro que enviar_extrato_adiantamentos_whatsapp consulta quando o destinatário não é encontrado em Funcionários. Use quando o usuário pedir pra inserir/cadastrar/adicionar um contato (ex: 'Inserir contato: Horacio 81994903673', 'cadastra a Fernanda como contato, número 81999998888'). Se já existir um contato com esse mesmo nome, ATUALIZA o telefone dele em vez de criar um duplicado. Só aceita UM contato por chamada — se o usuário mandar vários de uma vez (ex: 'Inserir contato: Horacio 81994903673, Ane 81988888888, Pedro 81977777777'), chame esta ferramenta uma vez PARA CADA contato da lista. ALTERA O BANCO DE DADOS: exige o campo senha, que deve ser pedido ao usuário antes de chamar esta ferramenta.",
     input_schema: {
@@ -2287,6 +2299,51 @@ async function executarFerramenta(nome, input, apiKeyValue) {
       apenasPagos: !!apenasPagos,
       total: dados.total
     };
+  }
+
+  if (nome === "enviar_mensagem_whatsapp_grupo") {
+    const { nomeGrupo, mensagem } = input;
+
+    let grupos;
+    try {
+      const resp = await fetch(`${EVOLUTION_API_URL}/group/fetchAllGroups/${EVOLUTION_INSTANCE}?getParticipants=false`, {
+        headers: { "apikey": apiKeyValue }
+      });
+      if (!resp.ok) {
+        const respText = await resp.text();
+        return { sucesso: false, erro: "falha_listar_grupos", mensagem: `Falha ao listar grupos do WhatsApp: status ${resp.status} - ${respText.slice(0, 200)}` };
+      }
+      grupos = await resp.json();
+    } catch (err) {
+      return { sucesso: false, erro: "falha_listar_grupos", mensagem: err.message };
+    }
+
+    const alvoNorm = (nomeGrupo || "").toLowerCase().trim();
+    const encontrados = (Array.isArray(grupos) ? grupos : []).filter(g =>
+      (g.subject || "").toLowerCase().includes(alvoNorm)
+    );
+
+    if (encontrados.length === 0) {
+      return { sucesso: false, erro: "grupo_nao_encontrado", mensagem: `Nenhum grupo de WhatsApp chamado "${nomeGrupo}" encontrado entre os grupos que a instância participa.` };
+    }
+    if (encontrados.length > 1) {
+      return {
+        sucesso: false,
+        erro: "nome_ambiguo",
+        mensagem: `Mais de um grupo bate com "${nomeGrupo}" — pergunte ao usuário qual deles e chame de novo com o nome completo/exato.`,
+        nomesEncontrados: encontrados.map(g => g.subject)
+      };
+    }
+
+    const grupo = encontrados[0];
+    try {
+      await enviarWhatsAppEvolution(mensagem, apiKeyValue, [grupo.id]);
+    } catch (err) {
+      console.error(err);
+      return { sucesso: false, erro: "falha_envio", mensagem: err.message };
+    }
+
+    return { sucesso: true, mensagem: `Mensagem enviada pro grupo "${grupo.subject}".`, grupoNome: grupo.subject };
   }
 
   if (nome === "criar_contato") {
