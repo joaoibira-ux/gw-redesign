@@ -246,6 +246,19 @@ const TOOLS_GW = [
     }
   },
   {
+    name: "enviar_imagem_whatsapp_grupo",
+    description: "Manda uma IMAGEM (foto que o usuário mandou pro assistente, já salva automaticamente com uma URL — ver '[DOCUMENTO RECEBIDO EM IMAGEM]' no histórico) pra um GRUPO de WhatsApp — busca o grupo pelo nome entre os grupos que a instância do WhatsApp da GW participa. Use quando o usuário mandar uma foto e pedir pra repassar/encaminhar/mandar ela pra um grupo (ex: usuário manda uma foto e escreve 'manda isso pro grupo da obra'). NUNCA invente uma imagemUrl — use exatamente a URL que veio no histórico da imagem recebida. Se nomeGrupo bater com mais de um grupo, retorna erro 'nome_ambiguo' com a lista de nomes encontrados — NUNCA escolha um por conta própria, pergunte ao usuário qual e chame de novo. Se não bater com nenhum grupo, retorna 'grupo_nao_encontrado'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        imagemUrl: { type: "string", description: "URL exata da imagem (veio no histórico quando a imagem foi recebida — nunca invente)" },
+        nomeGrupo: { type: "string", description: "Nome (parcial ou completo) do grupo de WhatsApp" },
+        legenda:   { type: "string", description: "Legenda opcional pra acompanhar a imagem" }
+      },
+      required: ["imagemUrl", "nomeGrupo"]
+    }
+  },
+  {
     name: "criar_contato",
     description: "Cadastra UM novo contato (nome + telefone) no cadastro de Contatos do sistema — pessoas que NÃO são funcionário (ex: outro sócio, terceiro). É o cadastro que enviar_extrato_adiantamentos_whatsapp consulta quando o destinatário não é encontrado em Funcionários. Use quando o usuário pedir pra inserir/cadastrar/adicionar um contato (ex: 'Inserir contato: Horacio 81994903673', 'cadastra a Fernanda como contato, número 81999998888'). Se já existir um contato com esse mesmo nome, ATUALIZA o telefone dele em vez de criar um duplicado. Só aceita UM contato por chamada — se o usuário mandar vários de uma vez (ex: 'Inserir contato: Horacio 81994903673, Ane 81988888888, Pedro 81977777777'), chame esta ferramenta uma vez PARA CADA contato da lista. ALTERA O BANCO DE DADOS: exige o campo senha, que deve ser pedido ao usuário antes de chamar esta ferramenta.",
     input_schema: {
@@ -2304,46 +2317,43 @@ async function executarFerramenta(nome, input, apiKeyValue) {
   if (nome === "enviar_mensagem_whatsapp_grupo") {
     const { nomeGrupo, mensagem } = input;
 
-    let grupos;
+    const achado = await buscarGrupoWhatsAppPorNome(nomeGrupo, apiKeyValue);
+    if (achado.erro) return { sucesso: false, ...achado };
+
     try {
-      const resp = await fetch(`${EVOLUTION_API_URL}/group/fetchAllGroups/${EVOLUTION_INSTANCE}?getParticipants=false`, {
-        headers: { "apikey": apiKeyValue }
-      });
-      if (!resp.ok) {
-        const respText = await resp.text();
-        return { sucesso: false, erro: "falha_listar_grupos", mensagem: `Falha ao listar grupos do WhatsApp: status ${resp.status} - ${respText.slice(0, 200)}` };
-      }
-      grupos = await resp.json();
-    } catch (err) {
-      return { sucesso: false, erro: "falha_listar_grupos", mensagem: err.message };
-    }
-
-    const alvoNorm = (nomeGrupo || "").toLowerCase().trim();
-    const encontrados = (Array.isArray(grupos) ? grupos : []).filter(g =>
-      (g.subject || "").toLowerCase().includes(alvoNorm)
-    );
-
-    if (encontrados.length === 0) {
-      return { sucesso: false, erro: "grupo_nao_encontrado", mensagem: `Nenhum grupo de WhatsApp chamado "${nomeGrupo}" encontrado entre os grupos que a instância participa.` };
-    }
-    if (encontrados.length > 1) {
-      return {
-        sucesso: false,
-        erro: "nome_ambiguo",
-        mensagem: `Mais de um grupo bate com "${nomeGrupo}" — pergunte ao usuário qual deles e chame de novo com o nome completo/exato.`,
-        nomesEncontrados: encontrados.map(g => g.subject)
-      };
-    }
-
-    const grupo = encontrados[0];
-    try {
-      await enviarWhatsAppEvolution(mensagem, apiKeyValue, [grupo.id]);
+      await enviarWhatsAppEvolution(mensagem, apiKeyValue, [achado.grupo.id]);
     } catch (err) {
       console.error(err);
       return { sucesso: false, erro: "falha_envio", mensagem: err.message };
     }
 
-    return { sucesso: true, mensagem: `Mensagem enviada pro grupo "${grupo.subject}".`, grupoNome: grupo.subject };
+    return { sucesso: true, mensagem: `Mensagem enviada pro grupo "${achado.grupo.subject}".`, grupoNome: achado.grupo.subject };
+  }
+
+  if (nome === "enviar_imagem_whatsapp_grupo") {
+    const { imagemUrl, nomeGrupo, legenda } = input;
+    if (!imagemUrl) return { sucesso: false, erro: "parametros_invalidos", mensagem: "imagemUrl é obrigatória — use a URL exata que veio no histórico da imagem recebida." };
+
+    const achado = await buscarGrupoWhatsAppPorNome(nomeGrupo, apiKeyValue);
+    if (achado.erro) return { sucesso: false, ...achado };
+
+    let buffer;
+    try {
+      const respImg = await fetch(imagemUrl);
+      if (!respImg.ok) return { sucesso: false, erro: "falha_baixar_imagem", mensagem: `Não consegui baixar a imagem (status ${respImg.status}).` };
+      buffer = Buffer.from(await respImg.arrayBuffer());
+    } catch (err) {
+      return { sucesso: false, erro: "falha_baixar_imagem", mensagem: err.message };
+    }
+
+    try {
+      await enviarImagemEvolution(buffer, "imagem.jpg", legenda || "", apiKeyValue, [achado.grupo.id]);
+    } catch (err) {
+      console.error(err);
+      return { sucesso: false, erro: "falha_envio", mensagem: err.message };
+    }
+
+    return { sucesso: true, mensagem: `Imagem enviada pro grupo "${achado.grupo.subject}".`, grupoNome: achado.grupo.subject };
   }
 
   if (nome === "criar_contato") {
@@ -3431,8 +3441,8 @@ async function processarBoletoImagem(msg, imgMsg, apiKeyValue) {
   }
 
   if (!dados) {
-    return `[DOCUMENTO RECEBIDO EM IMAGEM]
-A imagem foi recebida e salva em: ${boletoUrl}, mas não foi possível identificar os dados do documento automaticamente (foto ilegível, ou não parece ser um boleto/comprovante). Peça ao usuário pra informar manualmente descrição, valor e data de vencimento.`;
+    return `[IMAGEM RECEBIDA]
+A imagem foi recebida e salva em: ${boletoUrl}. Não foi possível identificar dados de boleto/comprovante nela (foto ilegível, ou não parece ser um documento financeiro) — se o usuário quis registrar uma conta a pagar, peça pra informar manualmente descrição, valor e data de vencimento. Se o usuário pediu pra ENCAMINHAR/REPASSAR/MANDAR essa imagem pra um grupo do WhatsApp, use enviar_imagem_whatsapp_grupo com imagemUrl="${boletoUrl}" (nunca invente outra URL).`;
   }
 
   return `[DOCUMENTO RECEBIDO EM IMAGEM]
@@ -4400,6 +4410,45 @@ function linhaContaPagar(c) {
 // Manda pra todos os "destinatarios"; se algum falhar, tenta os outros
 // mesmo assim e só lança erro no final (evita 1 número quebrado silenciar
 // o aviso pros demais).
+// Busca um grupo de WhatsApp pelo nome (parcial, case-insensitive) entre os
+// grupos que a instância "gw" participa — usado pelas ferramentas de
+// mandar texto/imagem pra grupo. Retorna { grupo } se achar exatamente um,
+// ou { erro, mensagem, nomesEncontrados? } no mesmo formato de retorno das
+// ferramentas (pra devolver direto pro agenteGW).
+async function buscarGrupoWhatsAppPorNome(nomeGrupo, apiKeyValue) {
+  let grupos;
+  try {
+    const resp = await fetch(`${EVOLUTION_API_URL}/group/fetchAllGroups/${EVOLUTION_INSTANCE}?getParticipants=false`, {
+      headers: { "apikey": apiKeyValue }
+    });
+    if (!resp.ok) {
+      const respText = await resp.text();
+      return { erro: "falha_listar_grupos", mensagem: `Falha ao listar grupos do WhatsApp: status ${resp.status} - ${respText.slice(0, 200)}` };
+    }
+    grupos = await resp.json();
+  } catch (err) {
+    return { erro: "falha_listar_grupos", mensagem: err.message };
+  }
+
+  const alvoNorm = (nomeGrupo || "").toLowerCase().trim();
+  const encontrados = (Array.isArray(grupos) ? grupos : []).filter(g =>
+    (g.subject || "").toLowerCase().includes(alvoNorm)
+  );
+
+  if (encontrados.length === 0) {
+    return { erro: "grupo_nao_encontrado", mensagem: `Nenhum grupo de WhatsApp chamado "${nomeGrupo}" encontrado entre os grupos que a instância participa.` };
+  }
+  if (encontrados.length > 1) {
+    return {
+      erro: "nome_ambiguo",
+      mensagem: `Mais de um grupo bate com "${nomeGrupo}" — pergunte ao usuário qual deles e chame de novo com o nome completo/exato.`,
+      nomesEncontrados: encontrados.map(g => g.subject)
+    };
+  }
+
+  return { grupo: encontrados[0] };
+}
+
 async function enviarWhatsAppEvolution(texto, apiKeyValue, destinatarios = EVOLUTION_DESTINATARIOS) {
   if (WHATSAPP_INDISPONIVEL) {
     const textoComDestino = `📤 Enviar por WhatsApp para: ${destinatarios.join(", ")}\n\n${texto}`;
