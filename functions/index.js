@@ -3754,6 +3754,7 @@ Depois que extrato_refeicoes_imagem enviar a imagem com sucesso, pergunte ao usu
 Se o usuário pedir o detalhamento/extrato dos serviços de UM funcionário na folha de pagamento (ex: "manda a folha do Geryson", "quanto foi pago pro Paulo nessa última folha, em imagem"), use extrato_folha_funcionario_imagem em vez de tentar montar a tabela de memória. Se a ferramenta retornar erro "nome_ambiguo" (nome bate com mais de um funcionário, ex: "Paulo" -> "Paulo Ricardo" e "Gustavo Paulo"), NUNCA escolha um dos dois sozinho — mostre a lista de nomes encontrados e pergunte qual o usuário quis dizer antes de chamar de novo com o nome completo.
 Se o usuário pedir os adiantamentos/vales/dívida de UM funcionário (ex: "manda os adiantamentos do Leonardo", "quanto o Marcos ainda deve de adiantamento"), use extrato_adiantamentos_funcionario_imagem — ela já junta os dois tipos de adiantamento (lançado direto no caixa e solicitado em Funcionários/pago via Contas a Pagar). Por padrão (não informe apenasPagos) ela manda só os AINDA EM ABERTO, que é o que o usuário quer na grande maioria dos casos. Só chame com apenasPagos:true se o usuário pedir explicitamente os já pagos/quitados/descontados (ex: "manda os que já foram pagos", "os adiantamentos já descontados do Leonardo"). Mesmo tratamento de "nome_ambiguo" do item acima se aplica aqui.
 Se o usuário pedir pra ENVIAR/MANDAR os adiantamentos de alguém PARA OUTRA PESSOA por WhatsApp (ex: "envia pro Lucas os adiantamentos do Leonardo André", "manda por whatsapp pro Marcos os adiantamentos em aberto do Paulo"), use enviar_extrato_adiantamentos_whatsapp em vez de extrato_adiantamentos_funcionario_imagem — funcionarioNome é de quem são os adiantamentos, destinatarioNome é quem vai receber a mensagem; NUNCA peça o número de telefone ao usuário, a ferramenta busca sozinha (primeiro em Funcionários, depois em Contatos se não achar), e ela já manda automaticamente uma cópia pro número fixo do responsável, não precisa pedir nem avisar isso. Se vier erro "destinatario_nao_encontrado", avise o usuário que não achou esse nome nem em Funcionários nem em Contatos, e sugira cadastrar a pessoa em Contatos antes de tentar de novo.
+Se a mensagem do usuário vier prefixada com "[Mensagem recebida DENTRO do grupo de WhatsApp "NOME"...]", isso é uma marcação automática do sistema avisando que essa conversa está acontecendo DENTRO daquele grupo de WhatsApp — não é algo que o usuário escreveu nem repita isso na resposta. Use esse nome sempre que o usuário se referir a "esse grupo", "esse grupo aqui", "esse WhatsApp" etc, sem perguntar qual grupo é.
 Se o usuário pedir um resumo das conversas de um GRUPO de WhatsApp (ex: "envia pro Horacio o resumo das conversas de hoje do grupo sistema gw", "resume o que rolou no grupo da obra ontem"), use resumir_conversas_grupo_whatsapp — se vier destinatarioNome, ela já envia o resumo por WhatsApp pra essa pessoa (telefone buscado automaticamente, não precisa perguntar) e você só confirma o envio; se o usuário só quiser LER o resumo aqui mesmo na conversa, sem mandar pra ninguém, chame sem destinatarioNome e mostre o campo "resumo" do resultado diretamente. Datas relativas ("hoje", "ontem") você mesmo converte pra AAAA-MM-DD no campo "data" antes de chamar (padrão já é hoje se omitir).
 Se o usuário pedir pra inserir/cadastrar/adicionar um contato (ex: "Inserir contato: Horacio 81994903673", "cadastra a Fernanda como contato, número 81999998888"), use criar_contato — nome e telefone geralmente vêm juntos na mesma frase, extraia os dois automaticamente sem precisar perguntar de novo (a menos que realmente não dê pra identificar qual parte é o nome e qual é o telefone). Como toda ferramenta que altera o banco, exige senha. Se vier mais de um contato na mesma mensagem, separados por vírgula ou quebra de linha (ex: "Inserir contato: Horacio 81994903673, Ane 81988888888, Pedro 81977777777"), extraia cada par nome+telefone e chame criar_contato UMA VEZ PARA CADA UM — nunca junte todos numa única chamada nem cadastre só o primeiro.
 Para editar ou excluir um lançamento do caixa, use consultar_caixa primeiro para encontrar o id correto e confirme com o usuário qual lançamento é (data, descrição e valor) antes de aplicar a alteração.
@@ -3893,7 +3894,7 @@ async function passadaPollingWhatsApp(apiKeyValue) {
   // bate fetchAllGroups?getParticipants=true na Evolution o tempo todo e
   // derrubou a instância em "rate-overlimit", quebrando OUTRAS ferramentas
   // (ex: resumir_conversas_grupo_whatsapp) que também dependem dela.
-  const { grupoJid, lidAgenteGrupo } = await resolverGrupoDesignadoComCache(apiKeyValue);
+  const { grupoJid, lidAgenteGrupo, grupoNome } = await resolverGrupoDesignadoComCache(apiKeyValue);
 
   function mencionaAgente(msg) {
     // O contextInfo vem no nível raiz da mensagem (não dentro de
@@ -3943,7 +3944,13 @@ async function passadaPollingWhatsApp(apiKeyValue) {
     // Remove a marcação "@5581992114764" (ou variação) que o WhatsApp
     // embute no texto quando o remetente menciona o bot no grupo — o
     // modelo não precisa ver isso, só o conteúdo real da pergunta/pedido.
-    if (ehGrupo) texto = texto.replace(/@\d{10,15}\b/g, "").trim();
+    // E avisa em qual grupo a mensagem chegou, senão o modelo não tem como
+    // saber o que "esse grupo aqui"/"esse grupo" significa e fica perguntando
+    // o nome de volta (achado ao vivo, 2026-10-10).
+    if (ehGrupo) {
+      texto = texto.replace(/@\d{10,15}\b/g, "").trim();
+      texto = `[Mensagem recebida DENTRO do grupo de WhatsApp "${grupoNome || GRUPO_AGENTE_WHATSAPP_NOME}" — se o usuário disser "esse grupo", "esse grupo aqui" ou similar, é ESTE grupo] ${texto}`;
+    }
 
     // Boletos encaminhados/enviados como documento chegam em
     // msg.message.documentMessage — ou, quando encaminhados com legenda,
@@ -4775,25 +4782,27 @@ async function resolverGrupoDesignadoComCache(apiKeyValue) {
   const cache = snap.exists ? snap.data() : null;
 
   if (cache && cache.resolvidoEm && (Date.now() - cache.resolvidoEm) < CACHE_GRUPO_DESIGNADO_MS) {
-    return { grupoJid: cache.grupoJid || null, lidAgenteGrupo: cache.lidAgenteGrupo || null };
+    return { grupoJid: cache.grupoJid || null, lidAgenteGrupo: cache.lidAgenteGrupo || null, grupoNome: cache.grupoNome || null };
   }
 
   try {
     const achadoGrupo = await buscarGrupoWhatsAppPorNome(GRUPO_AGENTE_WHATSAPP_NOME, apiKeyValue, true);
     let grupoJid = null;
     let lidAgenteGrupo = null;
+    let grupoNome = null;
     if (achadoGrupo.grupo) {
       grupoJid = achadoGrupo.grupo.id;
+      grupoNome = achadoGrupo.grupo.subject || null;
       const participantes = achadoGrupo.grupo.participants || [];
       const alvoNumGrupoNorm = normalizarNumeroBR(NUMERO_MENCAO_AGENTE_GRUPO);
       const participanteAgente = participantes.find(p => normalizarNumeroBR((p.phoneNumber || "").split("@")[0]) === alvoNumGrupoNorm);
       if (participanteAgente) lidAgenteGrupo = (participanteAgente.id || "").split("@")[0];
     }
-    await ref.set({ grupoJid, lidAgenteGrupo, resolvidoEm: Date.now() });
-    return { grupoJid, lidAgenteGrupo };
+    await ref.set({ grupoJid, lidAgenteGrupo, grupoNome, resolvidoEm: Date.now() });
+    return { grupoJid, lidAgenteGrupo, grupoNome };
   } catch (e) {
     logger.error("[resolverGrupoDesignadoComCache] falha ao resolver, usando cache antigo se houver", { erro: e.message });
-    return { grupoJid: (cache && cache.grupoJid) || null, lidAgenteGrupo: (cache && cache.lidAgenteGrupo) || null };
+    return { grupoJid: (cache && cache.grupoJid) || null, lidAgenteGrupo: (cache && cache.lidAgenteGrupo) || null, grupoNome: (cache && cache.grupoNome) || null };
   }
 }
 
