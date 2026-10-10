@@ -42,6 +42,16 @@ const NUMERO_AGENTE_WHATSAPP = "5581992114764";
 // o JID, que muda se o grupo for recriado).
 const GRUPO_AGENTE_WHATSAPP_NOME = "sistema gw";
 
+// Como a instância Evolution roda no próprio número pessoal do João (linha
+// 34-36 acima), não existe um "contato do bot" de verdade pra mencionar
+// dentro do grupo — não dá pra mencionar a si mesmo como gatilho. Por isso
+// o João usa o contato "GW 7015" (salvo com esse número) como o "endereço"
+// que ele marca no grupo pra acionar o assistente. Resolvido pra LID a cada
+// passada via lista de participantes do grupo, porque esse grupo usa
+// addressingMode "lid" (WhatsApp manda o mentionedJid como @lid, não como
+// número de telefone — achado ao vivo, 2026-10-09).
+const NUMERO_MENCAO_AGENTE_GRUPO = "558192247015";
+
 // O JID do WhatsApp às vezes vem sem o "9" extra dos celulares brasileiros
 // (ex: 558192114764 em vez de 5581992114764) — normaliza os dois lados antes
 // de comparar números, senão a checagem de remetente nunca bate.
@@ -271,6 +281,19 @@ const TOOLS_GW = [
       type: "object",
       properties: {
         nomeGrupo: { type: "string", description: "Nome (parcial ou completo) do grupo de WhatsApp" }
+      },
+      required: ["nomeGrupo"]
+    }
+  },
+  {
+    name: "resumir_conversas_grupo_whatsapp",
+    description: "Lê as mensagens de TEXTO de um GRUPO de WhatsApp num dia específico (padrão: hoje) e gera um resumo em português dos assuntos tratados — busca o grupo pelo nome entre os grupos que a instância do WhatsApp da GW participa. Se destinatarioNome for informado, ENVIA o resumo por WhatsApp pra essa pessoa (telefone buscado automaticamente, igual enviar_extrato_adiantamentos_whatsapp — primeiro em Funcionários, depois em Contatos) e manda cópia automática pro número fixo do responsável. Se destinatarioNome NÃO for informado, a ferramenta só RETORNA o texto do resumo (no campo 'resumo') pra você mostrar direto na conversa atual — não envia nada por WhatsApp nesse caso. Use quando o usuário pedir um resumo/resumão das conversas de um grupo (ex: 'envia pro Horacio o resumo das conversas de hoje do grupo sistema gw', 'resume o que rolou hoje no grupo da obra', 'o que foi discutido ontem no grupo X'). Se nomeGrupo bater com mais de um grupo, retorna erro 'nome_ambiguo' com a lista de nomes encontrados — NUNCA escolha um por conta própria, pergunte ao usuário qual e chame de novo com o nome completo/exato. Se não bater com nenhum grupo, retorna 'grupo_nao_encontrado'. Se destinatarioNome não bater com ninguém em Funcionários nem Contatos, retorna 'destinatario_nao_encontrado'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        nomeGrupo: { type: "string", description: "Nome (parcial ou completo) do grupo de WhatsApp" },
+        destinatarioNome: { type: "string", description: "Nome de quem vai RECEBER o resumo por WhatsApp — o telefone é buscado automaticamente. Se omitido, o resumo é só retornado pra ser mostrado na conversa atual, sem enviar nada por WhatsApp." },
+        data: { type: "string", description: "Data no formato AAAA-MM-DD. Se omitido, usa o dia de hoje." }
       },
       required: ["nomeGrupo"]
     }
@@ -2497,6 +2520,68 @@ async function executarFerramenta(nome, input, apiKeyValue) {
     return { sucesso: true, mensagem: `Mensagem enviada pro grupo "${achado.grupo.subject}".`, grupoNome: achado.grupo.subject };
   }
 
+  if (nome === "resumir_conversas_grupo_whatsapp") {
+    const { nomeGrupo, destinatarioNome, data } = input;
+
+    const achadoGrupo = await buscarGrupoWhatsAppPorNome(nomeGrupo, apiKeyValue);
+    if (achadoGrupo.erro) return { sucesso: false, ...achadoGrupo };
+
+    const diaISO = data || new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+
+    let mensagens;
+    try {
+      mensagens = await buscarMensagensGrupoDia(achadoGrupo.grupo.id, diaISO, apiKeyValue);
+    } catch (err) {
+      console.error(err);
+      return { sucesso: false, erro: "falha_busca_mensagens", mensagem: err.message };
+    }
+
+    let resumo;
+    try {
+      resumo = await gerarResumoConversaGrupo(mensagens, achadoGrupo.grupo.subject, diaISO);
+    } catch (err) {
+      console.error(err);
+      return { sucesso: false, erro: "falha_resumo", mensagem: err.message };
+    }
+
+    if (!destinatarioNome) {
+      return { sucesso: true, grupoNome: achadoGrupo.grupo.subject, data: diaISO, totalMensagens: mensagens.length, resumo };
+    }
+
+    const dest = await buscarTelefoneDestinatario(destinatarioNome);
+    if (dest.erro === "destinatario_nao_encontrado") {
+      return { sucesso: false, erro: "destinatario_nao_encontrado", mensagem: `Nenhum funcionário nem contato chamado "${destinatarioNome}" encontrado pra enviar. Se for alguém que não é funcionário, cadastre em Contatos primeiro.` };
+    }
+    if (dest.erro === "nome_ambiguo") {
+      return {
+        sucesso: false,
+        erro: "nome_ambiguo",
+        mensagem: `Mais de um nome bate com "${destinatarioNome}" — pergunte ao usuário qual dos dois e chame de novo com o nome completo.`,
+        nomesEncontrados: dest.nomesEncontrados
+      };
+    }
+    if (dest.erro === "sem_telefone") {
+      return { sucesso: false, erro: "sem_telefone", mensagem: `${dest.nome} não tem telefone cadastrado.` };
+    }
+
+    try {
+      const destinatarios = [...new Set([dest.telefone, WHATSAPP_DESTINO])];
+      await enviarWhatsAppEvolution(`Resumo do grupo "${achadoGrupo.grupo.subject}" — ${diaISO}\n\n${resumo}`, apiKeyValue, destinatarios);
+    } catch (err) {
+      console.error(err);
+      return { sucesso: false, erro: "falha_envio", mensagem: err.message };
+    }
+
+    return {
+      sucesso: true,
+      mensagem: `Resumo enviado por WhatsApp para ${dest.nome} e em cópia para o número fixo do responsável.`,
+      grupoNome: achadoGrupo.grupo.subject,
+      destinatarioNome: dest.nome,
+      data: diaISO,
+      totalMensagens: mensagens.length
+    };
+  }
+
   if (nome === "enviar_imagem_whatsapp_grupo") {
     const { imagemUrl, nomeGrupo, legenda } = input;
     if (!imagemUrl) return { sucesso: false, erro: "parametros_invalidos", mensagem: "imagemUrl é obrigatória — use a URL exata que veio no histórico da imagem recebida." };
@@ -3669,6 +3754,7 @@ Depois que extrato_refeicoes_imagem enviar a imagem com sucesso, pergunte ao usu
 Se o usuário pedir o detalhamento/extrato dos serviços de UM funcionário na folha de pagamento (ex: "manda a folha do Geryson", "quanto foi pago pro Paulo nessa última folha, em imagem"), use extrato_folha_funcionario_imagem em vez de tentar montar a tabela de memória. Se a ferramenta retornar erro "nome_ambiguo" (nome bate com mais de um funcionário, ex: "Paulo" -> "Paulo Ricardo" e "Gustavo Paulo"), NUNCA escolha um dos dois sozinho — mostre a lista de nomes encontrados e pergunte qual o usuário quis dizer antes de chamar de novo com o nome completo.
 Se o usuário pedir os adiantamentos/vales/dívida de UM funcionário (ex: "manda os adiantamentos do Leonardo", "quanto o Marcos ainda deve de adiantamento"), use extrato_adiantamentos_funcionario_imagem — ela já junta os dois tipos de adiantamento (lançado direto no caixa e solicitado em Funcionários/pago via Contas a Pagar). Por padrão (não informe apenasPagos) ela manda só os AINDA EM ABERTO, que é o que o usuário quer na grande maioria dos casos. Só chame com apenasPagos:true se o usuário pedir explicitamente os já pagos/quitados/descontados (ex: "manda os que já foram pagos", "os adiantamentos já descontados do Leonardo"). Mesmo tratamento de "nome_ambiguo" do item acima se aplica aqui.
 Se o usuário pedir pra ENVIAR/MANDAR os adiantamentos de alguém PARA OUTRA PESSOA por WhatsApp (ex: "envia pro Lucas os adiantamentos do Leonardo André", "manda por whatsapp pro Marcos os adiantamentos em aberto do Paulo"), use enviar_extrato_adiantamentos_whatsapp em vez de extrato_adiantamentos_funcionario_imagem — funcionarioNome é de quem são os adiantamentos, destinatarioNome é quem vai receber a mensagem; NUNCA peça o número de telefone ao usuário, a ferramenta busca sozinha (primeiro em Funcionários, depois em Contatos se não achar), e ela já manda automaticamente uma cópia pro número fixo do responsável, não precisa pedir nem avisar isso. Se vier erro "destinatario_nao_encontrado", avise o usuário que não achou esse nome nem em Funcionários nem em Contatos, e sugira cadastrar a pessoa em Contatos antes de tentar de novo.
+Se o usuário pedir um resumo das conversas de um GRUPO de WhatsApp (ex: "envia pro Horacio o resumo das conversas de hoje do grupo sistema gw", "resume o que rolou no grupo da obra ontem"), use resumir_conversas_grupo_whatsapp — se vier destinatarioNome, ela já envia o resumo por WhatsApp pra essa pessoa (telefone buscado automaticamente, não precisa perguntar) e você só confirma o envio; se o usuário só quiser LER o resumo aqui mesmo na conversa, sem mandar pra ninguém, chame sem destinatarioNome e mostre o campo "resumo" do resultado diretamente. Datas relativas ("hoje", "ontem") você mesmo converte pra AAAA-MM-DD no campo "data" antes de chamar (padrão já é hoje se omitir).
 Se o usuário pedir pra inserir/cadastrar/adicionar um contato (ex: "Inserir contato: Horacio 81994903673", "cadastra a Fernanda como contato, número 81999998888"), use criar_contato — nome e telefone geralmente vêm juntos na mesma frase, extraia os dois automaticamente sem precisar perguntar de novo (a menos que realmente não dê pra identificar qual parte é o nome e qual é o telefone). Como toda ferramenta que altera o banco, exige senha. Se vier mais de um contato na mesma mensagem, separados por vírgula ou quebra de linha (ex: "Inserir contato: Horacio 81994903673, Ane 81988888888, Pedro 81977777777"), extraia cada par nome+telefone e chame criar_contato UMA VEZ PARA CADA UM — nunca junte todos numa única chamada nem cadastre só o primeiro.
 Para editar ou excluir um lançamento do caixa, use consultar_caixa primeiro para encontrar o id correto e confirme com o usuário qual lançamento é (data, descrição e valor) antes de aplicar a alteração.
 Para editar, dar baixa ou excluir um lançamento do Contas a Pagar, use consultar_contas_pagar primeiro para encontrar o id correto — NUNCA invente um id (ex: "1", "2", "3" não são ids válidos, só o id exato que consultar_contas_pagar retornou) — e confirme com o usuário qual lançamento é (descrição e valor atuais) antes de aplicar. Pra "dar baixa"/"marcar como pago"/"quitar", use dar_baixa_conta_pagar. Pra mudar descrição, valor ou data, use editar_conta_pagar. Pra excluir de vez (remove o lançamento, não é reversível), use excluir_conta_pagar e deixe claro pro usuário que é definitivo antes de confirmar.
@@ -3801,21 +3887,26 @@ async function passadaPollingWhatsApp(apiKeyValue) {
 
   const alvoNorm = normalizarNumeroBR(NUMERO_AGENTE_WHATSAPP);
 
-  // Resolve o JID do grupo designado pelo nome — se falhar (ex: Evolution
-  // fora do ar), segue só com a conversa individual, não trava o polling.
-  let grupoJid = null;
-  try {
-    const achadoGrupo = await buscarGrupoWhatsAppPorNome(GRUPO_AGENTE_WHATSAPP_NOME, apiKeyValue);
-    if (achadoGrupo.grupo) grupoJid = achadoGrupo.grupo.id;
-  } catch (e) {
-    logger.error("[pollingAgenteWhatsApp] falha ao resolver grupo designado", { erro: e.message });
-  }
+  // Resolve o JID do grupo designado + a LID do contato "GW 7015" (o alvo
+  // da menção) — com cache em Firestore (30min), não a cada passada. Achado
+  // ao vivo, 2026-10-10: resolver isso toda passada (1x/minuto, pra sempre)
+  // bate fetchAllGroups?getParticipants=true na Evolution o tempo todo e
+  // derrubou a instância em "rate-overlimit", quebrando OUTRAS ferramentas
+  // (ex: resumir_conversas_grupo_whatsapp) que também dependem dela.
+  const { grupoJid, lidAgenteGrupo } = await resolverGrupoDesignadoComCache(apiKeyValue);
 
   function mencionaAgente(msg) {
-    const ctx = msg.message && msg.message.extendedTextMessage && msg.message.extendedTextMessage.contextInfo;
+    // O contextInfo vem no nível raiz da mensagem (não dentro de
+    // message.extendedTextMessage como em mensagens individuais) —
+    // achado ao vivo, 2026-10-09.
+    const ctx = msg.contextInfo || (msg.message && msg.message.extendedTextMessage && msg.message.extendedTextMessage.contextInfo);
     const mentioned = ctx && ctx.mentionedJid;
     if (!Array.isArray(mentioned)) return false;
-    return mentioned.some(jid => normalizarNumeroBR((jid || "").split("@")[0]) === alvoNorm);
+    return mentioned.some(jid => {
+      const [id, dominio] = (jid || "").split("@");
+      if (dominio === "lid") return !!lidAgenteGrupo && id === lidAgenteGrupo;
+      return normalizarNumeroBR(id) === normalizarNumeroBR(NUMERO_MENCAO_AGENTE_GRUPO);
+    });
   }
 
   const novas = mensagens
@@ -4637,10 +4728,10 @@ function linhaContaPagar(c) {
 // mandar texto/imagem pra grupo. Retorna { grupo } se achar exatamente um,
 // ou { erro, mensagem, nomesEncontrados? } no mesmo formato de retorno das
 // ferramentas (pra devolver direto pro agenteGW).
-async function buscarGrupoWhatsAppPorNome(nomeGrupo, apiKeyValue) {
+async function buscarGrupoWhatsAppPorNome(nomeGrupo, apiKeyValue, getParticipants) {
   let grupos;
   try {
-    const resp = await fetch(`${EVOLUTION_API_URL}/group/fetchAllGroups/${EVOLUTION_INSTANCE}?getParticipants=false`, {
+    const resp = await fetch(`${EVOLUTION_API_URL}/group/fetchAllGroups/${EVOLUTION_INSTANCE}?getParticipants=${getParticipants ? "true" : "false"}`, {
       headers: { "apikey": apiKeyValue }
     });
     if (!resp.ok) {
@@ -4669,6 +4760,121 @@ async function buscarGrupoWhatsAppPorNome(nomeGrupo, apiKeyValue) {
   }
 
   return { grupo: encontrados[0] };
+}
+
+const CACHE_GRUPO_DESIGNADO_MS = 30 * 60 * 1000;
+
+// Resolve o JID do grupo designado (GRUPO_AGENTE_WHATSAPP_NOME) e a LID do
+// contato-alvo da menção (NUMERO_MENCAO_AGENTE_GRUPO) dentro dele, com cache
+// em Firestore — evita bater fetchAllGroups?getParticipants=true (chamada
+// pesada) na Evolution a cada passada do polling (1x/minuto). Se a Evolution
+// falhar e houver cache antigo, usa o cache antigo em vez de quebrar.
+async function resolverGrupoDesignadoComCache(apiKeyValue) {
+  const ref = db.collection("agenteWhatsappPolling").doc("grupoDesignado");
+  const snap = await ref.get();
+  const cache = snap.exists ? snap.data() : null;
+
+  if (cache && cache.resolvidoEm && (Date.now() - cache.resolvidoEm) < CACHE_GRUPO_DESIGNADO_MS) {
+    return { grupoJid: cache.grupoJid || null, lidAgenteGrupo: cache.lidAgenteGrupo || null };
+  }
+
+  try {
+    const achadoGrupo = await buscarGrupoWhatsAppPorNome(GRUPO_AGENTE_WHATSAPP_NOME, apiKeyValue, true);
+    let grupoJid = null;
+    let lidAgenteGrupo = null;
+    if (achadoGrupo.grupo) {
+      grupoJid = achadoGrupo.grupo.id;
+      const participantes = achadoGrupo.grupo.participants || [];
+      const alvoNumGrupoNorm = normalizarNumeroBR(NUMERO_MENCAO_AGENTE_GRUPO);
+      const participanteAgente = participantes.find(p => normalizarNumeroBR((p.phoneNumber || "").split("@")[0]) === alvoNumGrupoNorm);
+      if (participanteAgente) lidAgenteGrupo = (participanteAgente.id || "").split("@")[0];
+    }
+    await ref.set({ grupoJid, lidAgenteGrupo, resolvidoEm: Date.now() });
+    return { grupoJid, lidAgenteGrupo };
+  } catch (e) {
+    logger.error("[resolverGrupoDesignadoComCache] falha ao resolver, usando cache antigo se houver", { erro: e.message });
+    return { grupoJid: (cache && cache.grupoJid) || null, lidAgenteGrupo: (cache && cache.lidAgenteGrupo) || null };
+  }
+}
+
+// Busca TODAS as mensagens de TEXTO de um grupo num dia específico (horário
+// de Brasília) — pagina o /chat/findMessages com filtro "where.key.remoteJid"
+// (achado ao vivo, 2026-10-10: sem esse filtro o endpoint só devolve as ~50
+// mensagens mais recentes de TODAS as conversas misturadas, não dá pra
+// confiar que cobre o dia inteiro de um grupo específico). Mensagens sem
+// texto (áudio, imagem sem legenda etc) viram um placeholder "[mídia]" pra
+// não quebrar o fluxo da conversa no resumo.
+async function buscarMensagensGrupoDia(grupoJid, diaISO, apiKeyValue) {
+  const registros = [];
+  let pagina = 1;
+  let totalPaginas = 1;
+  do {
+    const resp = await fetch(`${EVOLUTION_API_URL}/chat/findMessages/${EVOLUTION_INSTANCE}`, {
+      method: "POST",
+      headers: { "apikey": apiKeyValue, "Content-Type": "application/json" },
+      body: JSON.stringify({ where: { key: { remoteJid: grupoJid } }, page: pagina })
+    });
+    if (!resp.ok) throw new Error(`Evolution retornou status ${resp.status} ao buscar mensagens do grupo.`);
+    const result = await resp.json().catch(() => null);
+    const bloco = (result && result.messages) || {};
+    registros.push(...(bloco.records || []));
+    totalPaginas = bloco.pages || 1;
+    pagina++;
+  } while (pagina <= totalPaginas);
+
+  return registros
+    .filter(m => {
+      const diaMsg = new Date(m.messageTimestamp * 1000).toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+      return diaMsg === diaISO;
+    })
+    .sort((a, b) => a.messageTimestamp - b.messageTimestamp)
+    .map(m => {
+      const texto = (m.message && (
+        m.message.conversation ||
+        (m.message.extendedTextMessage && m.message.extendedTextMessage.text)
+      )) || "[mídia]";
+      return { nome: m.pushName || "Desconhecido", texto, ts: m.messageTimestamp };
+    });
+}
+
+// Gera o resumo em texto (via Claude) de uma lista de mensagens de grupo já
+// filtradas por dia — usado por resumir_conversas_grupo_whatsapp.
+async function gerarResumoConversaGrupo(mensagens, nomeGrupo, diaISO) {
+  if (mensagens.length === 0) {
+    return `Nenhuma mensagem encontrada no grupo "${nomeGrupo}" em ${diaISO}.`;
+  }
+
+  const transcricao = mensagens.map(m => `${m.nome}: ${m.texto}`).join("\n");
+  const prompt = `Resuma a conversa abaixo, do grupo de WhatsApp "${nomeGrupo}" (empresa de pintura/revestimento Green Wall), referente ao dia ${diaISO}.
+
+Escreva um resumo corrido e organizado por assunto (não liste mensagem por mensagem), em português, pronto pra ser lido no WhatsApp — sem markdown, pode usar quebras de linha e "-" pra separar tópicos. Foque em decisões, pendências, combinados e assuntos relevantes; ignore conversa fiada/irrelevante. Se não houve nada relevante, diga isso em uma frase só.
+
+CONVERSA (cada linha: "Nome: mensagem"):
+"""
+${transcricao.slice(0, 15000)}
+"""`;
+
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": anthropicApiKey.value(),
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-5",
+      max_tokens: 1024,
+      messages: [{ role: "user", content: prompt }]
+    })
+  });
+
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Claude retornou status ${resp.status} ao gerar o resumo: ${errText.slice(0, 200)}`);
+  }
+
+  const data = await resp.json();
+  return (data.content && data.content[0] && data.content[0].text) || "Não foi possível gerar o resumo.";
 }
 
 async function enviarWhatsAppEvolution(texto, apiKeyValue, destinatarios = EVOLUTION_DESTINATARIOS) {
