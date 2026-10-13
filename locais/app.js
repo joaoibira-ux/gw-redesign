@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "2.13";
+const VERSAO = "2.14";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -160,9 +160,30 @@ function abrirModalFuncionarios(localId, servicoId) {
   document.getElementById("modal-func").style.display = "flex";
 }
 
+// Etapas finais do acabamento (demão 1/2, textura, pintura de teto,
+// revisão final) exigem a senha 6535 pra REGISTRAR a execução — pedido do
+// João, 2026-10-13 (tela de Desenvolvimento). Etapas iniciais (tratamento,
+// gesso/pasta, emassamento) continuam liberadas sem senha.
+function servicoExigeSenhaRegistro(nome) {
+  const n = (nome || "").toLowerCase();
+  return /dem[aã]o/.test(n)
+    || n.includes("textura")
+    || (n.includes("pintura") && n.includes("teto"))
+    || (n.includes("revis") && n.includes("final"));
+}
+
 function confirmarExecucao(funcId, funcNome) {
   const l = locaisCache[modalLocalId];
   if (!l) { fecharModal(); return; }
+
+  const servDisp    = servicosDisponiveis.find(s => s.id === modalServicoId);
+  const nomeServico = servDisp ? servDisp.nome : "";
+  if (servicoExigeSenhaRegistro(nomeServico)) {
+    const senha = prompt(`REGISTRAR EXECUÇÃO?\n\n${nomeServico}\nExecutor: ${funcNome}\n\nDigite a senha:`);
+    if (senha === null) return;
+    if (senha !== "6535") { alert("Senha incorreta."); return; }
+  }
+
   const valorPago     = parseMoeda(document.getElementById("modal-valor").value);
   const dataPagamento = document.getElementById("modal-data").value.trim();
   const servicos = (l.servicos || []).map(s =>
