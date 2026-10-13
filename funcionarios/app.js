@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.48";
+const VERSAO = "3.49";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -305,19 +305,26 @@ async function abrirAdiantamento(id) {
 // sobrou dos dois). PIN completo libera acima de qualquer uma das duas,
 // igual já funcionava só com o limite individual.
 function renderAdiantCorpo(usado, usadoTotal) {
+  // CRÍTICO (achado ao vivo, 2026-10-13): limite/capital configurado como 0
+  // precisa TRAVAR tudo (zero disponível), não ser tratado como "sem limite
+  // configurado" — "> 0" tratava os dois casos como a mesma coisa e deixou
+  // passar adiantamentos com o Total geral disponível zerado no mesmo dia.
+  // Por isso checa se o campo EXISTE (!= null), não se o valor é positivo.
+  const limiteConfigurado  = cfgGeral.limiteAdiantamentoSemanal != null;
+  const capitalConfigurado = cfgGeral.capitalAdiantamentoSemanal != null;
   const limite       = Number(cfgGeral.limiteAdiantamentoSemanal || 0);
   const capitalTotal = Number(cfgGeral.capitalAdiantamentoSemanal || 0);
 
   const linhas = [`<div class="adiant-linha"><span>Já usado essa semana</span><strong>${fmtMoeda(usado)}</strong></div>`];
   const restas = [];
 
-  if (limite > 0) {
+  if (limiteConfigurado) {
     const restaIndividual = Math.max(0, limite - usado);
     linhas.push(`<div class="adiant-linha"><span>Limite individual</span><strong>${fmtMoeda(limite)}</strong></div>`);
     linhas.push(`<div class="adiant-linha ${restaIndividual <= 0 ? 'estourado' : ''}"><span>Resta (individual)</span><strong>${fmtMoeda(restaIndividual)}</strong></div>`);
     restas.push(restaIndividual);
   }
-  if (capitalTotal > 0) {
+  if (capitalConfigurado) {
     // Só o que ainda pode ser solicitado — pedido do João, 2026-09-25: o
     // valor total configurado (o "orçamento" da empresa) não aparece aqui,
     // só em Configurações. Aqui é o encarregado decidindo pra quem destina.
