@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.49";
+const VERSAO = "3.50";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -349,7 +349,7 @@ function renderAdiantCorpo(usado, usadoTotal) {
         <input id="adiant-valor-input" class="modal-input" type="text" inputmode="decimal" placeholder="${resta > 0 ? `Valor (R$, até ${fmtMoeda(resta)})` : 'Valor (R$) — acima do limite, liberado por PIN completo'}" />
         <div id="adiant-solicitar-erro" class="modal-erro"></div>
         <button type="button" id="adiant-btn-confirmar" class="btn-save" style="width:100%" onclick="confirmarSolicitar()">Confirmar solicitação</button>
-      </div>` : `<p class="adiant-aviso">Limite atingido (individual ou capital geral). Só o PIN completo pode liberar valor acima.</p>`}`;
+      </div>` : `<p class="adiant-aviso">Limite atingido (individual ou capital geral).</p>`}`;
 }
 
 function mostrarFormSolicitar(resta) {
