@@ -1,8 +1,8 @@
-const VERSION = "func-v55";
+const VERSION = "func-v56";
 const ASSETS = [
   "./index.html",
   "./style.css?v=17",
-  "./app.js?v=51",
+  "./app.js?v=52",
   "./manifest.json",
   "./Logo-gw.png"
 ];

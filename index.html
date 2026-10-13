@@ -646,7 +646,7 @@
     // Substituído por um alerta (Cloud Function alertaSaidaEmAberto) que
     // avisa quem esqueceu, em vez de inventar um horário.
 
-    const VERSAO = '7.49';
+    const VERSAO = '7.50';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -702,6 +702,7 @@
     function entrarComoConfiavel() {
       modo = localStorage.getItem('gw_pc_modo') || 'completo';
       sessionStorage.setItem('gw_auth', modo);
+      sessionStorage.setItem('gw_pin', localStorage.getItem('gw_pc_pin') || '');
       document.getElementById('pin-screen').style.opacity = '0';
       setTimeout(() => continuarAposLogin(), 320);
     }
@@ -737,9 +738,15 @@
       if (pins[digitado]) {
         modo = pins[digitado];
         sessionStorage.setItem('gw_auth', modo);
+        // Guarda o PIN em si (não só o modo) — necessário pra distinguir
+        // 2912 de 1176 dentro do modo "cadastro" (os dois mapeiam pro mesmo
+        // modo, mas têm cada um sua própria metade do limite individual de
+        // adiantamento — pedido do João, 2026-10-13).
+        sessionStorage.setItem('gw_pin', digitado);
         if (document.getElementById('chk-confiar').checked) {
           localStorage.setItem('gw_pc_confiavel', '1');
           localStorage.setItem('gw_pc_modo', modo);
+          localStorage.setItem('gw_pc_pin', digitado);
         }
         document.getElementById('pin-screen').style.opacity = '0';
         setTimeout(() => continuarAposLogin(), 320);

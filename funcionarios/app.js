@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.50";
+const VERSAO = "3.51";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -103,6 +103,12 @@ let pendingFotoThumb = null;
 const CADASTRO_SIMPLIFICADO = sessionStorage.getItem('gw_auth') === 'cadastro';
 // PIN 2248 (completo) pode liberar adiantamento acima do limite semanal (Adiantamentos).
 const PIN_COMPLETO = sessionStorage.getItem('gw_auth') === 'completo';
+// PIN literal digitado no login (não só o modo) — pedido do João, 2026-10-13:
+// 2912 e 1176 são dois PINs diferentes que caem no MESMO modo "cadastro",
+// mas cada um tem direito a só METADE do limite individual de adiantamento
+// (evita que um dos dois consuma o limite inteiro de um funcionário sozinho).
+const PIN_ATUAL = sessionStorage.getItem('gw_pin') || '';
+const DIVIDE_LIMITE_POR_PIN = CADASTRO_SIMPLIFICADO && !!PIN_ATUAL;
 
 function aplicarModoSimplificado() {
   const display = CADASTRO_SIMPLIFICADO ? "none" : "";
@@ -270,6 +276,7 @@ async function abrirAdiantamento(id) {
   const nomeAlvo = (f.nome || "").trim().normalize("NFC");
   let usado = 0;
   let usadoTotal = 0; // todo mundo, pro Capital geral
+  let usadoPorPin = 0; // só os pedidos feitos aqui em Funcionários COM ESTE PIN — pro limite dividido
 
   try {
     const [lancSnap, apagarSnap] = await Promise.all([
@@ -280,6 +287,8 @@ async function abrirAdiantamento(id) {
       const r = d.data();
       usado      += _somaSeAdiantamentoDoFuncionario(r.descricao, r.criadoEm, r.saida, nomeAlvo, segunda, r.funcionarioCpf, f.cpf);
       usadoTotal += _somaSeQualquerAdiantamento(r.descricao, r.criadoEm, r.saida, segunda);
+      // Lançado direto no Caixa (ANE/JOAO) não tem PIN associado — não entra
+      // na divisão por PIN, só no total geral acima (pedido do João, 2026-10-13).
     });
     apagarSnap.docs.forEach(d => {
       const r = d.data();
@@ -290,13 +299,16 @@ async function abrirAdiantamento(id) {
       const valorReal = r.status === "baixado" ? (r.valorOriginal !== undefined ? r.valorOriginal : r.valor) : r.valor;
       usado      += _somaSeAdiantamentoDoFuncionario(r.descricao, r.criadoEm, valorReal, nomeAlvo, segunda, r.funcionarioCpf, f.cpf);
       usadoTotal += _somaSeQualquerAdiantamento(r.descricao, r.criadoEm, valorReal, segunda);
+      if (DIVIDE_LIMITE_POR_PIN && r.solicitadoPorPin === PIN_ATUAL) {
+        usadoPorPin += _somaSeAdiantamentoDoFuncionario(r.descricao, r.criadoEm, valorReal, nomeAlvo, segunda, r.funcionarioCpf, f.cpf);
+      }
     });
   } catch (e) {
     document.getElementById("adiant-corpo").innerHTML = '<p class="empty">Erro ao consultar. Tente novamente.</p>';
     return;
   }
 
-  renderAdiantCorpo(usado, usadoTotal);
+  renderAdiantCorpo(usado, usadoTotal, usadoPorPin);
 }
 
 // Duas travas independentes, a mais apertada das duas vale: o limite
@@ -304,7 +316,7 @@ async function abrirAdiantamento(id) {
 // mundo — o encarregado escolhe pra quem destina, mas nunca passa do que
 // sobrou dos dois). PIN completo libera acima de qualquer uma das duas,
 // igual já funcionava só com o limite individual.
-function renderAdiantCorpo(usado, usadoTotal) {
+function renderAdiantCorpo(usado, usadoTotal, usadoPorPin) {
   // CRÍTICO (achado ao vivo, 2026-10-13): limite/capital configurado como 0
   // precisa TRAVAR tudo (zero disponível), não ser tratado como "sem limite
   // configurado" — "> 0" tratava os dois casos como a mesma coisa e deixou
@@ -318,7 +330,19 @@ function renderAdiantCorpo(usado, usadoTotal) {
   const linhas = [`<div class="adiant-linha"><span>Já usado essa semana</span><strong>${fmtMoeda(usado)}</strong></div>`];
   const restas = [];
 
-  if (limiteConfigurado) {
+  if (limiteConfigurado && DIVIDE_LIMITE_POR_PIN) {
+    // Limite individual dividido ao meio entre os dois PINs do modo
+    // "cadastro" (2912 e 1176) — pedido do João, 2026-10-13: cada um só pode
+    // consumir a sua metade, nunca a metade do outro, mesmo em pedidos
+    // separados (por isso usadoPorPin soma TODOS os pedidos já feitos com
+    // esse PIN pra esse funcionário essa semana, não só o pedido atual).
+    const metade = limite / 2;
+    const restaMetade = Math.max(0, metade - usadoPorPin);
+    linhas.push(`<div class="adiant-linha"><span>Sua metade do limite individual</span><strong>${fmtMoeda(metade)}</strong></div>`);
+    linhas.push(`<div class="adiant-linha"><span>Já usado por você (essa senha)</span><strong>${fmtMoeda(usadoPorPin)}</strong></div>`);
+    linhas.push(`<div class="adiant-linha ${restaMetade <= 0 ? 'estourado' : ''}"><span>Resta (sua metade)</span><strong>${fmtMoeda(restaMetade)}</strong></div>`);
+    restas.push(restaMetade);
+  } else if (limiteConfigurado) {
     const restaIndividual = Math.max(0, limite - usado);
     linhas.push(`<div class="adiant-linha"><span>Limite individual</span><strong>${fmtMoeda(limite)}</strong></div>`);
     linhas.push(`<div class="adiant-linha ${restaIndividual <= 0 ? 'estourado' : ''}"><span>Resta (individual)</span><strong>${fmtMoeda(restaIndividual)}</strong></div>`);
@@ -393,6 +417,10 @@ async function confirmarSolicitar() {
       // a pessoa for demitida e recontratada; CPF nunca muda.
       funcionarioId: id,
       funcionarioCpf: f.cpf || null,
+      // Pra que PIN (2912/1176) contar esse pedido contra a metade do
+      // limite individual — null fora do modo "cadastro" (pedido do João,
+      // 2026-10-13).
+      solicitadoPorPin: DIVIDE_LIMITE_POR_PIN ? PIN_ATUAL : null,
       criadoEm: firebase.firestore.FieldValue.serverTimestamp(),
     });
   } catch (e) {
