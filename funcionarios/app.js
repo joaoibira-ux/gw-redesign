@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.51";
+const VERSAO = "3.52";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -763,6 +763,21 @@ function _mergeFacePendente(existente) {
   };
 }
 
+// Quantas fotos/descritores já estão SALVOS (não conta a pendente desta
+// sessão de edição, ainda não gravada).
+function _totalFotosSalvas(atual) {
+  if (atual && Array.isArray(atual.faceDescriptors) && atual.faceDescriptors.length) return atual.faceDescriptors.length;
+  if (atual && atual.faceDescriptor) return 1;
+  return 0;
+}
+
+// Mostra quantas fotos já tem (de até 3) e deixa claro que capturar de novo
+// ADICIONA um ângulo novo, não substitui — achado ao vivo, 2026-10-14: todo
+// mundo no sistema tinha só 1 foto cadastrada (ninguém nunca tinha motivo
+// pra voltar e capturar mais, já que o botão só dizia "Atualizar Face" e o
+// texto nunca mudava de "✓ Face cadastrada", escondendo que dava pra ter até
+// 3). Isso aumenta o risco de confusão no reconhecimento (caso real: Leandro
+// x Iran, 2026-10-14).
 function atualizarStatusFace() {
   const preview = document.getElementById("face-preview");
   const label   = document.getElementById("face-label");
@@ -770,12 +785,18 @@ function atualizarStatusFace() {
   const atual   = editandoId ? funcionariosCache[editandoId] : null;
   const thumbAtual = atual && ((atual.fotoThumbs && atual.fotoThumbs[0]) || atual.fotoThumb);
   const thumb   = pendingFotoThumb || thumbAtual || null;
-  const cadastrado = !!pendingFaceDescriptor
-    || !!(atual && ((atual.faceDescriptors && atual.faceDescriptors.length) || atual.faceDescriptor));
+
+  const totalSalvo       = _totalFotosSalvas(atual);
+  const totalComPendente = Math.min(3, totalSalvo + (pendingFaceDescriptor ? 1 : 0));
+  const cadastrado       = totalComPendente > 0;
 
   preview.innerHTML = thumb ? `<img src="${thumb}" alt="face">` : "👤";
-  label.textContent = cadastrado ? "✓ Face cadastrada" : "Face não cadastrada";
-  btn.textContent   = cadastrado ? "🔄 Atualizar Face" : "📷 Cadastrar Face";
+  label.textContent = cadastrado
+    ? `✓ Face cadastrada (${totalComPendente}/3 foto${totalComPendente !== 1 ? "s" : ""})`
+    : "Face não cadastrada";
+  btn.textContent = !cadastrado
+    ? "📷 Cadastrar Face"
+    : (totalComPendente < 3 ? "📷 Adicionar outro ângulo" : "🔄 Atualizar Face (substitui a mais antiga)");
 }
 
 async function abrirCameraFace() {
