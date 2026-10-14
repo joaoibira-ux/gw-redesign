@@ -3591,6 +3591,54 @@ async function extrairDadosBoletoTexto(textoPdf) {
   };
 }
 
+// Fallback pra quando pdf-parse não consegue extrair texto utilizável — achado
+// ao vivo, 2026-10-14: guias emitidas pelo sistema SENDA da Receita Federal
+// (substituiu a GPS em papel) usam uma fonte embutida com codificação não
+// padrão, e pdf-parse lê isso como lixo (texto ilegível/mojibake) mesmo o PDF
+// sendo perfeitamente legível visualmente. Manda o PDF inteiro DIRETO pro
+// Claude como anexo (igual o Claude já consegue ler visualmente, sem depender
+// da camada de texto quebrada) em vez de extrair texto primeiro.
+async function extrairDadosBoletoPdfDireto(pdfBase64) {
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": anthropicApiKey.value(),
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-5",
+      max_tokens: 500,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfBase64 } },
+          { type: "text", text: montarPromptBoletoImagem().replace(/A imagem em anexo é a foto de/, "O PDF em anexo é") }
+        ]
+      }]
+    })
+  });
+
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Claude retornou status ${resp.status} ao extrair dados do PDF direto: ${errText.slice(0, 200)}`);
+  }
+
+  const data = await resp.json();
+  const texto = (data.content && data.content[0] && data.content[0].text) || "";
+  const match = texto.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error("Resposta do Claude não trouxe JSON reconhecível ao extrair dados do PDF direto.");
+
+  const resultado = JSON.parse(match[0]);
+  if (resultado.descricao === null || resultado.valor === null || resultado.vencimento === null) return null;
+
+  return {
+    descricao: String(resultado.descricao || "").trim(),
+    valor: Number(resultado.valor) || 0,
+    vencimento: String(resultado.vencimento || "").trim()
+  };
+}
+
 // Pipeline completo de um boleto em PDF recebido: baixa → sobe pro Storage
 // (SEMPRE, mesmo se a extração falhar depois — nunca perde o anexo) → lê o
 // texto → extrai os campos. Sempre retorna uma mensagem sintética pronta pra
@@ -3608,23 +3656,33 @@ async function processarBoletoPdf(msg, docMsg, apiKeyValue) {
     logger.error("[processarBoletoPdf] falha ao ler texto do PDF", { erro: e.message });
   }
 
-  if (!textoPdf) {
-    return `[BOLETO RECEBIDO EM PDF]
-Não foi possível extrair texto do arquivo "${nomeArquivo}" (provavelmente é uma imagem escaneada, não um PDF com texto). O arquivo já foi salvo em: ${boletoUrl}
-Peça ao usuário pra informar manualmente descrição, valor e data de vencimento, e só então chame registrar_boleto_contas_pagar usando exatamente esta boletoUrl.`;
+  let dados;
+  if (textoPdf) {
+    try {
+      dados = await extrairDadosBoletoTexto(textoPdf);
+    } catch (e) {
+      logger.error("[processarBoletoPdf] falha ao extrair dados via Claude (texto)", { erro: e.message });
+      dados = undefined;
+    }
   }
 
-  let dados;
-  try {
-    dados = await extrairDadosBoletoTexto(textoPdf);
-  } catch (e) {
-    logger.error("[processarBoletoPdf] falha ao extrair dados via Claude", { erro: e.message });
-    dados = undefined;
+  // Sem texto utilizável (PDF escaneado como imagem) OU o texto veio mas o
+  // Claude não conseguiu confiar nele (pode ser mojibake de fonte com
+  // codificação não padrão, caso real das guias INSS/SENDA, 2026-10-14) —
+  // tenta de novo mandando o PDF inteiro direto, sem depender da camada de
+  // texto.
+  if (!dados) {
+    try {
+      dados = await extrairDadosBoletoPdfDireto(buffer.toString("base64"));
+    } catch (e) {
+      logger.error("[processarBoletoPdf] falha ao extrair dados via Claude (PDF direto)", { erro: e.message });
+      dados = undefined;
+    }
   }
 
   if (!dados) {
     return `[BOLETO RECEBIDO EM PDF]
-O texto do arquivo "${nomeArquivo}" foi lido, mas não foi possível identificar os dados do boleto automaticamente. O arquivo já foi salvo em: ${boletoUrl}
+Não foi possível identificar os dados do arquivo "${nomeArquivo}" automaticamente, nem lendo o texto nem o PDF direto. O arquivo já foi salvo em: ${boletoUrl}
 Peça ao usuário pra informar manualmente descrição, valor e data de vencimento, e só então chame registrar_boleto_contas_pagar usando exatamente esta boletoUrl.`;
   }
 
