@@ -21,9 +21,13 @@ const WHATSAPP_DESTINO = "5581992114764";
 const EVOLUTION_API_URL = "http://136.114.108.31:8080";
 const EVOLUTION_INSTANCE = "gw";
 const EVOLUTION_DESTINATARIOS = ["5581992114764", "5581988310203"];
-const EVOLUTION_DESTINATARIOS_ADIANTAMENTO = ["5581992114764", "5581993697990"];
+const EVOLUTION_DESTINATARIOS_ADIANTAMENTO = ["5581992114764", "5581999868043"]; // João + Antônio Neto, encarregado (era Lucas, trocado 2026-10-14)
 const EVOLUTION_DESTINATARIOS_REFEICOES = ["5581992114764", "5581991725267"];
-const EVOLUTION_DESTINATARIOS_PONTO = ["5581992114764", "5581993104590"]; // João + Welington (era Lucas, trocado 2026-09-25)
+// Ordem de envio ESCALONADO do alerta de ponto em aberto (pedido do João,
+// 2026-10-14): Welington primeiro, depois Antônio (encarregado), João por
+// último — cada um só recebe minutos depois do anterior, não tudo de uma vez
+// (ver enviarWhatsAppEvolutionEscalonado).
+const EVOLUTION_DESTINATARIOS_PONTO_ESCALONADOS = ["5581993104590", "5581999868043", "5581992114764"];
 // DESLIGADO em 2026-09-13: WhatsApp reconectado depois da restrição
 // temporária de 2026-09-12 (confirmada oficialmente pelo próprio app,
 // "atividade em massa", 4h30 de bloqueio) ter expirado sozinha. Causa
@@ -4912,6 +4916,34 @@ async function enviarWhatsAppEvolution(texto, apiKeyValue, destinatarios = EVOLU
   }
 }
 
+function _delayMs(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Manda a MESMA mensagem em sequência, numa ORDEM fixa, com um intervalo
+// aleatório de 1 a 5 min ENTRE cada envio (não manda tudo de uma vez) —
+// pedido do João, 2026-10-14, pro alerta de ponto em aberto. A função que
+// chama espera (até ~10min no pior caso com 3 destinatários), então quem
+// agenda isso precisa de timeoutSeconds alto o bastante (ver
+// alertaPontoEmAberto/alertaSaidaEmAberto).
+async function enviarWhatsAppEvolutionEscalonado(texto, apiKeyValue, destinatariosOrdenados) {
+  if (WHATSAPP_INDISPONIVEL) {
+    return enviarWhatsAppEvolution(texto, apiKeyValue, destinatariosOrdenados);
+  }
+  const erros = [];
+  for (let i = 0; i < destinatariosOrdenados.length; i++) {
+    if (i > 0) await _delayMs(60000 + Math.floor(Math.random() * 4 * 60000)); // 1 a 5 min
+    try {
+      await enviarWhatsAppEvolution(texto, apiKeyValue, [destinatariosOrdenados[i]]);
+    } catch (e) {
+      erros.push(e.message);
+    }
+  }
+  if (erros.length > 0) {
+    throw new Error(`Falha ao enviar WhatsApp escalonado: ${erros.join(" | ")}`);
+  }
+}
+
 // Checagem de diagnóstico (só leitura, não manda mensagem nenhuma) — consulta
 // o estado da conexão da instância "gw" na Evolution API self-hosted na VM.
 // Pedido do João (2026-09-18): "verifica o whatsapp da gw".
@@ -5476,12 +5508,14 @@ async function checarEAvisarPontoEmAberto() {
     ...naoBateram.map(f => `- ${f.nome || "(sem nome)"}`)
   ].join("\n");
 
-  await enviarWhatsAppEvolution(texto, evolutionApiKey.value(), EVOLUTION_DESTINATARIOS_PONTO);
+  await enviarWhatsAppEvolutionEscalonado(texto, evolutionApiKey.value(), EVOLUTION_DESTINATARIOS_PONTO_ESCALONADOS);
   return naoBateram.length;
 }
 
 exports.alertaPontoEmAberto = onSchedule(
-  { schedule: "0 9 * * 1-5", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
+  // timeoutSeconds alto por causa do envio escalonado (até ~10min no pior
+  // caso, 3 destinatários com 1-5min entre cada — pedido do João, 2026-10-14).
+  { schedule: "0 9 * * 1-5", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey], timeoutSeconds: 900 },
   async () => {
     try {
       const total = await checarEAvisarPontoEmAberto();
@@ -5494,11 +5528,11 @@ exports.alertaPontoEmAberto = onSchedule(
 );
 
 // Segundo aviso, 40 minutos depois do primeiro — pedido do João, 2026-09-25:
-// se ainda faltar alguém às 9:40, manda a lista de novo pro Welington (mesma
-// lógica, mesmos destinatários do de 9:00; fica em silêncio se todo mundo já
-// bateu ponto entre os dois horários).
+// se ainda faltar alguém às 9:40, manda a lista de novo (mesma lógica,
+// mesmos destinatários escalonados do de 9:00; fica em silêncio se todo
+// mundo já bateu ponto entre os dois horários).
 exports.alertaPontoEmAberto940 = onSchedule(
-  { schedule: "40 9 * * 1-5", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
+  { schedule: "40 9 * * 1-5", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey], timeoutSeconds: 900 },
   async () => {
     try {
       const total = await checarEAvisarPontoEmAberto();
@@ -5517,9 +5551,9 @@ exports.alertaPontoEmAberto940 = onSchedule(
 // cálculo de diária por hora dos ajudantes (vários casos reais de valor
 // errado ou R$0 por causa de um horário chutado). Agora só avisa — quem
 // esqueceu continua sem saída até alguém corrigir de verdade.
-// Mesmos destinatários do alerta de entrada em aberto (João + Welington).
-// Horário (19:10) escolhido pra dar folga depois do fim do expediente
-// normal, fora de :00/:30 de propósito.
+// Mesmos destinatários do alerta de entrada em aberto, na mesma ordem
+// escalonada (Welington, Antônio, João). Horário (19:10) escolhido pra dar
+// folga depois do fim do expediente normal, fora de :00/:30 de propósito.
 async function checarEAvisarSaidaEmAberto() {
   const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
   const dataInicio = new Date(hojeISO + "T00:00:00-03:00");
@@ -5566,12 +5600,12 @@ async function checarEAvisarSaidaEmAberto() {
     ...semSaida.map(f => `- ${f.nome || "(sem nome)"}`)
   ].join("\n");
 
-  await enviarWhatsAppEvolution(texto, evolutionApiKey.value(), EVOLUTION_DESTINATARIOS_PONTO);
+  await enviarWhatsAppEvolutionEscalonado(texto, evolutionApiKey.value(), EVOLUTION_DESTINATARIOS_PONTO_ESCALONADOS);
   return semSaida.length;
 }
 
 exports.alertaSaidaEmAberto = onSchedule(
-  { schedule: "10 19 * * 1-5", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey] },
+  { schedule: "10 19 * * 1-5", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey], timeoutSeconds: 900 },
   async () => {
     try {
       const total = await checarEAvisarSaidaEmAberto();
