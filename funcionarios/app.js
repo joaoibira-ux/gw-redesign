@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.52";
+const VERSAO = "3.53";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -336,12 +336,25 @@ function renderAdiantCorpo(usado, usadoTotal, usadoPorPin) {
     // consumir a sua metade, nunca a metade do outro, mesmo em pedidos
     // separados (por isso usadoPorPin soma TODOS os pedidos já feitos com
     // esse PIN pra esse funcionário essa semana, não só o pedido atual).
+    //
+    // CRÍTICO (achado ao vivo, 2026-10-14): a metade é uma trava A MAIS,
+    // nunca substitui o limite individual total — antes disso, uma sessão
+    // sem PIN marcado (ex: "computador confiável" sem relogar) somava contra
+    // o limite total normalmente, mas depois um PIN com a divisão ativa só
+    // enxergava o que TINHA SIDO marcado com esse mesmo PIN, achava a
+    // metade intacta e liberou um terceiro pedido — passou de R$100 pra
+    // R$150 pro mesmo funcionário na mesma semana. Por isso agora calcula
+    // as DUAS travas (limite total combinado E a metade específica do PIN)
+    // e usa a mais apertada das duas, igual já funciona entre limite
+    // individual e capital geral.
     const metade = limite / 2;
     const restaMetade = Math.max(0, metade - usadoPorPin);
-    linhas.push(`<div class="adiant-linha"><span>Sua metade do limite individual</span><strong>${fmtMoeda(metade)}</strong></div>`);
+    const restaIndividualTotal = Math.max(0, limite - usado);
+    linhas.push(`<div class="adiant-linha"><span>Limite individual (total)</span><strong>${fmtMoeda(limite)}</strong></div>`);
+    linhas.push(`<div class="adiant-linha"><span>Sua metade</span><strong>${fmtMoeda(metade)}</strong></div>`);
     linhas.push(`<div class="adiant-linha"><span>Já usado por você (essa senha)</span><strong>${fmtMoeda(usadoPorPin)}</strong></div>`);
-    linhas.push(`<div class="adiant-linha ${restaMetade <= 0 ? 'estourado' : ''}"><span>Resta (sua metade)</span><strong>${fmtMoeda(restaMetade)}</strong></div>`);
-    restas.push(restaMetade);
+    linhas.push(`<div class="adiant-linha ${restaMetade <= 0 || restaIndividualTotal <= 0 ? 'estourado' : ''}"><span>Resta (sua metade)</span><strong>${fmtMoeda(Math.min(restaMetade, restaIndividualTotal))}</strong></div>`);
+    restas.push(restaMetade, restaIndividualTotal);
   } else if (limiteConfigurado) {
     const restaIndividual = Math.max(0, limite - usado);
     linhas.push(`<div class="adiant-linha"><span>Limite individual</span><strong>${fmtMoeda(limite)}</strong></div>`);
