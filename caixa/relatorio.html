@@ -469,7 +469,7 @@
     }
     .prev-cols { grid-template-columns: 1fr 100px 100px 100px 100px 100px; }
     .prev-cols-med { grid-template-columns: 1fr 90px 90px 90px 90px 90px 90px; }
-    .prev-cols-pass { grid-template-columns: 1fr 100px 80px 100px 100px; }
+    .prev-cols-pass { grid-template-columns: 1fr 100px 80px 110px 100px 100px; }
     .prev-cols-quinz { grid-template-columns: 1fr 110px; }
     .prev-secao-titulo { color: #fff; font-size: 1.1rem; font-weight: 700; margin: 0 0 12px; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
     .prev-secao-saldo { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.5px; color: #a5d6a7; text-transform: uppercase; }
@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.43";
+  const VERSAO = "2.44";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1528,6 +1528,53 @@
     return { faltasLiquidas, creditoRestante };
   }
 
+  // Dias em que o funcionário bateu ENTRADA mas nunca bateu a SAÍDA
+  // correspondente no mesmo dia, dentro da quinzena atual — pedido do João,
+  // 2026-10-15: desconta meia passagem (metade do valor diário) por dia
+  // incompleto, além do desconto de falta normal. Só considera dias úteis
+  // (seg-sex), mesmo domínio da passagem (não é paga sábado/domingo).
+  async function calcularDiasIncompletosQuinzenaAtual(hoje) {
+    const { inicio: qIni, fim: qFim } = limitesQuinzenaAtual(hoje);
+    const fimExclusiva = new Date(qFim); fimExclusiva.setDate(fimExclusiva.getDate() + 1);
+
+    const [snap, funcSnap] = await Promise.all([
+      db.collection('pontos')
+        .where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(qIni))
+        .where('timestamp', '<',  firebase.firestore.Timestamp.fromDate(fimExclusiva))
+        .get(),
+      db.collection('funcionarios').get()
+    ]);
+
+    const idPorNomeAtual = new Map();
+    funcSnap.docs.forEach(fd => idPorNomeAtual.set(normNome(fd.data().nome), fd.id));
+
+    // chave -> Map(dataString -> {entrada, saida})
+    const diasPorChave = new Map();
+    snap.docs.forEach(doc => {
+      const r = doc.data();
+      if (!r.timestamp || !r.tipo) return;
+      const ts = r.timestamp.toDate();
+      const diaSemana = ts.getDay();
+      if (diaSemana === 0 || diaSemana === 6) return; // passagem só conta dia útil
+      const chave = r.funcionarioId || idPorNomeAtual.get(normNome(r.funcionarioNome)) || normNome(r.funcionarioNome);
+      const diaStr = new Date(ts.getFullYear(), ts.getMonth(), ts.getDate()).toDateString();
+      if (!diasPorChave.has(chave)) diasPorChave.set(chave, new Map());
+      const dias = diasPorChave.get(chave);
+      if (!dias.has(diaStr)) dias.set(diaStr, { entrada: false, saida: false });
+      const info = dias.get(diaStr);
+      if (r.tipo === 'entrada') info.entrada = true;
+      else if (r.tipo === 'saida') info.saida = true;
+    });
+
+    const resultado = new Map();
+    diasPorChave.forEach((dias, chave) => {
+      let incompletos = 0;
+      dias.forEach(info => { if (info.entrada && !info.saida) incompletos++; });
+      if (incompletos > 0) resultado.set(chave, incompletos);
+    });
+    return resultado;
+  }
+
   // Carregado uma vez (dados de ponto já fechados no passado, não precisa de
   // listener ao vivo) — re-renderiza a prévia de passagens quando terminar.
   let _faltasMap = new Map();
@@ -1535,6 +1582,12 @@
     _faltasMap = map;
     if (_funcionariosSnap) renderPrevisaoPassagens(_funcionariosSnap);
   }).catch(e => console.error('Falha ao calcular faltas da quinzena atual:', e));
+
+  let _incompletosMap = new Map();
+  calcularDiasIncompletosQuinzenaAtual(new Date()).then(map => {
+    _incompletosMap = map;
+    if (_funcionariosSnap) renderPrevisaoPassagens(_funcionariosSnap);
+  }).catch(e => console.error('Falha ao calcular dias incompletos da quinzena atual:', e));
 
   // ── Passagens da Quinzena ──
   // "passagens" no cadastro agora é o valor por dia útil (não mais o total
@@ -1548,44 +1601,54 @@
     const { inicio: proxIni, fim: proxFim } = limitesProximaQuinzena(new Date());
     const diasUteisProxima = contarDiasUteis(proxIni, proxFim);
     const linhas = [];
-    let total = 0, totalDescontoFaltas = 0, totalDias = 0;
+    let total = 0, totalDescontoFaltas = 0, totalDescontoIncompletos = 0, totalDias = 0, totalIncompletos = 0;
     snap.docs.forEach(d => {
       const f = d.data();
       if (f.ativo === false) return;
       const valorDiario = Number(f.passagens || 0);
       if (valorDiario <= 0) return;
       const { faltasLiquidas } = combinarFaltasComCredito(_faltasMap, d.id, f.nome, f.creditoFaltas || 0);
+      const diasIncompletos = _incompletosMap.get(d.id) || _incompletosMap.get(normNome(f.nome)) || 0;
       const bruto = diasUteisProxima * valorDiario;
       const descontoFaltas = Math.min(diasUteisProxima, faltasLiquidas) * valorDiario;
-      const liquido = bruto - descontoFaltas;
+      // Meia passagem por dia com entrada sem saída (pedido do João,
+      // 2026-10-15) — desconto A MAIS, somado ao de falta normal.
+      const descontoIncompletos = diasIncompletos * (valorDiario / 2);
+      const descontoTotal = descontoFaltas + descontoIncompletos;
+      const liquido = bruto - descontoTotal;
       total += bruto;
       totalDescontoFaltas += descontoFaltas;
+      totalDescontoIncompletos += descontoIncompletos;
       totalDias += faltasLiquidas;
+      totalIncompletos += diasIncompletos;
       linhas.push(`
         <div class="prev-linha prev-cols-pass">
           <div class="prev-nome">${escHtml(f.nome)} <span class="prev-cargo">${escHtml(f.cargo||'')}</span></div>
           <div class="prev-valor">${fmt(bruto)}</div>
           <div class="prev-dias">${faltasLiquidas > 0 ? faltasLiquidas : '—'}</div>
-          <div class="prev-adiant">${descontoFaltas > 0 ? '- '+fmt(descontoFaltas) : '—'}</div>
+          <div class="prev-dias">${diasIncompletos > 0 ? diasIncompletos : '—'}</div>
+          <div class="prev-adiant">${descontoTotal > 0 ? '- '+fmt(descontoTotal) : '—'}</div>
           <div class="prev-liq">${fmt(liquido)}</div>
         </div>`);
     });
     if (!linhas.length) { el.innerHTML = ''; renderPrevisaoQuinzena(); return; }
-    const totalLiq = total - totalDescontoFaltas;
+    const totalDesconto = totalDescontoFaltas + totalDescontoIncompletos;
+    const totalLiq = total - totalDesconto;
     el.innerHTML = `
       <div class="previsao-card">
         <div class="prev-titulo">
           <span>Passagens da Quinzena</span>
         </div>
         <div class="prev-header prev-cols-pass">
-          <span>Funcionário</span><span>Passagens</span><span>Dias Falta</span><span>Desconto</span><span>Líquido</span>
+          <span>Funcionário</span><span>Passagens</span><span>Dias Falta</span><span>Entrada s/ Saída</span><span>Desconto</span><span>Líquido</span>
         </div>
         ${linhas.join('')}
         <div class="prev-total prev-cols-pass">
           <span>Total</span>
           <span>${fmt(total)}</span>
           <span>${totalDias > 0 ? totalDias : '—'}</span>
-          <span style="color:#ef9a9a">${totalDescontoFaltas > 0 ? '- '+fmt(totalDescontoFaltas) : '—'}</span>
+          <span>${totalIncompletos > 0 ? totalIncompletos : '—'}</span>
+          <span style="color:#ef9a9a">${totalDesconto > 0 ? '- '+fmt(totalDesconto) : '—'}</span>
           <span>${fmt(totalLiq)}</span>
         </div>
       </div>`;
@@ -2877,6 +2940,7 @@
         db.collection('configuracoes').doc('geral').get()
       ]);
       const faltasMap = await calcularFaltasQuinzenaAtual(new Date());
+      const incompletosMap = await calcularDiasIncompletosQuinzenaAtual(new Date());
       const { inicio: proxIni, fim: proxFim } = limitesProximaQuinzena(new Date());
       const diasUteisProxima = contarDiasUteis(proxIni, proxFim);
 
@@ -2918,10 +2982,14 @@
         const valorDiario = Number(f.passagens || 0);
         if (valorDiario <= 0) return;
         const { faltasLiquidas, creditoRestante } = combinarFaltasComCredito(faltasMap, d.id, f.nome, f.creditoFaltas || 0);
+        const diasIncompletos = incompletosMap.get(d.id) || incompletosMap.get(normNome(f.nome)) || 0;
         const bateuHoje = entradaHoje.ids.has(d.id) || entradaHoje.nomes.has(normNome(f.nome));
         const faltaHoje = (hojeEhDiaUtil && !bateuHoje) ? 1 : 0;
         const dias = Math.max(0, diasUteisProxima - faltasLiquidas - faltaHoje);
-        const liquido = dias * valorDiario;
+        // Meia passagem por dia com entrada sem saída, A MAIS do desconto de
+        // falta (pedido do João, 2026-10-15).
+        const descontoIncompletos = diasIncompletos * (valorDiario / 2);
+        const liquido = Math.max(0, dias * valorDiario - descontoIncompletos);
         totalPassagens += liquido;
         passagensPorFunc[d.id] = { liquido, creditoRestante };
       });
