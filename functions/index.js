@@ -3834,28 +3834,46 @@ CRÍTICO: consultar_ponto só serve para UM dia. Quando o usuário pedir ponto d
       { role: "user", content: mensagem }
     ];
 
-    const chamarClaude = (msgs) => fetch("https://api.anthropic.com/v1/messages", {
+    const chamarClaude = (msgs, toolChoice) => fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "x-api-key": anthropicApiKey.value(),
         "anthropic-version": "2023-06-01",
         "content-type": "application/json"
       },
-      body: JSON.stringify({ model: "claude-sonnet-5", max_tokens: 1024, system: systemPrompt, tools: TOOLS_GW, messages: msgs })
+      body: JSON.stringify({
+        model: "claude-sonnet-5",
+        max_tokens: 1024,
+        system: systemPrompt,
+        tools: TOOLS_GW,
+        messages: msgs,
+        ...(toolChoice ? { tool_choice: toolChoice } : {})
+      })
     }).then(r => r.json());
 
     let msgs = [...messages];
     let resposta = "";
 
-    // Achado ao vivo, 2026-10-15: pedido de registrar 8 pontos de uma vez
-    // (4 dias x entrada/saída) pro mesmo funcionário — o limite antigo de 5
-    // rodadas é fácil de estourar se o modelo chamar as ferramentas uma por
-    // vez em vez de agrupar várias no mesmo turno (8 chamadas + rodada final
-    // de texto passa de 5 fácil). Subido pra 20 pra sobrar folga em lotes
-    // grandes sem price de token relevante (cada rodada sem uso não custa
-    // nada extra).
+    // Achado ao vivo, 2026-10-15, REPRODUZIDO 2x seguidas: depois de pedir a
+    // senha de autorização pra uma ação (ex: registrar 8 pontos de uma vez),
+    // o usuário manda só a senha, e o modelo às vezes responde com uma frase
+    // tipo "Registrando os 8 pontos agora" — texto puro, NENHUMA ferramenta
+    // chamada, nada vai pro banco. Reforçar a instrução no prompt sozinho
+    // NÃO foi suficiente (testado e falhou de novo). Mitigação estrutural:
+    // se a última mensagem do assistente pediu a senha, força
+    // tool_choice:"any" na primeira rodada — o modelo é OBRIGADO a chamar
+    // alguma ferramenta em vez de só devolver texto. Rodadas seguintes
+    // voltam a "auto" normalmente.
+    const ultimaDoAssistente = messages.slice(0, -1).reverse().find(m => m.role === "assistant");
+    const pareceRespostaDeSenha = !!ultimaDoAssistente
+      && typeof ultimaDoAssistente.content === "string"
+      && /senha de autoriza/i.test(ultimaDoAssistente.content);
+
+    // Subido de 5 pra 20 rodadas — um lote de 8 chamadas registrar_ponto,
+    // se o modelo não agrupar tudo num só turno, passa fácil de 5 (8
+    // chamadas + rodada final de texto). Sem uso extra não custa nada a mais.
     for (let rodada = 0; rodada < 20; rodada++) {
-      const data = await chamarClaude(msgs);
+      const data = await chamarClaude(msgs, (rodada === 0 && pareceRespostaDeSenha) ? { type: "any" } : undefined);
 
       if (data.stop_reason === "end_turn") {
         resposta = (data.content.find(b => b.type === "text") || {}).text || "Feito.";
