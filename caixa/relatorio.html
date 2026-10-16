@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.44";
+  const VERSAO = "2.45";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1363,6 +1363,23 @@
   // paga os dias úteis de 16 a 30/09), descontado pelas faltas da quinzena
   // que está terminando agora (01 a 15/09) — não mais da quinzena anterior a
   // essa (que ficava defasada um ciclo inteiro).
+  // Feriados nacionais que a GW observa — mesma lista de functions/index.js
+  // (FERIADOS_GW), mantida em sincronia manual. Achado ao vivo, 2026-10-15:
+  // calcularFaltasQuinzenaAtual nunca excluía feriado nenhum da conta de
+  // "dias úteis exigidos", cobrando falta (e descontando passagem) de todo
+  // mundo que não trabalhou em 12/10 (Nossa Senhora Aparecida).
+  const FERIADOS_GW = [
+    "2026-01-01", "2026-02-16", "2026-02-17", "2026-04-03", "2026-04-21",
+    "2026-05-01", "2026-06-04", "2026-09-07", "2026-10-12", "2026-11-02",
+    "2026-11-15", "2026-11-20", "2026-12-25",
+    "2027-01-01", "2027-02-08", "2027-02-09", "2027-03-26", "2027-04-21",
+    "2027-05-01", "2027-05-27", "2027-09-07", "2027-10-12", "2027-11-02",
+    "2027-11-15", "2027-11-20", "2027-12-25"
+  ];
+  function ehFeriado(d) {
+    return FERIADOS_GW.includes(d.toLocaleDateString("en-CA"));
+  }
+
   function limitesQuinzenaAtual(hoje) {
     const ano = hoje.getFullYear(), mes = hoje.getMonth();
     if (hoje.getDate() <= 15) return { inicio: new Date(ano, mes, 1), fim: new Date(ano, mes, 15) };
@@ -1485,7 +1502,7 @@
     // que realmente estão dentro dela).
     const diasExigidosPorSemana = new Map(); // segundaISO -> [Date, ...]
     for (let d = new Date(qIni); d <= qFim; d.setDate(d.getDate() + 1)) {
-      if (d.getDay() >= 1 && d.getDay() <= 5) {
+      if (d.getDay() >= 1 && d.getDay() <= 5 && !ehFeriado(d)) {
         const segISO = segundaDaSemanaDe(d).toISOString().slice(0, 10);
         if (!diasExigidosPorSemana.has(segISO)) diasExigidosPorSemana.set(segISO, []);
         diasExigidosPorSemana.get(segISO).push(new Date(d));
