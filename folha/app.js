@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.42";
+const VERSAO = "5.43";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -77,6 +77,21 @@ const GRUPO_ACABAMENTO_IDS = new Set([
   'y7X626h09PkythNFbKxX', // 1.7 Pintura Demão 1
   'M5CVZ7HsvSXfYcDfuE7j', // 1.8 Pintura Demão 2
 ]);
+
+// Mesma trava de locais/app.js (pedido do João, 2026-10-13) — etapas finais
+// de acabamento exigem a senha 6535 pra marcar como feito. Achado ao vivo,
+// 2026-10-16: só tinha sido aplicada em locais/app.js (tela "Locais"); a
+// aba "Mapa" AQUI dentro da Folha é um segundo caminho que marca esses
+// mesmos serviços (onServicoClick → salvarFolha, vai direto pra
+// "em_pagamento") sem passar por locais/app.js nenhuma — furo real, uma
+// marcação desse tipo passou batida sem senha.
+function servicoExigeSenhaRegistro(nome) {
+  const n = (nome || "").toLowerCase();
+  return /dem[aã]o/.test(n)
+    || n.includes("textura")
+    || (n.includes("pintura") && n.includes("teto"))
+    || (n.includes("revis") && n.includes("final"));
+}
 
 // Marca/desmarca um serviço em servicosSelecionados e atualiza o visual da
 // célula correspondente — mesma ação que antes ficava repetida em
@@ -1396,6 +1411,13 @@ function onServicoClick(el) {
 
   const key = `${el.dataset.localid}::${el.dataset.svidx}`;
   const marcando = !servicosSelecionados.has(key);
+
+  if (marcando && servicoExigeSenhaRegistro(servico.nome)) {
+    const senha = prompt(`MARCAR "${nomeAbrev(servico.nome)}" COMO FEITO?\n\nLocal: ${local.identificacao}\n\nDigite a senha:`);
+    if (senha === null) return;
+    if (senha !== '6535') { alert('Senha incorreta.'); return; }
+  }
+
   if (marcando && !funcionarioAtual) {
     _pendingClick = { key, local, servico, localid: el.dataset.localid, svidx: el.dataset.svidx };
     // Tratamento também pode ser feito por ajudante; os demais serviços, só produção (pintor/raspador)
