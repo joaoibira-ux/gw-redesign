@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.45";
+  const VERSAO = "2.46";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1401,13 +1401,17 @@
   // dia útil" (antes era um valor fixo de quinzena, aproximado como se toda
   // quinzena tivesse exatamente 10 dias úteis, o que nem sempre batia com a
   // realidade).
+  // Usada pra calcular o BRUTO da passagem (quantos dias pagar na próxima
+  // quinzena, antecipado) — feriado não é dia de trabalho, não deveria gerar
+  // passagem. Pedido do João, 2026-10-15 (próxima segunda, 02/11, é feriado —
+  // Finados).
   function contarDiasUteis(inicio, fim) {
     let dias = 0;
     const cursor = new Date(inicio); cursor.setHours(0, 0, 0, 0);
     const fimLimite = new Date(fim); fimLimite.setHours(0, 0, 0, 0);
     while (cursor <= fimLimite) {
       const dia = cursor.getDay();
-      if (dia >= 1 && dia <= 5) dias++;
+      if (dia >= 1 && dia <= 5 && !ehFeriado(cursor)) dias++;
       cursor.setDate(cursor.getDate() + 1);
     }
     return dias;
