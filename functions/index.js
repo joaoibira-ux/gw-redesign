@@ -4353,6 +4353,34 @@ exports.backupQuinzenalNoFechamento = onDocumentUpdated(
   }
 );
 
+// TEMPORÁRIA — remover depois de disparar uma vez (pedido do João,
+// 2026-10-16). Ao fechar a folha (status vira "paga"):
+// 1) destrava a edição da Folha (configuracoes/geral.folhaBloqueada = false)
+//    — essa parte é genérica, pode virar permanente se o João gostar do
+//    padrão "sempre destrava sozinho ao fechar".
+// 2) reverte o salário do Antônio Neto (encarregado, admitido 08/10/2026)
+//    de volta pro real (R$2.850) — ele tinha sido reduzido pra R$1.425 só
+//    pra essa quinzena incompleta pagar 25% em vez de 50%. Isso É
+//    específico desse funcionário/quinzena, não deve virar permanente.
+exports.posFechamentoAjustesTemp = onDocumentUpdated(
+  { document: "folhas/{folhaId}" },
+  async (event) => {
+    const antes  = event.data.before.data();
+    const depois = event.data.after.data();
+    if (depois.status !== "paga" || antes.status === "paga") return;
+
+    await db.collection("configuracoes").doc("geral").set({ folhaBloqueada: false }, { merge: true });
+    await db.collection("funcionarios").doc("a6EjZcguR4Ry16kYVFHu").update({ salario: 2850 });
+
+    logger.info("posFechamentoAjustesTemp: folha destravada e salário do Antônio revertido pra 2850");
+    try {
+      await enviarTextoTelegram("🔓 Folha destravada e salário do Antônio Neto revertido pra R$2.850 (ajuste automático pós-fechamento).");
+    } catch (err) {
+      logger.error("posFechamentoAjustesTemp: falha ao avisar Telegram", { erro: err.message });
+    }
+  }
+);
+
 // Auto-corretor: sempre que um documento em 'diarias' é criado/atualizado
 // MUITO PRÓXIMO (poucos minutos) de um fechamento de folha, apaga o
 // documento de novo. Protege contra clientes desatualizados (cache de
