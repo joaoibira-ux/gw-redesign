@@ -10,16 +10,27 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.43";
+const VERSAO = "5.44";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
 // valor só protege quem tenta INSERIR um dia novo além do limite; dias já
 // gravados antes do limite existir/mudar nunca são removidos automaticamente.
-let _cfgGeral = { limiteAjudantesDiaria: 2, limitePintoresDiaria: 2, valorServicoEncarregado: 5 };
+let _cfgGeral = { limiteAjudantesDiaria: 2, limitePintoresDiaria: 2, valorServicoEncarregado: 5, folhaBloqueada: false };
 db.collection('configuracoes').doc('geral').onSnapshot(snap => {
   if (snap.exists) _cfgGeral = { ..._cfgGeral, ...snap.data() };
 });
+
+// Bloqueio temporário de edição (pedido do João, 2026-10-16: "ninguém altera
+// nada na folha até eu revisar tudo") — liga/desliga em
+// configuracoes/geral.folhaBloqueada. PIN completo nunca é bloqueado (é
+// quem liga o bloqueio e continua ajustando enquanto revisa).
+function folhaBloqueadaParaEdicao() {
+  if (_cfgGeral.folhaBloqueada !== true) return false;
+  if (sessionStorage.getItem('gw_auth') === 'completo') return false;
+  alert('A Folha está temporariamente bloqueada para revisão. Tente novamente mais tarde.');
+  return true;
+}
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
 
 // ── Loading overlay ───────────────────────────────────────────
@@ -1388,6 +1399,7 @@ db.collection("locais").orderBy("identificacao", "asc").onSnapshot(snap => {
 });
 
 function onServicoClick(el) {
+  if (folhaBloqueadaParaEdicao()) return;
   const local    = locaisCache[el.dataset.localid];
   const servicos = [...(local.servicos || [])].sort((a, b) => ordemServico(a.nome) - ordemServico(b.nome));
   const servico  = servicos[parseInt(el.dataset.svidx)];
@@ -1442,6 +1454,7 @@ function atualizarBtnOk() {
 
 // ── Confirmar seleção → adiciona na folha ──────────────────
 function confirmarSelecao() {
+  if (folhaBloqueadaParaEdicao()) return;
   if (!servicosSelecionados.size) {
     if (aguardandoCalendarioAjudante) {
       aguardandoCalendarioAjudante = false;
@@ -1479,6 +1492,7 @@ function confirmarSelecao() {
 }
 
 async function removerDiaria(idx) {
+  if (folhaBloqueadaParaEdicao()) return;
   const e = entradas[idx];
   if (!e) return;
 
@@ -1645,6 +1659,7 @@ function imprimirFolha() {
 
 // ── Salva folha no Firestore (chamado no OK do mapa/calendário e no botão) ──
 async function salvarFolha(silencioso = false, completarAjudantes = true) {
+  if (folhaBloqueadaParaEdicao()) return null;
   if (!entradas.length && completarAjudantes) return null;
 
   const btnFechar = document.querySelector('.btn-fechar-folha');
