@@ -644,13 +644,13 @@
     // Substituído por um alerta (Cloud Function alertaSaidaEmAberto) que
     // avisa quem esqueceu, em vez de inventar um horário.
 
-    const VERSAO = '7.62';
+    const VERSAO = '7.63';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
     let modo = 'parcial'; // 'completo' | 'parcial' | 'limitado' | 'cadastro'
 
-    const APPS_PARCIAL_ACESSO = ['Caixa', 'Relatório', 'DRE', 'Balanço', 'Mapa', 'Rel. Folha', 'Rel. Ponto', 'A Receber', 'A Pagar', 'Desenvolvimento', 'Compras'];
+    const APPS_PARCIAL_ACESSO = ['Caixa', 'Relatório', 'Rel. Folha', 'A Receber', 'A Pagar', 'Desenvolvimento'];
     const APPS_LIMITADO = ['Rel. Ponto', 'Folha', 'Rel. Folha', 'Funcionários', 'Mapa', 'Compras'];
     const APPS_CADASTRO = ['Folha', 'Rel. Folha', 'Mapa', 'Funcionários', 'Ponto', 'Rel. Ponto', 'Almoxarifado', 'Compras', 'Diário de Obra'];
     // Dentro do modo "cadastro", o PIN 2912 (PIN_CADASTRO) não deve ver esses apps —
@@ -897,7 +897,8 @@
     function renderSidebarNav() {
       const nav = document.getElementById('dd-nav');
       let lista = APPS;
-      if (modo === 'limitado') lista = APPS.filter(a => APPS_LIMITADO.includes(a.name));
+      if (modo === 'parcial') lista = APPS.filter(a => APPS_PARCIAL_ACESSO.includes(a.name));
+      else if (modo === 'limitado') lista = APPS.filter(a => APPS_LIMITADO.includes(a.name));
       else if (modo === 'cadastro') {
         lista = APPS.filter(a => APPS_CADASTRO.includes(a.name));
         if ((sessionStorage.getItem('gw_pin') || '') === PIN_CADASTRO) {
@@ -906,10 +907,7 @@
       }
 
       nav.innerHTML = lista.map(app => {
-        const bloq    = modo === 'parcial' && !APPS_PARCIAL_ACESSO.includes(app.name);
-        const href    = bloq ? '' : `href="${app.url}"`;
-        const opacity = bloq ? 'opacity:0.35;cursor:default;pointer-events:none;' : '';
-        return `<a class="dd-nav-item" ${href} style="${opacity}">
+        return `<a class="dd-nav-item" href="${app.url}">
           <span class="dd-nav-icon">${app.icon}</span><span>${app.name}</span>
         </a>`;
       }).join('');
@@ -1397,7 +1395,8 @@
     function renderApps() {
       const grid = document.getElementById('apps-grid');
       let lista = APPS;
-      if (modo === 'limitado') lista = APPS.filter(a => APPS_LIMITADO.includes(a.name));
+      if (modo === 'parcial') lista = APPS.filter(a => APPS_PARCIAL_ACESSO.includes(a.name));
+      else if (modo === 'limitado') lista = APPS.filter(a => APPS_LIMITADO.includes(a.name));
       else if (modo === 'cadastro') {
         lista = APPS.filter(a => APPS_CADASTRO.includes(a.name));
         if ((sessionStorage.getItem('gw_pin') || '') === PIN_CADASTRO) {
@@ -1406,12 +1405,9 @@
       }
 
       grid.innerHTML = lista.map((app, i) => {
-        const wide    = (lista.length % 2 !== 0 && i === lista.length - 1) ? ' wide' : '';
-        const bloq    = modo === 'parcial' && !APPS_PARCIAL_ACESSO.includes(app.name);
-        const href    = bloq ? '' : `href="${app.url}"`;
-        const opacity = bloq ? 'opacity:0.35;cursor:default;pointer-events:none;' : '';
+        const wide = (lista.length % 2 !== 0 && i === lista.length - 1) ? ' wide' : '';
         return `
-          <a class="app-card glass${wide}" ${href} style="${opacity}">
+          <a class="app-card glass${wide}" href="${app.url}">
             <div class="app-icon">${app.icon}</div>
             <div>
               <div class="app-name">${app.name}</div>
