@@ -149,6 +149,24 @@
     }
     #panel-confirm.active { display: flex; }
 
+    .aviso-saida-aberta {
+      width: 100%;
+      margin-top: 14px;
+      padding: 12px 10px;
+      background: #d32f2f;
+      color: #fff;
+      font-weight: 800;
+      font-size: 0.95rem;
+      text-align: center;
+      line-height: 1.4;
+      border-radius: 10px;
+      animation: aviso-pisca 1s infinite;
+    }
+    @keyframes aviso-pisca {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+
     .emp-card {
       width: 100%; max-width: 340px;
       border-radius: 22px; padding: 22px 18px 18px;
@@ -286,6 +304,9 @@
       <div class="tipo-badge entrada" id="tipo-badge">ENTRADA</div>
       <div class="emp-hora" id="emp-hora">00:00</div>
       <div class="emp-data" id="emp-data">—</div>
+      <div class="aviso-saida-aberta" id="aviso-saida-aberta" style="display:none">
+        ⚠️ VOCÊ ESTÁ COM A SAÍDA DE UM DIA ANTERIOR EM ABERTO.<br>PROCURE O ENCARREGADO.
+      </div>
       <div class="card-btns">
         <button class="btn-confirmar" onclick="confirmarPonto()">✓ Confirmar</button>
         <button class="btn-cancelar"  onclick="cancelarConfirmacao()">✗</button>
@@ -329,7 +350,7 @@ const FIREBASE_CONFIG = {
 };
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 const MATCH_THRESHOLD = 0.55;
-const VERSAO          = '2.17';
+const VERSAO          = '2.18';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let db;
@@ -557,11 +578,39 @@ async function reconhecerFace(video) {
     const func = getFuncById(match.label);
     if (!func) { paused = false; return; }
 
-    const { tipo, docId } = await determinarTipo(func.id);
-    mostrarConfirmacao(func, tipo, docId);
+    const { tipo, docId, avisoSaidaAberta } = await determinarTipo(func.id);
+    mostrarConfirmacao(func, tipo, docId, !!avisoSaidaAberta);
   } finally {
     recognizing = false;
   }
+}
+
+// Checa se sobrou uma ENTRADA sem SAÍDA correspondente em algum dia ANTES
+// de hoje (janela de 7 dias, não só ontem — pode ter faltado mais de um dia
+// antes de voltar) — pedido do João, tela de Desenvolvimento (2026-10-17):
+// quando isso acontece, a pessoa precisa ser avisada bem visível antes de
+// bater a entrada de hoje de novo, pra procurar o encarregado e corrigir o
+// dia anterior (o registro de hoje segue normal mesmo assim).
+async function temSaidaEmAbertoAnterior(funcId) {
+  try {
+    const hoje = new Date();
+    const inicioHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+    const inicioJanela = new Date(inicioHoje); inicioJanela.setDate(inicioJanela.getDate() - 7);
+    const snap = await db.collection('pontos')
+      .where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(inicioJanela))
+      .where('timestamp', '<',  firebase.firestore.Timestamp.fromDate(inicioHoje))
+      .get();
+    const eventos = snap.docs
+      .map(d => d.data())
+      .filter(p => p.funcionarioId === funcId && p.timestamp && p.tipo)
+      .sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
+    let aberto = false;
+    eventos.forEach(e => {
+      if (e.tipo === 'entrada') aberto = true;
+      else if (e.tipo === 'saida') aberto = false;
+    });
+    return aberto;
+  } catch (e) { console.error('temSaidaEmAbertoAnterior:', e); return false; }
 }
 
 async function determinarTipo(funcId) {
@@ -575,18 +624,25 @@ async function determinarTipo(funcId) {
       .where('timestamp', '<',  firebase.firestore.Timestamp.fromDate(fim))
       .get();
     const docs = snap.docs.filter(d => d.data().funcionarioId === funcId);
-    if (docs.length === 0) return { tipo: 'entrada', docId: null };
+    if (docs.length === 0) {
+      return { tipo: 'entrada', docId: null, avisoSaidaAberta: await temSaidaEmAbertoAnterior(funcId) };
+    }
     const temEntrada = docs.some(d => d.data().tipo === 'entrada');
     const saidaDoc   = docs.find(d => d.data().tipo === 'saida');
-    if (!temEntrada) return { tipo: 'entrada', docId: null };
+    if (!temEntrada) {
+      return { tipo: 'entrada', docId: null, avisoSaidaAberta: await temSaidaEmAbertoAnterior(funcId) };
+    }
     if (!saidaDoc)   return { tipo: 'saida',   docId: null };
     return { tipo: 'saida', docId: saidaDoc.id };
   } catch(e) { console.error('determinarTipo:', e); return { tipo: 'entrada', docId: null }; }
 }
 
 // ── CONFIRMATION ───────────────────────────────────────────────────────────
-function mostrarConfirmacao(func, tipo, docId = null) {
+function mostrarConfirmacao(func, tipo, docId = null, avisoSaidaAberta = false) {
   const now = new Date();
+
+  const avisoEl = document.getElementById('aviso-saida-aberta');
+  if (avisoEl) avisoEl.style.display = avisoSaidaAberta ? 'block' : 'none';
 
   const photoEl = document.getElementById('emp-photo');
   if (func.fotoThumb) {
