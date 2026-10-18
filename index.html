@@ -646,7 +646,7 @@
     // Substituído por um alerta (Cloud Function alertaSaidaEmAberto) que
     // avisa quem esqueceu, em vez de inventar um horário.
 
-    const VERSAO = '7.59';
+    const VERSAO = '7.60';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -655,7 +655,7 @@
     const APPS_PARCIAL_ACESSO = ['Caixa', 'Relatório', 'DRE', 'Balanço', 'Mapa', 'Rel. Folha', 'Rel. Ponto', 'A Receber', 'A Pagar', 'Desenvolvimento', 'Compras'];
     const APPS_RESTRITO = ['Rel. Ponto'];
     const APPS_LIMITADO = ['Rel. Ponto', 'Folha', 'Rel. Folha', 'Funcionários', 'Mapa', 'Compras'];
-    const APPS_CADASTRO = ['Folha', 'Rel. Folha', 'Mapa', 'Funcionários', 'Ponto', 'Rel. Ponto', 'Almoxarifado', 'Compras'];
+    const APPS_CADASTRO = ['Folha', 'Rel. Folha', 'Mapa', 'Funcionários', 'Ponto', 'Rel. Ponto', 'Almoxarifado', 'Compras', 'Diário de Obra'];
 
     const APPS = [
       { icon: '💰', name: 'Caixa',              desc: 'Lançamentos financeiros',   url: 'https://sistema.gwrevestimentos.com.br/caixa/' },
@@ -669,6 +669,7 @@
       { icon: '📋', name: 'Folha',               desc: 'Pagamento da produção',     url: 'https://sistema.gwrevestimentos.com.br/folha/' },
       { icon: '📄', name: 'Rel. Folha',          desc: 'Previsão de pagamento',     url: 'https://sistema.gwrevestimentos.com.br/folha/#relatorio' },
       { icon: '🗺️', name: 'Mapa',               desc: 'Serviços da obra',          url: 'https://sistema.gwrevestimentos.com.br/mapa/' },
+      { icon: '📔', name: 'Diário de Obra',      desc: 'Atividades e fotos do dia', url: 'https://sistema.gwrevestimentos.com.br/diario/' },
       { icon: '👷', name: 'Funcionários',        desc: 'Cadastro e fichas',         url: 'https://sistema.gwrevestimentos.com.br/funcionarios/' },
       { icon: '🏪', name: 'Almoxarifado',        desc: 'EPI e Ferramentas',         url: 'https://sistema.gwrevestimentos.com.br/almoxarifado/' },
       { icon: '📦', name: 'Estoques',            desc: 'Matéria-prima e produtos',  url: 'https://sistema.gwrevestimentos.com.br/estoques/' },

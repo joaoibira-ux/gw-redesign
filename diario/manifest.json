@@ -1,0 +1,8 @@
+{
+  "name": "Diário de Obra - GW",
+  "short_name": "Diário",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#1a3322",
+  "theme_color": "#1a3322"
+}

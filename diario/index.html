@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Diário" />
+  <title>Diário de Obra</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="./style.css?v=1" />
+  <link rel="apple-touch-icon" href="../Logo-gw.png" />
+</head>
+<body>
+
+<header>
+  <a href="https://sistema.gwrevestimentos.com.br/index.html" style="display:flex;align-items:center;line-height:0;">
+    <img src="../Logo-gw.png" alt="GW" style="height:34px;width:34px;object-fit:contain;border-radius:6px;" />
+  </a>
+  <span>📔 Diário de Obra</span>
+  <span id="versao-app" class="header-versao"></span>
+</header>
+
+<div class="filtros">
+  <button class="filtro-btn ativo" id="f-todos" onclick="filtrar('todos')">Todos</button>
+  <button class="filtro-btn" id="f-KEL1" onclick="filtrar('KEL1')">KEL1</button>
+  <button class="filtro-btn" id="f-KEL2" onclick="filtrar('KEL2')">KEL2</button>
+</div>
+
+<div id="lista" class="lista"></div>
+
+<button class="fab" id="fab" onclick="toggleForm()">+</button>
+
+<form class="form-card" id="form" novalidate style="display:none">
+  <h3>Novo Registro</h3>
+  <div class="form-grid">
+    <div class="full">
+      <label for="f-obra">Obra</label>
+      <select id="f-obra">
+        <option value="KEL1">KEL1</option>
+        <option value="KEL2">KEL2</option>
+      </select>
+    </div>
+    <div class="full">
+      <label for="f-data">Data</label>
+      <input type="date" id="f-data" />
+    </div>
+    <div class="full">
+      <label for="f-atividades">Atividades do dia</label>
+      <textarea id="f-atividades" rows="4" placeholder="Descreva o que foi executado na obra..."></textarea>
+    </div>
+    <div class="full">
+      <label>Fotos (opcional)</label>
+      <button type="button" class="btn-fotos" onclick="abrirSeletorFoto()">📷 Adicionar fotos</button>
+      <input type="file" id="input-fotos" accept="image/*" multiple style="display:none" />
+      <div id="fotos-preview" class="fotos-preview"></div>
+    </div>
+    <button type="submit" class="btn-add" id="btn-submit">+ Registrar</button>
+  </div>
+</form>
+
+<div class="overlay-loading" id="overlay-loading" style="display:none">
+  <div class="spinner"></div>
+  <p>Enviando fotos...</p>
+</div>
+
+<div class="overlay-detalhe" id="overlay-detalhe" style="display:none">
+  <div class="detalhe-card">
+    <div class="dt-top">
+      <span id="dt-obra" class="badge-obra"></span>
+      <span id="dt-data" class="card-data-obra"></span>
+    </div>
+    <p id="dt-atividades" class="dt-atividades"></p>
+    <div id="dt-fotos" class="dt-fotos"></div>
+    <div class="revisao-acoes">
+      <button type="button" class="btn-cancelar" id="btn-del-detalhe">Excluir</button>
+      <button type="button" class="btn-add" onclick="fecharDetalhe()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay-foto-view" id="overlay-foto-view" style="display:none" onclick="fecharFotoView()">
+  <img id="foto-view-img" src="" />
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+<script src="./app.js?v=1"></script>
+<script src="../bfcache-fix.js"></script>
+</body>
+</html>
