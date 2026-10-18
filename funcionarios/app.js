@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.53";
+const VERSAO = "3.54";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -667,6 +667,10 @@ function lerCampos() {
     tomaCafeObra: document.getElementById("f-toma-cafe-obra").checked,
     almocaObra:   document.getElementById("f-almoca-obra").checked,
     telefone:     v("f-telefone").trim(),
+    // Horas mínimas entre entrada e saída (opcional) — pedido do João, tela
+    // de Desenvolvimento (2026-10-17): usado só na tela de Ponto pra
+    // bloquear a saída antes desse tempo. 0/vazio = sem exigência.
+    horasMinimas: parseFloat((v("f-horas-minimas")||"").replace(",", ".")) || 0,
     obs:          v("f-obs").trim(),
     // Pessoais
     nacionalidade: v("f-nacionalidade").trim(),
@@ -711,6 +715,7 @@ function editarFuncionario(id) {
   set("f-passagens", f.passagens > 0 ? f.passagens.toFixed(2).replace(".",",") : "");
   set("f-salario-ref", f.salarioReferencia > 0 ? f.salarioReferencia.toFixed(2).replace(".",",") : "");
   set("f-telefone", f.telefone); set("f-obs", f.obs);
+  set("f-horas-minimas", f.horasMinimas > 0 ? String(f.horasMinimas).replace(".", ",") : "");
   set("f-nacionalidade", f.nacionalidade); set("f-estadocivil", f.estadocivil);
   set("f-nascimento", f.nascimento); set("f-conjuge", f.conjuge);
   set("f-localnasc", f.localnasc); set("f-ufnasc", f.ufnasc);

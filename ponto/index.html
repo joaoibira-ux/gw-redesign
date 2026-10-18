@@ -333,6 +333,14 @@
   <button class="btn-retry" onclick="voltarCamera()">↩ Tentar novamente</button>
 </div>
 
+<!-- ── AGUARDE SAÍDA (horas mínimas) ── -->
+<div id="s-aguarde-saida" class="screen">
+  <div class="nf-icon">⏳</div>
+  <div class="nf-title">AINDA NÃO PODE REGISTRAR SAÍDA</div>
+  <div class="nf-msg" id="aguarde-msg">—</div>
+  <button class="btn-retry" onclick="voltarCamera()">↩ Voltar</button>
+</div>
+
 <!-- face-api.js -->
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 
@@ -350,7 +358,7 @@ const FIREBASE_CONFIG = {
 };
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 const MATCH_THRESHOLD = 0.55;
-const VERSAO          = '2.18';
+const VERSAO          = '2.19';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let db;
@@ -578,7 +586,21 @@ async function reconhecerFace(video) {
     const func = getFuncById(match.label);
     if (!func) { paused = false; return; }
 
-    const { tipo, docId, avisoSaidaAberta } = await determinarTipo(func.id);
+    const { tipo, docId, avisoSaidaAberta, entradaTs } = await determinarTipo(func.id);
+
+    // Horas mínimas entre entrada e saída (cadastro do funcionário, opcional)
+    // — pedido do João, tela de Desenvolvimento (2026-10-17): se tentar bater
+    // a saída antes do tempo mínimo, BLOQUEIA (não deixa nem confirmar) e
+    // avisa quanto falta.
+    if (tipo === 'saida' && entradaTs && Number(func.horasMinimas) > 0) {
+      const minimoMs   = Number(func.horasMinimas) * 3600000;
+      const decorridoMs = Date.now() - entradaTs.getTime();
+      if (decorridoMs < minimoMs) {
+        mostrarAguardeSaida(minimoMs - decorridoMs);
+        return;
+      }
+    }
+
     mostrarConfirmacao(func, tipo, docId, !!avisoSaidaAberta);
   } finally {
     recognizing = false;
@@ -627,13 +649,14 @@ async function determinarTipo(funcId) {
     if (docs.length === 0) {
       return { tipo: 'entrada', docId: null, avisoSaidaAberta: await temSaidaEmAbertoAnterior(funcId) };
     }
-    const temEntrada = docs.some(d => d.data().tipo === 'entrada');
-    const saidaDoc   = docs.find(d => d.data().tipo === 'saida');
-    if (!temEntrada) {
+    const entradaDoc = docs.find(d => d.data().tipo === 'entrada');
+    const saidaDoc    = docs.find(d => d.data().tipo === 'saida');
+    if (!entradaDoc) {
       return { tipo: 'entrada', docId: null, avisoSaidaAberta: await temSaidaEmAbertoAnterior(funcId) };
     }
-    if (!saidaDoc)   return { tipo: 'saida',   docId: null };
-    return { tipo: 'saida', docId: saidaDoc.id };
+    const entradaTs = entradaDoc.data().timestamp ? entradaDoc.data().timestamp.toDate() : null;
+    if (!saidaDoc)   return { tipo: 'saida', docId: null, entradaTs };
+    return { tipo: 'saida', docId: saidaDoc.id, entradaTs };
   } catch(e) { console.error('determinarTipo:', e); return { tipo: 'entrada', docId: null }; }
 }
 
@@ -877,6 +900,20 @@ function mostrarNaoEncontrado() {
   paused = true;
   showScreen('s-not-found');
   setTimeout(() => { paused = false; }, 4000);
+}
+
+// restanteMs: quanto falta (em ms) até completar as horas mínimas entre
+// entrada e saída — mostra em horas/minutos, o que fizer mais sentido.
+function mostrarAguardeSaida(restanteMs) {
+  const totalMin = Math.ceil(restanteMs / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  const partes = [];
+  if (h > 0) partes.push(`${h}h`);
+  if (m > 0 || h === 0) partes.push(`${m}min`);
+  document.getElementById('aguarde-msg').textContent =
+    `Você poderá registrar a saída daqui a ${partes.join(' e ')}.`;
+  showScreen('s-aguarde-saida');
 }
 
 function voltarCamera() {
