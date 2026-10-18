@@ -1,4 +1,4 @@
-const VERSAO = "1.21";
+const VERSAO = "1.22";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 // Gate de entrada — só abre a tela de Configurações com a senha certa,
@@ -35,7 +35,6 @@ function escHtml(s) {
 const DEFAULTS = {
   pinCompleto:       "2248",
   pinParcial:        "4512",
-  pinRestrito:       "3733",
   pinLimitado:       "0000",
   pinCadastro:       "2912",
   pinCadastro2:      "1176",
@@ -187,7 +186,6 @@ function renderizar() {
     <div class="secao-titulo">🔐 PINs de Acesso</div>
     ${item("PIN Completo (acesso total)", cfg.pinCompleto, "pinCompleto", false)}
     ${item("PIN Parcial (acesso limitado)", cfg.pinParcial, "pinParcial", false)}
-    ${item("PIN Restrito (acesso mínimo)", cfg.pinRestrito, "pinRestrito", false)}
     ${item("PIN Limitado (ponto, folha, funcionários, mapa)", cfg.pinLimitado, "pinLimitado", false)}
     ${item("PIN Cadastro", cfg.pinCadastro, "pinCadastro", false)}
     ${item("PIN Cadastro 2 (mesmos acessos do PIN Cadastro)", cfg.pinCadastro2, "pinCadastro2", false)}
@@ -244,7 +242,7 @@ function item(label, valor, campo, oculto) {
 
 // ── Modal ─────────────────────────────────────────────────────
 const CAMPOS_MOEDA   = ["salarioEncarregado", "salarioAjudante", "valorServicoEncarregado", "valorCafe", "valorAlmoco", "limiteAdiantamentoSemanal", "capitalAdiantamentoSemanal"];
-const CAMPOS_SENHAS  = ["senhaExcluir", "senhaAlterarBanco", "pinCompleto", "pinParcial", "pinRestrito", "pinLimitado", "pinCadastro", "pinCadastro2"];
+const CAMPOS_SENHAS  = ["senhaExcluir", "senhaAlterarBanco", "pinCompleto", "pinParcial", "pinLimitado", "pinCadastro", "pinCadastro2"];
 const CAMPOS_INTEIRO = ["limiteAjudantesDiaria", "limitePintoresDiaria"];
 const LABELS = {
   salarioEncarregado: "Salário Encarregado (R$)",
@@ -260,7 +258,6 @@ const LABELS = {
   senhaAlterarBanco:  "Nova senha — Alterar Banco",
   pinCompleto:        "Novo PIN Completo (4 dígitos)",
   pinParcial:         "Novo PIN Parcial (4 dígitos)",
-  pinRestrito:        "Novo PIN Restrito (4 dígitos)",
   pinLimitado:        "Novo PIN Limitado (4 dígitos)",
   pinCadastro:        "Novo PIN Cadastro (4 dígitos)",
   pinCadastro2:       "Novo PIN Cadastro 2 (4 dígitos)",

@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.44";
+const VERSAO = "5.45";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -876,7 +876,7 @@ function toggleDia(key) {
       if (diasPreCarregados.has(key)) {
         const senha = prompt('Remover este dia da folha?\n\nDigite a senha:');
         if (senha === null) return;
-        if (senha !== '3733') { alert('Senha incorreta.'); return; }
+        if (senha !== '2248') { alert('Senha incorreta.'); return; }
         diasPreCarregados.delete(key);
       }
       diasSelecionados.delete(key);
@@ -903,7 +903,7 @@ function toggleDia(key) {
     if (diasPreCarregados.has(key)) {
       const senha = prompt('Remover este dia da folha?\n\nDigite a senha:');
       if (senha === null) return;
-      if (senha !== '3733') { alert('Senha incorreta.'); return; }
+      if (senha !== '2248') { alert('Senha incorreta.'); return; }
       diasPreCarregados.delete(key);
     }
     diasSelecionados.delete(key);
@@ -1408,7 +1408,7 @@ function onServicoClick(el) {
   if (servico.status === 'em_pagamento') {
     const senha = prompt(`Remover "${nomeAbrev(servico.nome)}" do local ${local.identificacao} da folha?\n\nDigite a senha:`);
     if (senha === null) return;
-    if (senha !== '3733') { alert('Senha incorreta.'); return; }
+    if (senha !== '2248') { alert('Senha incorreta.'); return; }
     const novosServicos = (local.servicos || []).map(s =>
       s === servico ? { ...s, status: 'pendente', funcionario: null } : s
     );

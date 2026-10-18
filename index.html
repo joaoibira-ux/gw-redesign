@@ -592,7 +592,6 @@
     // rejeitar um PIN customizado só porque a busca ainda não voltou.
     let PIN_COMPLETO = '2248';
     let PIN_PARCIAL  = '4512';
-    let PIN_RESTRITO = '3733';
     let PIN_LIMITADO = '0000';
     let PIN_CADASTRO = '2912';
     let PIN_CADASTRO2 = '1176'; // segundo PIN com os mesmos acessos do PIN_CADASTRO — pedido do João, 2026-10-08
@@ -602,7 +601,6 @@
         const d = doc.data();
         if (d.pinCompleto) PIN_COMPLETO = d.pinCompleto;
         if (d.pinParcial)  PIN_PARCIAL  = d.pinParcial;
-        if (d.pinRestrito) PIN_RESTRITO = d.pinRestrito;
         if (d.pinLimitado) PIN_LIMITADO = d.pinLimitado;
         if (d.pinCadastro) PIN_CADASTRO = d.pinCadastro;
         if (d.pinCadastro2) PIN_CADASTRO2 = d.pinCadastro2;
@@ -646,16 +644,18 @@
     // Substituído por um alerta (Cloud Function alertaSaidaEmAberto) que
     // avisa quem esqueceu, em vez de inventar um horário.
 
-    const VERSAO = '7.60';
+    const VERSAO = '7.62';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
-    let modo = 'parcial'; // 'completo' | 'parcial' | 'restrito' | 'limitado' | 'cadastro'
+    let modo = 'parcial'; // 'completo' | 'parcial' | 'limitado' | 'cadastro'
 
     const APPS_PARCIAL_ACESSO = ['Caixa', 'Relatório', 'DRE', 'Balanço', 'Mapa', 'Rel. Folha', 'Rel. Ponto', 'A Receber', 'A Pagar', 'Desenvolvimento', 'Compras'];
-    const APPS_RESTRITO = ['Rel. Ponto'];
     const APPS_LIMITADO = ['Rel. Ponto', 'Folha', 'Rel. Folha', 'Funcionários', 'Mapa', 'Compras'];
     const APPS_CADASTRO = ['Folha', 'Rel. Folha', 'Mapa', 'Funcionários', 'Ponto', 'Rel. Ponto', 'Almoxarifado', 'Compras', 'Diário de Obra'];
+    // Dentro do modo "cadastro", o PIN 2912 (PIN_CADASTRO) não deve ver esses apps —
+    // o PIN_CADASTRO2 (1176) continua com acesso completo ao modo. Pedido do João, 2026-10-18.
+    const APPS_BLOQUEADOS_PIN_CADASTRO = ['Compras', 'Diário de Obra', 'Almoxarifado'];
 
     const APPS = [
       { icon: '💰', name: 'Caixa',              desc: 'Lançamentos financeiros',   url: 'https://sistema.gwrevestimentos.com.br/caixa/' },
@@ -689,7 +689,6 @@
       mostrarAvisoInstalacao();
     } else if (_sessao === 'completo')  { modo = 'completo';  mostrarHome(false); }
     else if (_sessao === 'parcial')   { modo = 'parcial';   mostrarHome(false); }
-    else if (_sessao === 'restrito')  { modo = 'restrito';  mostrarHome(false); }
     else if (_sessao === 'limitado')  { modo = 'limitado';  mostrarHome(false); }
     else if (_sessao === 'cadastro')  { modo = 'cadastro';  mostrarHome(false); }
     else if (localStorage.getItem('gw_pc_confiavel') === '1') { ativarTelaConfiavel(); }
@@ -737,7 +736,7 @@
 
     async function verificarPin() {
       await pinsCarregados;
-      const pins = { [PIN_COMPLETO]: 'completo', [PIN_PARCIAL]: 'parcial', [PIN_RESTRITO]: 'restrito', [PIN_LIMITADO]: 'limitado', [PIN_CADASTRO]: 'cadastro', [PIN_CADASTRO2]: 'cadastro' };
+      const pins = { [PIN_COMPLETO]: 'completo', [PIN_PARCIAL]: 'parcial', [PIN_LIMITADO]: 'limitado', [PIN_CADASTRO]: 'cadastro', [PIN_CADASTRO2]: 'cadastro' };
       if (pins[digitado]) {
         modo = pins[digitado];
         sessionStorage.setItem('gw_auth', modo);
@@ -898,9 +897,13 @@
     function renderSidebarNav() {
       const nav = document.getElementById('dd-nav');
       let lista = APPS;
-      if (modo === 'restrito') lista = APPS.filter(a => APPS_RESTRITO.includes(a.name));
-      else if (modo === 'limitado') lista = APPS.filter(a => APPS_LIMITADO.includes(a.name));
-      else if (modo === 'cadastro') lista = APPS.filter(a => APPS_CADASTRO.includes(a.name));
+      if (modo === 'limitado') lista = APPS.filter(a => APPS_LIMITADO.includes(a.name));
+      else if (modo === 'cadastro') {
+        lista = APPS.filter(a => APPS_CADASTRO.includes(a.name));
+        if ((sessionStorage.getItem('gw_pin') || '') === PIN_CADASTRO) {
+          lista = lista.filter(a => !APPS_BLOQUEADOS_PIN_CADASTRO.includes(a.name));
+        }
+      }
 
       nav.innerHTML = lista.map(app => {
         const bloq    = modo === 'parcial' && !APPS_PARCIAL_ACESSO.includes(app.name);
@@ -1394,9 +1397,13 @@
     function renderApps() {
       const grid = document.getElementById('apps-grid');
       let lista = APPS;
-      if (modo === 'restrito') lista = APPS.filter(a => APPS_RESTRITO.includes(a.name));
-      else if (modo === 'limitado') lista = APPS.filter(a => APPS_LIMITADO.includes(a.name));
-      else if (modo === 'cadastro') lista = APPS.filter(a => APPS_CADASTRO.includes(a.name));
+      if (modo === 'limitado') lista = APPS.filter(a => APPS_LIMITADO.includes(a.name));
+      else if (modo === 'cadastro') {
+        lista = APPS.filter(a => APPS_CADASTRO.includes(a.name));
+        if ((sessionStorage.getItem('gw_pin') || '') === PIN_CADASTRO) {
+          lista = lista.filter(a => !APPS_BLOQUEADOS_PIN_CADASTRO.includes(a.name));
+        }
+      }
 
       grid.innerHTML = lista.map((app, i) => {
         const wide    = (lista.length % 2 !== 0 && i === lista.length - 1) ? ' wide' : '';
