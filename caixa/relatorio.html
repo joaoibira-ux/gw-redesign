@@ -584,7 +584,7 @@
     <div class="data-geracao" id="data-geracao"></div>
     <div class="header-btns">
       <button class="btn-pesquisa" onclick="abrirPesquisa()">🔍 Pesquisar</button>
-      <button class="btn-fechar-medicao" id="btn-fechar-medicao" onclick="fecharMedicaoFolha()">📑 Fechar/Medição</button>
+      <button class="btn-fechar-medicao" id="btn-fechar-medicao" onclick="onClickBotaoFecharMedicao()">🔍 Revisão da Folha</button>
       <button class="btn-fechar-medicao" id="btn-fechar-passagens" onclick="fecharPassagens()">🎫 Fechar Passagens</button>
       <button class="btn-telegram" onclick="enviarTelegram(this)">📸 Telegram</button>
       <button class="btn-print" onclick="window.print()">🖨 Imprimir</button>
@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.46";
+  const VERSAO = "2.47";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -830,6 +830,32 @@
     appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
   });
   const db = firebase.firestore();
+
+  // Botão "Fechar/Medição" vira um botão de 2 estados — pedido do João,
+  // 2026-10-17: "Revisão da Folha" (trava edição pra todo mundo menos PIN
+  // completo, mesmo mecanismo manual que já tinha funcionado bem em
+  // 2026-10-16) e, depois de travado, o MESMO botão vira "Fechar
+  // Medição/Folha" de verdade. Ao fechar, destrava sozinho (ver dentro de
+  // fecharMedicaoFolha) e o botão volta a ser "Revisão da Folha".
+  let _folhaBloqueada = false;
+  db.collection('configuracoes').doc('geral').onSnapshot(snap => {
+    _folhaBloqueada = !!(snap.exists && snap.data().folhaBloqueada);
+    atualizarBotaoFecharMedicao();
+  });
+
+  function atualizarBotaoFecharMedicao() {
+    const btn = document.getElementById('btn-fechar-medicao');
+    if (!btn || btn.disabled) return; // não troca o texto no meio de um fechamento em andamento
+    btn.textContent = _folhaBloqueada ? '📑 Fechar Medição/Folha' : '🔍 Revisão da Folha';
+  }
+
+  async function onClickBotaoFecharMedicao() {
+    if (!_folhaBloqueada) {
+      await db.collection('configuracoes').doc('geral').set({ folhaBloqueada: true }, { merge: true });
+      return;
+    }
+    await fecharMedicaoFolha();
+  }
 
   function fmt(v) {
     return (v||0).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
@@ -2825,6 +2851,14 @@
         status: 'paga',
         pagaEm: firebase.firestore.FieldValue.serverTimestamp()
       });
+
+      // Destrava a edição da Folha automaticamente ao fechar de verdade —
+      // pedido do João, 2026-10-17: o botão "Revisão da Folha" trava pros
+      // outros usuários enquanto ele revisa, e o fechamento já libera
+      // sozinho (nunca mais precisa destravar manualmente). Reforçado
+      // também por um gatilho no backend (destravaFolhaAoFechar), caso o
+      // fechamento aconteça por algum outro caminho.
+      batch.set(db.collection('configuracoes').doc('geral'), { folhaBloqueada: false }, { merge: true });
 
       const lookup = new Map();
       (folha.grupos || []).forEach(g => {
