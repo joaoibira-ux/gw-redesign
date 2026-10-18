@@ -646,22 +646,23 @@
     // Substituído por um alerta (Cloud Function alertaSaidaEmAberto) que
     // avisa quem esqueceu, em vez de inventar um horário.
 
-    const VERSAO = '7.57';
+    const VERSAO = '7.58';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
     let modo = 'parcial'; // 'completo' | 'parcial' | 'restrito' | 'limitado' | 'cadastro'
 
-    const APPS_PARCIAL_ACESSO = ['Caixa', 'Relatório', 'DRE', 'Balanço', 'Mapa', 'Rel. Folha', 'Rel. Ponto', 'A Receber', 'A Pagar', 'Desenvolvimento'];
+    const APPS_PARCIAL_ACESSO = ['Caixa', 'Relatório', 'DRE', 'Balanço', 'Mapa', 'Rel. Folha', 'Rel. Ponto', 'A Receber', 'A Pagar', 'Desenvolvimento', 'Compras'];
     const APPS_RESTRITO = ['Rel. Ponto'];
-    const APPS_LIMITADO = ['Rel. Ponto', 'Folha', 'Rel. Folha', 'Funcionários', 'Mapa'];
-    const APPS_CADASTRO = ['Folha', 'Rel. Folha', 'Mapa', 'Funcionários', 'Ponto', 'Rel. Ponto', 'Almoxarifado'];
+    const APPS_LIMITADO = ['Rel. Ponto', 'Folha', 'Rel. Folha', 'Funcionários', 'Mapa', 'Compras'];
+    const APPS_CADASTRO = ['Folha', 'Rel. Folha', 'Mapa', 'Funcionários', 'Ponto', 'Rel. Ponto', 'Almoxarifado', 'Compras'];
 
     const APPS = [
       { icon: '💰', name: 'Caixa',              desc: 'Lançamentos financeiros',   url: 'https://sistema.gwrevestimentos.com.br/caixa/' },
       { icon: '📊', name: 'Relatório',           desc: 'Financeiro',                url: 'https://sistema.gwrevestimentos.com.br/caixa/relatorio.html' },
       { icon: '📈', name: 'DRE',                 desc: 'Resultado do mês',          url: 'https://sistema.gwrevestimentos.com.br/dre/' },
       { icon: '⚖️', name: 'Balanço',             desc: 'Ativo, passivo e patrimônio', url: 'https://sistema.gwrevestimentos.com.br/balanco/' },
+      { icon: '🛒', name: 'Compras',             desc: 'Solicitação de compra',     url: 'https://sistema.gwrevestimentos.com.br/compras/' },
       { icon: '🧾', name: 'A Receber',           desc: 'Contas a receber',          url: 'https://sistema.gwrevestimentos.com.br/areceber/' },
       { icon: '💸', name: 'A Pagar',             desc: 'Contas a pagar',            url: 'https://sistema.gwrevestimentos.com.br/apagar/' },
       { icon: '📐', name: 'Medições',            desc: 'Medição por foto',          url: 'https://sistema.gwrevestimentos.com.br/medicoes/' },
