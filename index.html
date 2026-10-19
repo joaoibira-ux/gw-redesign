@@ -288,7 +288,7 @@
       font-size: 0.9rem; margin-bottom: 6px;
     }
 
-    .dd-kpis { flex: 0 0 auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 10px; }
+    .dd-kpis { flex: 0 0 auto; display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 10px; }
     .dd-content-rows { flex: 1; min-height: 0; display: grid; grid-template-rows: 1fr 2fr; gap: 10px; }
     .dd-row2 { min-height: 0; display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
     .dd-row3x2 { min-height: 0; display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 10px; }
@@ -644,7 +644,7 @@
     // Substituído por um alerta (Cloud Function alertaSaidaEmAberto) que
     // avisa quem esqueceu, em vez de inventar um horário.
 
-    const VERSAO = '7.64';
+    const VERSAO = '7.65';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -1129,6 +1129,15 @@
       const medicoesComData = medicoes.map(m => ({ ...m, _data: ddParseData(m.data) }));
       const medicoesMes = medicoesComData.filter(m => m._data && m._data >= inicioMes);
       const producaoMes = medicoesMes.reduce((s, m) => s + (m.valorNotaFiscal || 0), 0);
+      // Comissão Pedro: 3% sobre o valor já líquido de retenção de cada
+      // medição (mesma fórmula usada no detalhe em medicoes/app.js) — ainda
+      // sem controle de pago/a pagar, é só o total calculado em cima de
+      // todas as medições (pedido do João, 2026-10-19).
+      const comissaoPedroTotal = medicoesComData.reduce((s, m) => {
+        const nf = m.valorNotaFiscal || 0;
+        const aReceber = m.semRetencao ? nf : nf * 0.95;
+        return s + aReceber * 0.03;
+      }, 0);
 
       document.getElementById('dd-kpis').innerHTML = [
         {
@@ -1156,6 +1165,11 @@
           icon: '📐', bg: 'rgba(105,178,240,0.14)', titulo: 'MEDIÇÕES (MÊS)',
           valor: String(medicoesMes.length),
           delta: ddFmtMoeda(producaoMes) + ' em produção', pos: true,
+        },
+        {
+          icon: '🤝', bg: 'rgba(186,104,200,0.14)', titulo: 'COMISSÃO PEDRO (TOTAL)',
+          valor: ddFmtMoeda(comissaoPedroTotal),
+          delta: 'Sem controle de pago/a pagar ainda', pos: true,
         },
       ].map(k => `
         <div class="dd-card">
