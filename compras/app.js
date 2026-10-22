@@ -7,12 +7,25 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "1.0";
+const VERSAO = "1.1";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
 const db  = firebase.firestore();
 const col = db.collection("solicitacoesCompra");
+
+// Regras de acesso dentro do app (pedido do João, 2026-10-22): só os PINs
+// 2248 (completo) e 1176 (cadastro2) podem solicitar; só o 2248 marca como
+// comprado; excluir/alterar sempre pede a senha (2248 ou 1176), mesmo de
+// quem já está logado com um desses PINs — mesmo padrão de confirmação
+// usado nas exclusões do resto do sistema (senha 6535).
+const PIN_ATUAL = sessionStorage.getItem('gw_pin') || '';
+const PINS_AUTORIZADOS = ['2248', '1176'];
+const PIN_MARCAR_COMPRADO = '2248';
+
+function senhaAutorizada(senha) {
+  return senha === '2248' || senha === '1176';
+}
 
 function escHtml(s) {
   return String(s || "")
@@ -90,6 +103,10 @@ col.orderBy("criadoEm", "desc").onSnapshot(snap => {
 function toggleStatus(id) {
   const s = itensCache[id];
   if (!s) return;
+  if (PIN_ATUAL !== PIN_MARCAR_COMPRADO) {
+    alert("Apenas o PIN 2248 pode marcar como comprado.");
+    return;
+  }
   const novoStatus = s.status === "comprado" ? "pendente" : "comprado";
   const campos = { status: novoStatus };
   if (novoStatus === "comprado") campos.compradoEm = firebase.firestore.FieldValue.serverTimestamp();
@@ -100,8 +117,6 @@ document.getElementById("form").addEventListener("submit", function(e) {
   e.preventDefault();
   const item        = document.getElementById("f-item").value.trim();
   const quantidade  = document.getElementById("f-quantidade").value.trim();
-  const local       = document.getElementById("f-local").value.trim();
-  const solicitante = document.getElementById("f-solicitante").value.trim();
   const obs         = document.getElementById("f-obs").value.trim();
 
   if (!item) {
@@ -110,10 +125,10 @@ document.getElementById("form").addEventListener("submit", function(e) {
   }
 
   if (editandoId) {
-    col.doc(editandoId).update({ item, quantidade, local, solicitante, obs });
+    col.doc(editandoId).update({ item, quantidade, obs });
     editandoId = null;
   } else {
-    col.add({ item, quantidade, local, solicitante, obs, status: "pendente",
+    col.add({ item, quantidade, obs, status: "pendente",
       criadoEm: firebase.firestore.FieldValue.serverTimestamp() });
   }
 
@@ -124,13 +139,15 @@ document.getElementById("form").addEventListener("submit", function(e) {
 function editarItem(id) {
   const s = itensCache[id];
   if (!s) return;
+  const senha = prompt("ALTERAR SOLICITAÇÃO?\n\n" + s.item + "\n\nDigite a senha:");
+  if (senha === null) return;
+  if (!senhaAutorizada(senha)) { alert("Senha incorreta."); return; }
+
   editandoId = id;
   document.getElementById("form-titulo").textContent = "Editar Solicitação";
   document.getElementById("btn-submit").textContent  = "✓ Salvar alterações";
   document.getElementById("f-item").value        = s.item || "";
   document.getElementById("f-quantidade").value  = s.quantidade || "";
-  document.getElementById("f-local").value       = s.local || "";
-  document.getElementById("f-solicitante").value = s.solicitante || "";
   document.getElementById("f-obs").value         = s.obs || "";
   const form = document.getElementById("form");
   const fab  = document.getElementById("fab");
@@ -144,7 +161,7 @@ function excluir(id) {
   if (!s) return;
   const senha = prompt("EXCLUIR SOLICITAÇÃO?\n\n" + s.item + "\n\nDigite a senha:");
   if (senha === null) return;
-  if (senha !== "6535") { alert("Senha incorreta."); return; }
+  if (!senhaAutorizada(senha)) { alert("Senha incorreta."); return; }
   col.doc(id).delete();
 }
 
@@ -152,6 +169,10 @@ function toggleForm() {
   const form = document.getElementById("form");
   const fab  = document.getElementById("fab");
   const open = form.style.display === "none" || form.style.display === "";
+  if (open && !PINS_AUTORIZADOS.includes(PIN_ATUAL)) {
+    alert("Apenas os PINs 2248 ou 1176 podem solicitar compras.");
+    return;
+  }
   form.style.display = open ? "block" : "none";
   fab.classList.toggle("open", open);
   if (open) {

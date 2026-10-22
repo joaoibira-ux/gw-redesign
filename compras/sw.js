@@ -1,8 +1,8 @@
-const VERSION = "compras-v1";
+const VERSION = "compras-v2";
 const ASSETS = [
   "./index.html",
   "./style.css?v=1",
-  "./app.js?v=1",
+  "./app.js?v=1.1",
   "./manifest.json"
 ];
 
