@@ -3539,12 +3539,14 @@ Extraia 3 campos:
 
 CASO ESPECIAL — Guia da Previdência Social (GPS/INSS) OU Documento de Arrecadação de Receitas Federais (DARF/sistema SENDA) relativo a INSS: esse tipo de documento não tem "beneficiário" no sentido tradicional (o pagamento é sempre pro INSS/governo, nunca uma empresa/pessoa) — MESMO que o nome/razão social de uma empresa apareça bem destacado no documento, esse é sempre o PAGADOR (quem está pagando), nunca o beneficiário, e NUNCA deve virar a "descricao". Reconheça pelos termos "GPS", "Guia da Previdência Social", "INSS", "Código de Pagamento", "NIT/PIS/PASEP", "Competência", "Documento de Arrecadação de Receitas Federais", "CONTR PREV", "CP SEGURADOS", "SEGURADO-EMPREGADO/AVULSO" ou "Período de Apuração" (esse último formato, mais novo, é emitido pelo sistema SENDA da Receita Federal e substituiu a antiga guia GPS em papel — tem CNPJ/Razão Social do pagador bem no topo, não deixe isso confundir). Nesse caso use como "descricao" algo como "INSS — Competência MM/AAAA" (o mês/ano de referência da contribuição pode aparecer rotulado como "Competência" OU como "Período de Apuração"/"PA") — se não estiver visível, use só "INSS - Guia da Previdência Social". O "valor" é o "Valor Total do Documento" (some principal + multa/juros se vierem separados e o total não aparecer pronto); o "vencimento" é a "Data de Vencimento"/data limite de pagamento normal.
 
+CASO ESPECIAL — Documento de Arrecadação do Simples Nacional (DAS), inclusive parcelamento (DAS de PARCSN): também emitido pelo sistema SENDA, reconheça pelos termos "Documento de Arrecadação do Simples Nacional", "SIMPLES NACIONAL", "DAS", "DAS de PARCSN", "Número do Parcelamento"/"Parcela" ou "Composição do Documento de Arrecadação" com códigos tipo COFINS/CSLL/ICMS/INSS/IRPJ/PIS "- SIMPLES NACIONAL". Assim como no caso do INSS, o CNPJ/Razão Social no topo é o PAGADOR (contribuinte cujo imposto está sendo pago), não um beneficiário tradicional — mas aqui, diferente do INSS, inclua esse nome na "descricao" (ele identifica DE QUEM é o imposto, importante quando há vários documentos assim de empresas diferentes). Monte a "descricao" como "Simples Nacional - [Razão Social]" e, se for parcelamento, acrescente "- Parcela X/Y" (do campo "Parcela"); se for um DAS normal (não parcelado), acrescente o mês/ano do "Período de Apuração" quando não for "Diversos". O "valor" é o "Valor Total do Documento". Pra "vencimento": se o documento tiver os dois campos "Data de Vencimento" E "Pagar este documento até" com datas DIFERENTES, use sempre "Pagar este documento até" (é o prazo real — a "Data de Vencimento" pode ser uma data antiga de referência, já vencida, em documentos pagos em atraso ou parcelados); se só um dos dois aparecer, use esse.
+
 DICA (opcional, só use se ajudar): boletos brasileiros têm uma "linha digitável" de 47-48 dígitos, onde os últimos ~14 dígitos do último campo codificam de forma determinística um fator de vencimento (dias corridos desde 07/10/1997) e o valor em centavos. Se localizar essa linha claramente no texto, pode usar como checagem cruzada — mas é só um bônus: se não tiver certeza de como decodificá-la, ignore e confie nos campos escritos por extenso no boleto/guia.
 
 Retorne APENAS um objeto JSON (sem texto antes ou depois, sem markdown), neste formato exato:
 {"descricao":"Nome do Beneficiário Ltda - NF 1234","valor":1150.00,"vencimento":"20/08/2026"}
 
-Se o texto não parecer ser de um boleto nem de uma guia de pagamento (GPS/INSS), ou os campos essenciais (valor/vencimento) não puderem ser identificados com confiança razoável, retorne exatamente:
+Se o texto não parecer ser de um boleto nem de uma guia de pagamento (GPS/INSS/DAS), ou os campos essenciais (valor/vencimento) não puderem ser identificados com confiança razoável, retorne exatamente:
 {"descricao":null,"valor":null,"vencimento":null}
 
 TEXTO DO BOLETO/GUIA:
@@ -3577,7 +3579,7 @@ async function extrairDadosBoletoTexto(textoPdf) {
   }
 
   const data = await resp.json();
-  const texto = (data.content && data.content[0] && data.content[0].text) || "";
+  const texto = (data.content && data.content.find(b => b.type === "text") || {}).text || "";
   const match = texto.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("Resposta do Claude não trouxe JSON reconhecível ao extrair dados do boleto.");
 
@@ -3625,7 +3627,7 @@ async function extrairDadosBoletoPdfDireto(pdfBase64) {
   }
 
   const data = await resp.json();
-  const texto = (data.content && data.content[0] && data.content[0].text) || "";
+  const texto = (data.content && data.content.find(b => b.type === "text") || {}).text || "";
   const match = texto.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("Resposta do Claude não trouxe JSON reconhecível ao extrair dados do PDF direto.");
 
@@ -3712,6 +3714,8 @@ Extraia 3 campos:
 
 CASO ESPECIAL — Guia da Previdência Social (GPS/INSS) OU Documento de Arrecadação de Receitas Federais (DARF/sistema SENDA) relativo a INSS: esse tipo de documento não tem "beneficiário" no sentido tradicional (o pagamento é sempre pro INSS/governo, nunca uma empresa/pessoa) — MESMO que o nome/razão social de uma empresa apareça bem destacado no documento, esse é sempre o PAGADOR (quem está pagando), nunca o beneficiário, e NUNCA deve virar a "descricao". Reconheça pelos termos "GPS", "Guia da Previdência Social", "INSS", "Código de Pagamento", "NIT/PIS/PASEP", "Competência", "Documento de Arrecadação de Receitas Federais", "CONTR PREV", "CP SEGURADOS", "SEGURADO-EMPREGADO/AVULSO" ou "Período de Apuração" (esse último formato, mais novo, é emitido pelo sistema SENDA da Receita Federal e substituiu a antiga guia GPS em papel — tem CNPJ/Razão Social do pagador bem no topo, não deixe isso confundir). Nesse caso use como "descricao" algo como "INSS — Competência MM/AAAA" (o mês/ano de referência da contribuição pode aparecer rotulado como "Competência" OU como "Período de Apuração"/"PA") — se não estiver visível, use só "INSS - Guia da Previdência Social". O "valor" é o "Valor Total do Documento"; o "vencimento" é a "Data de Vencimento"/data limite de pagamento normal.
 
+CASO ESPECIAL — Documento de Arrecadação do Simples Nacional (DAS), inclusive parcelamento (DAS de PARCSN): também emitido pelo sistema SENDA, reconheça pelos termos "Documento de Arrecadação do Simples Nacional", "SIMPLES NACIONAL", "DAS", "DAS de PARCSN", "Número do Parcelamento"/"Parcela" ou "Composição do Documento de Arrecadação" com códigos tipo COFINS/CSLL/ICMS/INSS/IRPJ/PIS "- SIMPLES NACIONAL". Assim como no caso do INSS, o CNPJ/Razão Social no topo é o PAGADOR (contribuinte cujo imposto está sendo pago), não um beneficiário tradicional — mas aqui, diferente do INSS, inclua esse nome na "descricao" (ele identifica DE QUEM é o imposto, importante quando há vários documentos assim de empresas diferentes). Monte a "descricao" como "Simples Nacional - [Razão Social]" e, se for parcelamento, acrescente "- Parcela X/Y" (do campo "Parcela"); se for um DAS normal (não parcelado), acrescente o mês/ano do "Período de Apuração" quando não for "Diversos". O "valor" é o "Valor Total do Documento". Pra "vencimento": se o documento tiver os dois campos "Data de Vencimento" E "Pagar este documento até" com datas DIFERENTES, use sempre "Pagar este documento até" (é o prazo real — a "Data de Vencimento" pode ser uma data antiga de referência, já vencida, em documentos pagos em atraso ou parcelados); se só um dos dois aparecer, use esse.
+
 Retorne APENAS um objeto JSON (sem texto antes ou depois, sem markdown), neste formato exato:
 {"descricao":"Nome do Beneficiário Ltda - NF 1234","valor":1150.00,"vencimento":"20/08/2026"}
 
@@ -3746,7 +3750,7 @@ async function extrairDadosBoletoImagem(imageBase64, mimeType) {
   }
 
   const data = await resp.json();
-  const texto = (data.content && data.content[0] && data.content[0].text) || "";
+  const texto = (data.content && data.content.find(b => b.type === "text") || {}).text || "";
   const match = texto.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("Resposta do Claude não trouxe JSON reconhecível ao extrair dados da imagem do boleto.");
 
@@ -4169,7 +4173,7 @@ exports.extrairMedicoes = onCall(
     }
 
     const data = await resp.json();
-    const texto = (data.content && data.content[0] && data.content[0].text) || "";
+    const texto = (data.content && data.content.find(b => b.type === "text") || {}).text || "";
 
     const match = texto.match(/\{[\s\S]*\}/);
     if (!match) {
@@ -4996,7 +5000,7 @@ ${transcricao.slice(0, 15000)}
   }
 
   const data = await resp.json();
-  return (data.content && data.content[0] && data.content[0].text) || "Não foi possível gerar o resumo.";
+  return (data.content && data.content.find(b => b.type === "text") || {}).text || "Não foi possível gerar o resumo.";
 }
 
 async function enviarWhatsAppEvolution(texto, apiKeyValue, destinatarios = EVOLUTION_DESTINATARIOS) {
