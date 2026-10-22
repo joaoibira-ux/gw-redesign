@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.8";
+const VERSAO = "3.9";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -397,11 +397,12 @@ function abrirDetalhe(id) {
   const retencao = m.semRetencao ? 0 : valorNF * 0.05;
   const aReceber = m.semRetencao ? valorNF : valorNF * 0.95;
   const retencaoAcum = docsAte.reduce((s, d) => s + (d.semRetencao ? 0 : (d.valorNotaFiscal || 0) * 0.05), 0);
-  // Comissão Pedro: 3% sobre o valor já líquido de retenção (NF - retenção
-  // = aReceber) — pedido do João, 2026-10-19. Não é salvo no documento,
-  // calculado na hora igual à retenção, pra nunca ficar desatualizado se
-  // o valor da NF for editado depois.
-  const comissaoPedro = aReceber * 0.03;
+  // Comissão Pedro: 3% sobre (Valor Medido - Retenção) — correção do João,
+  // 2026-10-22: é sobre o Medido (bruto, antes dos descontos), não sobre o
+  // valor líquido da NF (aReceber) como foi implementado antes. Não é salvo
+  // no documento, calculado na hora igual à retenção, pra nunca ficar
+  // desatualizado se o valor for editado depois.
+  const comissaoPedro = ((m.valor || 0) - retencao) * 0.03;
 
   document.getElementById("dt-info-grid").innerHTML = `
     <div class="dt-info-item">
