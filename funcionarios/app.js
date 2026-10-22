@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.54";
+const VERSAO = "3.55";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -16,6 +16,7 @@ document.getElementById("versao-app").textContent = "v" + VERSAO;
 firebase.initializeApp(firebaseConfig);
 const db  = firebase.firestore();
 const col = db.collection("funcionarios");
+const storage = firebase.storage();
 
 let cfgGeral = { limiteAdiantamentoSemanal: 0, capitalAdiantamentoSemanal: 0 };
 db.collection("configuracoes").doc("geral").onSnapshot(snap => {
@@ -167,6 +168,7 @@ function render(docs) {
         <div class="card-acoes">
           <button class="btn-consultar" onclick="consultarFuncionario('${doc.id}')">Consultar</button>
           <button class="btn-adiantamento" onclick="abrirAdiantamento('${doc.id}')">💰 Adiantamento</button>
+          <button class="btn-documentos" onclick="abrirDocumentos('${doc.id}')">📎 Documentos${(f.documentosAnexados||[]).length ? ` (${(f.documentosAnexados||[]).length})` : ""}</button>
           <button class="btn-bloq-adiant ${bloqueado ? 'bloqueado' : ''}" onclick="toggleBloqueioAdiantamento('${doc.id}')">
             ${bloqueado ? '🔒 Adiantamento bloqueado' : '🔓 Bloquear adiantamento'}
           </button>
@@ -450,6 +452,106 @@ async function confirmarSolicitar() {
 
 function fecharAdiantamento() {
   document.getElementById("adiant-overlay").style.display = "none";
+}
+
+// ── Documentos anexados (pedido do João, 2026-10-22) ────────────────────
+// Array dentro do próprio documento do funcionário (não subcoleção — número
+// pequeno de anexos por pessoa, mesmo padrão de array usado em "itens" nas
+// medições). Cada item: {id, nome, observacao, url, tipo, criadoEm}.
+let _docsIdAtual = null;
+
+function abrirDocumentos(id) {
+  const f = funcionariosCache[id];
+  if (!f) return;
+  _docsIdAtual = id;
+  document.getElementById("docs-nome").textContent = f.nome;
+  document.getElementById("docs-overlay").style.display = "flex";
+  renderDocumentosCorpo(f);
+}
+
+function renderDocumentosCorpo(f) {
+  const docs = f.documentosAnexados || [];
+  const corpo = document.getElementById("docs-corpo");
+  if (!docs.length) {
+    corpo.innerHTML = '<p class="adiant-aviso">Nenhum documento anexado ainda.</p>';
+    return;
+  }
+  corpo.innerHTML = docs.map(d => `
+    <div class="doc-item">
+      <div class="doc-info">
+        <span class="doc-obs">${escHtml(d.observacao || "(sem observação)")}</span>
+        <span class="doc-nome">${escHtml(d.nome || "")}</span>
+      </div>
+      <div class="doc-acoes">
+        <a class="btn-ver-doc" href="${d.url}" target="_blank" rel="noopener">Ver</a>
+        <button type="button" class="btn-del" onclick="excluirDocumento('${d.id}')" title="Excluir">✕</button>
+      </div>
+    </div>`).join("");
+}
+
+function fecharDocumentos() {
+  document.getElementById("docs-overlay").style.display = "none";
+  _docsIdAtual = null;
+}
+
+function abrirSeletorDocumento() {
+  document.getElementById("input-doc-funcionario").click();
+}
+
+document.getElementById("input-doc-funcionario").addEventListener("change", async function() {
+  const file = this.files[0];
+  this.value = "";
+  if (!file || !_docsIdAtual) return;
+
+  const observacao = prompt("O que é esse documento? (ex: RG frente, Comprovante de residência...)");
+  if (observacao === null) return;
+
+  const btn = document.getElementById("btn-anexar-doc");
+  btn.disabled = true;
+  btn.textContent = "Enviando...";
+  try {
+    const path = `funcionariosDocs/${_docsIdAtual}/${Date.now()}_${file.name}`;
+    const ref = storage.ref(path);
+    await ref.put(file, { contentType: file.type || "application/octet-stream" });
+    const url = await ref.getDownloadURL();
+
+    const novoDoc = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+      nome: file.name,
+      observacao: observacao.trim(),
+      url,
+      tipo: file.type || "",
+      criadoEm: new Date().toISOString()
+    };
+
+    await col.doc(_docsIdAtual).update({
+      documentosAnexados: firebase.firestore.FieldValue.arrayUnion(novoDoc)
+    });
+    // funcionariosCache é atualizado pelo onSnapshot da lista; busca de novo
+    // pra já refletir no modal aberto, sem esperar o próximo tick do listener.
+    const atualizado = await col.doc(_docsIdAtual).get();
+    funcionariosCache[_docsIdAtual] = atualizado.data();
+    renderDocumentosCorpo(funcionariosCache[_docsIdAtual]);
+  } catch (e) {
+    console.error(e);
+    alert("Erro ao enviar o documento: " + (e.message || e));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "+ Anexar Documento";
+  }
+});
+
+async function excluirDocumento(docAnexadoId) {
+  if (!_docsIdAtual) return;
+  const senha = prompt("EXCLUIR ESTE DOCUMENTO?\n\nDigite a senha:");
+  if (senha === null) return;
+  if (senha !== "6535") { alert("Senha incorreta."); return; }
+
+  const f = funcionariosCache[_docsIdAtual];
+  const novaLista = (f.documentosAnexados || []).filter(d => d.id !== docAnexadoId);
+  await col.doc(_docsIdAtual).update({ documentosAnexados: novaLista });
+  funcionariosCache[_docsIdAtual].documentosAnexados = novaLista;
+  renderDocumentosCorpo(funcionariosCache[_docsIdAtual]);
 }
 
 col.orderBy("criadoEm","asc").onSnapshot(snap => render(snap.docs), err => {

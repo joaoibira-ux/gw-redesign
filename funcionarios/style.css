@@ -147,6 +147,20 @@ header {
 }
 .btn-adiantamento:active { background: #ffecb3; }
 
+.btn-documentos {
+  flex: 1;
+  text-align: center;
+  background: #e3f2fd;
+  color: #0d47a1;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-documentos:active { background: #bbdefb; }
+
 .btn-bloq-adiant {
   flex-basis: 100%;
   text-align: center;
@@ -232,6 +246,46 @@ header {
 #adiant-form-solicitar .modal-input { margin-bottom: 8px; }
 
 .modal-btns { margin-top: 16px; }
+
+/* Documentos anexados */
+.doc-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid #eee;
+}
+.doc-item:last-child { border-bottom: none; }
+.doc-info { display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
+.doc-obs { font-size: 0.86rem; font-weight: 700; color: #1a3322; }
+.doc-nome { font-size: 0.7rem; color: #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doc-acoes { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.btn-ver-doc {
+  background: #e8f5e9;
+  color: #1a3322;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+.btn-anexar-doc {
+  width: 100%;
+  margin-top: 14px;
+  padding: 12px;
+  background: #e3f2fd;
+  color: #0d47a1;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-anexar-doc:active { background: #bbdefb; }
+.btn-anexar-doc:disabled { opacity: 0.5; cursor: default; }
 
 .btn-edit, .btn-del {
   background: none;
