@@ -187,6 +187,12 @@ header {
 
 .apt-serv.nao-clicavel:hover { filter: none; }
 
+.apt-serv.bloqueado-folha {
+  background: repeating-linear-gradient(45deg, #eee, #eee 3px, #ddd 3px, #ddd 6px);
+  color: #aaa;
+  cursor: not-allowed;
+}
+
 .apt-serv.selecionado {
   background: #1a3322 !important;
   color: #fff !important;

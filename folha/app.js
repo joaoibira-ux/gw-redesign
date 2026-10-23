@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.47";
+const VERSAO = "5.48";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -128,6 +128,14 @@ function _marcarServico(local, servico, localid, svidx, marcando) {
 // Serviços do grupo 1.5-1.8 no MESMO local que o clicado, ainda pendentes
 // (exclui o próprio serviço clicado) — retorna [] se o clicado não é do
 // grupo, ou se não houver mais nenhum outro elegível nesse local.
+// Serviço do catálogo marcado como bloqueado no app Serviços (só o PIN 2248
+// mexe nisso) não pode ser apontado no mapa — pedido do João, 2026-10-23.
+// Sem o campo (serviços antigos) conta como liberado.
+function servicoLiberadoFolha(servicoId) {
+  const c = servicosCache.find(d => d.id === servicoId);
+  return !c || c.liberadoFolha !== false;
+}
+
 function _servicosIrmaosDoGrupo(local, servicoClicado) {
   const grupo = GRUPOS_MARCACAO_CONJUNTA.find(g => g.has(servicoClicado.id));
   if (!grupo) return [];
@@ -136,6 +144,7 @@ function _servicosIrmaosDoGrupo(local, servicoClicado) {
   ordenados.forEach((s, idx) => {
     if (s === servicoClicado) return;
     if (!grupo.has(s.id)) return;
+    if (!servicoLiberadoFolha(s.id)) return;
     if (s.status !== 'pendente') return;
     irmaos.push({ servico: s, svidx: idx });
   });
@@ -1202,7 +1211,8 @@ function renderServicosDoLocal(local) {
     const key = `${local.id}::${i}`;
     const sel = servicosSelecionados.has(key) ? ' selecionado' : '';
     const cursor = (s.status === 'concluido' || s.status === 'em_pagamento') ? ' nao-clicavel' : '';
-    return `<div class="apt-serv ${s.status}${sel}${cursor}"
+    const bloq = (s.status === 'pendente' && !servicoLiberadoFolha(s.id)) ? ' bloqueado-folha' : '';
+    return `<div class="apt-serv ${s.status}${sel}${cursor}${bloq}"
                  data-localid="${escHtml(local.id)}"
                  data-svidx="${i}"
                  onclick="onServicoClick(this)">${escHtml(nomeMapaServico(s))}</div>`;
@@ -1444,6 +1454,11 @@ function onServicoClick(el) {
 
   const key = `${el.dataset.localid}::${el.dataset.svidx}`;
   const marcando = !servicosSelecionados.has(key);
+
+  if (marcando && !servicoLiberadoFolha(servico.id)) {
+    alert(`"${nomeAbrev(servico.nome)}" está bloqueado para apontamento na folha.\n\nSó o PIN 2248 libera, no app Serviços.`);
+    return;
+  }
 
   if (marcando && servicoExigeSenhaRegistro(servico.nome)) {
     const senha = prompt(`MARCAR "${nomeAbrev(servico.nome)}" COMO FEITO?\n\nLocal: ${local.identificacao}\n\nDigite a senha:`);

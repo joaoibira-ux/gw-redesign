@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "1.8";
+const VERSAO = "1.9";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -72,8 +72,25 @@ function render(docs) {
           </div>
         </div>
         ${s.obs ? `<div class="card-obs">${escHtml(s.obs)}</div>` : ""}
+        <button class="btn-liberado ${s.liberadoFolha === false ? 'bloqueado' : ''}" onclick="toggleLiberadoFolha('${doc.id}')">
+          ${s.liberadoFolha === false ? '⛔ Bloqueado na Folha' : '✅ Liberado na Folha'}
+        </button>
       </div>`;
   }).join("");
+}
+
+// Liberar/bloquear o serviço pra apontamento no mapa da Folha — só o PIN
+// 2248 (modo completo) mexe nisso. Pedido do João, 2026-10-23.
+const PODE_LIBERAR_FOLHA = sessionStorage.getItem('gw_auth') === 'completo';
+
+function toggleLiberadoFolha(id) {
+  const s = servicosCache[id];
+  if (!s) return;
+  if (!PODE_LIBERAR_FOLHA) {
+    alert("Só o PIN 2248 pode liberar ou bloquear serviços na Folha.");
+    return;
+  }
+  col.doc(id).update({ liberadoFolha: s.liberadoFolha === false });
 }
 
 function ordemServico(nome) {
