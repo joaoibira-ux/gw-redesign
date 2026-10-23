@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.46";
+const VERSAO = "5.47";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -89,6 +89,15 @@ const GRUPO_ACABAMENTO_IDS = new Set([
   'M5CVZ7HsvSXfYcDfuE7j', // 1.8 Pintura Demão 2
 ]);
 
+// 1.1 e 1.4 também andam juntos (pedido do João, 2026-10-23): marcar um
+// marca o outro, mesma regra do grupo acima.
+const GRUPO_PASTA_EMASSAMENTO_IDS = new Set([
+  'iI7Z0N048ckFrLaYvTN8', // 1.1 Revestimento de Gesso em Pasta
+  'VzCl35HCooNTUsASsp7x', // 1.4 Emassamento de Parede
+]);
+
+const GRUPOS_MARCACAO_CONJUNTA = [GRUPO_ACABAMENTO_IDS, GRUPO_PASTA_EMASSAMENTO_IDS];
+
 // Mesma trava de locais/app.js (pedido do João, 2026-10-13) — etapas finais
 // de acabamento exigem a senha 6535 pra marcar como feito. Achado ao vivo,
 // 2026-10-16: só tinha sido aplicada em locais/app.js (tela "Locais"); a
@@ -120,12 +129,13 @@ function _marcarServico(local, servico, localid, svidx, marcando) {
 // (exclui o próprio serviço clicado) — retorna [] se o clicado não é do
 // grupo, ou se não houver mais nenhum outro elegível nesse local.
 function _servicosIrmaosDoGrupo(local, servicoClicado) {
-  if (!GRUPO_ACABAMENTO_IDS.has(servicoClicado.id)) return [];
+  const grupo = GRUPOS_MARCACAO_CONJUNTA.find(g => g.has(servicoClicado.id));
+  if (!grupo) return [];
   const ordenados = [...(local.servicos || [])].sort((a, b) => ordemServico(a.nome) - ordemServico(b.nome));
   const irmaos = [];
   ordenados.forEach((s, idx) => {
     if (s === servicoClicado) return;
-    if (!GRUPO_ACABAMENTO_IDS.has(s.id)) return;
+    if (!grupo.has(s.id)) return;
     if (s.status !== 'pendente') return;
     irmaos.push({ servico: s, svidx: idx });
   });
