@@ -1,8 +1,8 @@
-const VERSION = "diario-v1";
+const VERSION = "diario-v2";
 const ASSETS = [
   "./index.html",
-  "./style.css?v=1",
-  "./app.js?v=1",
+  "./style.css?v=2",
+  "./app.js?v=1.1",
   "./manifest.json"
 ];
 

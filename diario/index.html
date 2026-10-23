@@ -9,7 +9,7 @@
   <title>Diário de Obra</title>
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <link rel="manifest" href="./manifest.json" />
-  <link rel="stylesheet" href="./style.css?v=1" />
+  <link rel="stylesheet" href="./style.css?v=2" />
   <link rel="apple-touch-icon" href="../Logo-gw.png" />
 </head>
 <body>
@@ -33,7 +33,7 @@
 <button class="fab" id="fab" onclick="toggleForm()">+</button>
 
 <form class="form-card" id="form" novalidate style="display:none">
-  <h3>Novo Registro</h3>
+  <h3 id="form-titulo">Novo Registro</h3>
   <div class="form-grid">
     <div class="full">
       <label for="f-obra">Obra</label>
@@ -75,6 +75,7 @@
     <div id="dt-fotos" class="dt-fotos"></div>
     <div class="revisao-acoes">
       <button type="button" class="btn-cancelar" id="btn-del-detalhe">Excluir</button>
+      <button type="button" class="btn-editar" id="btn-edit-detalhe">Editar</button>
       <button type="button" class="btn-add" onclick="fecharDetalhe()">Fechar</button>
     </div>
   </div>
@@ -87,7 +88,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
-<script src="./app.js?v=1"></script>
+<script src="./app.js?v=1.1"></script>
 <script src="../bfcache-fix.js"></script>
 </body>
 </html>

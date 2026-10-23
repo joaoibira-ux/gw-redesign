@@ -368,7 +368,18 @@ header {
   display: flex;
   gap: 10px;
 }
-.revisao-acoes .btn-add, .revisao-acoes .btn-cancelar { flex: 1; }
+.revisao-acoes .btn-add, .revisao-acoes .btn-cancelar, .revisao-acoes .btn-editar { flex: 1; }
+
+.btn-editar {
+  background: #e3f2fd;
+  color: #0d47a1;
+  border: none;
+  border-radius: 10px;
+  padding: 14px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
 
 .btn-cancelar {
   background: #fdecea;

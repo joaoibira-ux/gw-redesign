@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "1.0";
+const VERSAO = "1.1";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -142,14 +142,39 @@ col.orderBy("criadoEm", "desc").onSnapshot(snap => {
     '<p class="empty">Erro ao conectar. Verifique sua internet.</p>';
 });
 
+// Alterar/excluir pedem a senha 2248 ou 1176 (pedido do João, 2026-10-23).
+function pedirSenha(acao, r) {
+  const senha = prompt(acao + "\n\n" + r.obra + " — " + r.data + "\n\nDigite a senha:");
+  if (senha === null) return false;
+  if (senha !== "2248" && senha !== "1176") { alert("Senha incorreta."); return false; }
+  return true;
+}
+
 function excluir(id) {
   const r = itensCache[id];
   if (!r) return;
-  const senha = prompt("EXCLUIR REGISTRO?\n\n" + r.obra + " — " + r.data + "\n\nDigite a senha:");
-  if (senha === null) return;
-  if (senha !== "6535") { alert("Senha incorreta."); return; }
+  if (!pedirSenha("EXCLUIR REGISTRO?", r)) return;
   col.doc(id).delete();
   fecharDetalhe();
+}
+
+let editandoId = null;
+
+function editar(id) {
+  const r = itensCache[id];
+  if (!r) return;
+  if (!pedirSenha("ALTERAR REGISTRO?", r)) return;
+  fecharDetalhe();
+  editandoId = id;
+  fotosPendentes = [];
+  renderPreviewFotos();
+  document.getElementById("form-titulo").textContent = "Editar Registro";
+  document.getElementById("btn-submit").textContent = "✓ Salvar alterações";
+  document.getElementById("f-obra").value = r.obra || "KEL1";
+  document.getElementById("f-data").value = r.dataISO || "";
+  document.getElementById("f-atividades").value = r.atividades || "";
+  document.getElementById("form").style.display = "block";
+  document.getElementById("fab").classList.add("open");
 }
 
 // ---------- Visualização de fotos ----------
@@ -179,6 +204,7 @@ function abrirDetalhe(id) {
     `<img src="${url}" class="dt-foto" onclick="abrirFotoView('${id}', ${i})" />`
   ).join("");
   document.getElementById("btn-del-detalhe").setAttribute("onclick", `excluir('${id}')`);
+  document.getElementById("btn-edit-detalhe").setAttribute("onclick", `editar('${id}')`);
   document.getElementById("overlay-detalhe").style.display = "flex";
 }
 
@@ -241,14 +267,25 @@ document.getElementById("form").addEventListener("submit", async function(e) {
   mostrarLoading(true);
   try {
     const fotos = await Promise.all(fotosPendentes.map(f => uploadFotoDiario(f.blob)));
-    await col.add({
-      obra,
-      data: isoParaBr(dataISO),
-      dataISO,
-      atividades,
-      fotos,
-      criadoEm: firebase.firestore.FieldValue.serverTimestamp()
-    });
+    if (editandoId) {
+      const existentes = (itensCache[editandoId] && itensCache[editandoId].fotos) || [];
+      await col.doc(editandoId).update({
+        obra,
+        data: isoParaBr(dataISO),
+        dataISO,
+        atividades,
+        fotos: [...existentes, ...fotos]
+      });
+    } else {
+      await col.add({
+        obra,
+        data: isoParaBr(dataISO),
+        dataISO,
+        atividades,
+        fotos,
+        criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
     this.reset();
     fotosPendentes = [];
     renderPreviewFotos();
@@ -271,9 +308,12 @@ function toggleForm() {
     document.getElementById("f-data").value = hojeISO();
     document.getElementById("f-atividades").focus();
   } else {
+    editandoId = null;
     fotosPendentes = [];
     renderPreviewFotos();
     document.getElementById("form").reset();
+    document.getElementById("form-titulo").textContent = "Novo Registro";
+    document.getElementById("btn-submit").textContent = "+ Registrar";
   }
 }
 
