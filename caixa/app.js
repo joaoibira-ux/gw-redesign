@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO_CAIXA = "3.66";
+const VERSAO_CAIXA = "3.67";
 const HORACIO_BASE = -136306.23;
 const JOAO_BASE = -32250;
 document.getElementById("versao-caixa").textContent = "Versão: " + VERSAO_CAIXA;
@@ -946,9 +946,14 @@ function criarEntradaEmprestimo(data, desc, entrada, comprovante) {
   // exceto quando é BBS Fomento — aí não repete "EMPRESTIMO" (a descrição já
   // deixa isso claro, ex: "BBS FOMENTO Nº 0402" em vez de "BBS FOMENTO
   // EMPRESTIMO Nº 0402").
+  // Se a descrição digitada no Caixa já trouxer "EMPRESTIMO" (ex:
+  // "EMPRESTIMO BBS NF 104"), tira a palavra no nome da BBS e padroniza
+  // como "BBS FOMENTO ..." — pedido do João, 2026-10-23.
   const nomeUpper = (desc || "").trim().toUpperCase();
   const ehBBS = /BBS/.test(nomeUpper);
-  const descricaoContaPagar = ehBBS ? `${nomeUpper} Nº ${numero}` : `${nomeUpper} EMPRESTIMO Nº ${numero}`;
+  let nomeBBS = nomeUpper.replace(/EMPR[EÉ]STIMO/g, " ").replace(/\s{2,}/g, " ").replace(/^[\s\-–]+/, "").trim();
+  if (!/FOMENTO/.test(nomeBBS)) nomeBBS = nomeBBS.replace("BBS", "BBS FOMENTO");
+  const descricaoContaPagar = ehBBS ? `${nomeBBS} Nº ${numero}` : `${nomeUpper} EMPRESTIMO Nº ${numero}`;
 
   batch.set(col.doc(), {
     data, origem: "ANE->EMPRESTIMO", descricao: desc,
