@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.48";
+const VERSAO = "5.49";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -131,9 +131,16 @@ function _marcarServico(local, servico, localid, svidx, marcando) {
 // Serviço do catálogo marcado como bloqueado no app Serviços (só o PIN 2248
 // mexe nisso) não pode ser apontado no mapa — pedido do João, 2026-10-23.
 // Sem o campo (serviços antigos) conta como liberado.
-function servicoLiberadoFolha(servicoId) {
+// Nos grupos que marcam junto (1.1+1.4, 1.5-1.8), um bloqueado bloqueia o
+// grupo inteiro (pedido do João, 2026-10-23).
+function _liberadoNoCatalogo(servicoId) {
   const c = servicosCache.find(d => d.id === servicoId);
   return !c || c.liberadoFolha !== false;
+}
+
+function servicoLiberadoFolha(servicoId) {
+  const grupo = GRUPOS_MARCACAO_CONJUNTA.find(g => g.has(servicoId));
+  return (grupo ? [...grupo] : [servicoId]).every(_liberadoNoCatalogo);
 }
 
 function _servicosIrmaosDoGrupo(local, servicoClicado) {
@@ -1456,7 +1463,8 @@ function onServicoClick(el) {
   const marcando = !servicosSelecionados.has(key);
 
   if (marcando && !servicoLiberadoFolha(servico.id)) {
-    alert(`"${nomeAbrev(servico.nome)}" está bloqueado para apontamento na folha.\n\nSó o PIN 2248 libera, no app Serviços.`);
+    const proprio = _liberadoNoCatalogo(servico.id) ? ' (faz parte de um grupo com serviço bloqueado)' : '';
+    alert(`"${nomeAbrev(servico.nome)}" está bloqueado para apontamento na folha${proprio}.\n\nSó o PIN 2248 libera, no app Serviços.`);
     return;
   }
 
