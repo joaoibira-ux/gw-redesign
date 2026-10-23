@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.45";
+const VERSAO = "5.46";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -576,6 +576,17 @@ async function sincronizarDiariasAjudantesPorPonto() {
       const info = dias.get(diaKey);
       if (d.tipo === 'entrada' && (!info.entrada || dt < info.entrada)) info.entrada = dt;
       if (d.tipo === 'saida'   && (!info.saida   || dt > info.saida))   info.saida   = dt;
+    });
+
+    // Dia com falta/suspensão registrada no Rel. Ponto não conta como
+    // trabalhado, mesmo que tenha ponto batido (mesma regra em functions/index.js).
+    const ocSnap = await db.collection('ocorrencias').get();
+    ocSnap.docs.forEach(o => {
+      const oc = o.data();
+      const [a, m, dd] = (oc.dataISO || '').split('-').map(Number);
+      if (!a || !oc.funcionarioId) return;
+      const dias = registrosPorFunc.get(oc.funcionarioId);
+      if (dias) dias.delete(`${a}-${m - 1}-${dd}`);
     });
 
     function trabalhou(funcionarioId, date) {

@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.47";
+  const VERSAO = "2.48";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1524,6 +1524,20 @@
       }
       const dia0h = new Date(ts.getFullYear(), ts.getMonth(), ts.getDate());
       if (dia0h >= qIni && dia0h <= qFim) entry.dias.add(dia0h.toDateString());
+    });
+
+    // Falta/suspensão registrada no Rel. Ponto conta como falta mesmo que o
+    // funcionário tenha batido ponto naquele dia (pedido do João, 2026-10-23).
+    const ocSnap = await db.collection('ocorrencias').get();
+    ocSnap.docs.forEach(o => {
+      const oc = o.data();
+      const [a, m, dd] = (oc.dataISO || '').split('-').map(Number);
+      if (!a || !oc.funcionarioId) return;
+      const entry = presencaPorChave.get(oc.funcionarioId);
+      if (!entry) return;
+      const dia = new Date(a, m - 1, dd);
+      if (dia.getDay() === 6) entry.sabados.delete(segundaDaSemanaDe(dia).toISOString().slice(0, 10));
+      else entry.dias.delete(dia.toDateString());
     });
 
     // Enumera todo dia útil (seg-sex) da quinzena, agrupado pela segunda-

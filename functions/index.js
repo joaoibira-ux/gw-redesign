@@ -4498,6 +4498,17 @@ async function sincronizarDiariasAjudantesPorPonto(periodoForcado) {
     if (d.tipo === "saida"   && (!info.saida   || dt > info.saida))   info.saida   = dt;
   });
 
+  // Dia com falta/suspensão registrada no Rel. Ponto não conta como
+  // trabalhado, mesmo que tenha ponto batido (mesma regra em folha/app.js).
+  const ocSnap = await db.collection("ocorrencias").get();
+  ocSnap.docs.forEach(o => {
+    const oc = o.data();
+    const [a, m, dd] = (oc.dataISO || "").split("-").map(Number);
+    if (!a || !oc.funcionarioId) return;
+    const dias = registrosPorFunc.get(oc.funcionarioId);
+    if (dias) dias.delete(`${a}-${m - 1}-${dd}`);
+  });
+
   function trabalhou(funcionarioId, date) {
     const dias = registrosPorFunc.get(funcionarioId);
     if (!dias) return false;
@@ -6021,3 +6032,101 @@ exports.agenteGarconeteNativa = onCall(
     return { content: data.content, stop_reason: data.stop_reason };
   }
 );
+
+// Falta/suspensão do dia registrada pelo Rel. Ponto (PIN 2248 ou 1176) —
+// pedido do João, 2026-10-23. Grava em "ocorrencias" (o dia passa a contar
+// como falta nas Passagens e não gera diária, ver calcularFaltasQuinzenaAtual
+// e sincronizarDiariasAjudantesPorPonto), apaga a diária desse dia se já
+// tiver sido lançada, manda a advertência pro funcionário no WhatsApp e uma
+// cópia pro João no Telegram.
+exports.registrarOcorrencia = onCall({ secrets: [evolutionApiKey], timeoutSeconds: 60 }, async (request) => {
+  const { pin, funcionarioId, tipo, dataISO, motivo } = request.data || {};
+
+  const cfgSnap = await db.collection("configuracoes").doc("geral").get();
+  const cfg = cfgSnap.exists ? cfgSnap.data() : {};
+  const pinsAutorizados = [cfg.pinCompleto || "2248", cfg.pinCadastro2 || "1176"];
+  if (!pinsAutorizados.includes(String(pin || ""))) {
+    throw new HttpsError("permission-denied", "Só os PINs 2248 e 1176 podem registrar falta/suspensão.");
+  }
+  if (!["falta", "suspensao"].includes(tipo)) throw new HttpsError("invalid-argument", "Tipo inválido.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dataISO || "")) throw new HttpsError("invalid-argument", "Data inválida.");
+  const motivoLimpo = String(motivo || "").trim();
+  if (!motivoLimpo) throw new HttpsError("invalid-argument", "Informe o motivo.");
+
+  const funcSnap = await db.collection("funcionarios").doc(String(funcionarioId || "")).get();
+  if (!funcSnap.exists) throw new HttpsError("not-found", "Funcionário não encontrado.");
+  const f = funcSnap.data();
+
+  const [ano, mes, dia] = dataISO.split("-");
+  const dataBR = `${dia}/${mes}/${ano}`;
+
+  const jaExiste = await db.collection("ocorrencias")
+    .where("funcionarioId", "==", funcSnap.id)
+    .where("dataISO", "==", dataISO)
+    .get();
+  if (!jaExiste.empty) throw new HttpsError("already-exists", `${f.nome} já tem ocorrência registrada em ${dataBR}.`);
+
+  const ocRef = await db.collection("ocorrencias").add({
+    funcionarioId: funcSnap.id,
+    funcionarioNome: f.nome || "",
+    tipo,
+    dataISO,
+    data: dataBR,
+    motivo: motivoLimpo,
+    registradoPorPin: String(pin),
+    criadoEm: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  // Diária desse dia (se o sincronismo já tiver lançado) sai do balde.
+  const localId = `${dia}/${mes}`;
+  const diariaRef = db.collection("diarias").doc(funcSnap.id);
+  const diariaSnap = await diariaRef.get();
+  if (diariaSnap.exists) {
+    const dias = diariaSnap.data().dias || [];
+    const restantes = dias.filter(d => (d.localId || "").replace(" ½", "").trim() !== localId);
+    if (restantes.length !== dias.length) await diariaRef.update({ dias: restantes });
+  }
+
+  const tipoTexto = tipo === "falta" ? "FALTA" : "SUSPENSÃO DE 1 (UM) DIA";
+  const consequencia = tipo === "falta"
+    ? "Foi registrada falta neste dia, que será descontada do pagamento conforme as regras da empresa."
+    : "Você está suspenso(a) neste dia, sem remuneração, devendo retornar ao trabalho no próximo dia útil.";
+  const texto = `⚠️ *ADVERTÊNCIA — GW REVESTIMENTOS*
+
+Funcionário(a): ${f.nome}
+Data: ${dataBR}
+Ocorrência: *${tipoTexto}*
+
+Motivo: ${motivoLimpo}
+
+${consequencia}
+
+A repetição de ocorrências poderá resultar em medidas disciplinares mais graves.
+
+GW Revestimentos`;
+
+  const numero = formatarNumeroWhatsApp(f.telefone);
+  let whatsappEnviado = false;
+  let erroWhatsapp = null;
+  if (!numero) {
+    erroWhatsapp = "funcionário sem telefone no cadastro";
+  } else {
+    try {
+      await enviarWhatsAppEvolution(texto, evolutionApiKey.value(), [numero]);
+      whatsappEnviado = true;
+    } catch (e) {
+      erroWhatsapp = e.message;
+      logger.error("[registrarOcorrencia] falha WhatsApp", { erro: e.message });
+    }
+  }
+
+  const statusWhats = whatsappEnviado ? `✅ enviada no WhatsApp (${numero})` : `❌ NÃO enviada no WhatsApp (${erroWhatsapp})`;
+  try {
+    await enviarTextoTelegram(`📋 Cópia da advertência — ${statusWhats}\nRegistrada pelo PIN ${pin}\n\n${texto}`);
+  } catch (e) {
+    logger.error("[registrarOcorrencia] falha Telegram", { erro: e.message });
+  }
+
+  await ocRef.update({ whatsappEnviado, erroWhatsapp });
+  return { ok: true, whatsappEnviado, erroWhatsapp };
+});
