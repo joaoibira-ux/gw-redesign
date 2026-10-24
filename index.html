@@ -644,7 +644,7 @@
     // Substituído por um alerta (Cloud Function alertaSaidaEmAberto) que
     // avisa quem esqueceu, em vez de inventar um horário.
 
-    const VERSAO = '7.74';
+    const VERSAO = '7.75';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -1139,6 +1139,13 @@
         const retencao = m.semRetencao ? 0 : nf * 0.05;
         return s + ((m.valor || 0) - retencao) * 0.03;
       }, 0);
+      // Comissões já pagas: saídas no Caixa com "COMISSAO" e "PEDRO" na
+      // descrição (pedido do João, 2026-10-24); a receber = total - pagas.
+      const normDD = t => (t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+      const comissaoPedroPaga = lanc
+        .filter(l => { const t = normDD(l.descricao); return t.includes('COMISSAO') && t.includes('PEDRO'); })
+        .reduce((s, l) => s + (Number(l.saida) || 0), 0);
+      const comissaoPedroAReceber = comissaoPedroTotal - comissaoPedroPaga;
 
       document.getElementById('dd-kpis').innerHTML = [
         {
@@ -1170,7 +1177,7 @@
         {
           icon: '🤝', bg: 'rgba(186,104,200,0.14)', titulo: 'COMISSÃO PEDRO (TOTAL)',
           valor: ddFmtMoeda(comissaoPedroTotal),
-          delta: 'Sem controle de pago/a pagar ainda', pos: true,
+          delta: `Pagas: ${ddFmtMoeda(comissaoPedroPaga)}<br>A receber: ${ddFmtMoeda(comissaoPedroAReceber)}`, pos: true,
         },
       ].map(k => `
         <div class="dd-card">
