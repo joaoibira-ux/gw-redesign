@@ -289,7 +289,7 @@
     }
 
     .dd-kpis { flex: 0 0 auto; display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 10px; }
-    .dd-content-rows { flex: 1; min-height: 0; display: grid; grid-template-rows: 1fr 2fr; gap: 10px; }
+    .dd-content-rows { flex: 1; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1.5fr); gap: 10px; }
     .dd-row2 { min-height: 0; display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
     .dd-row3x2 { min-height: 0; display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 10px; }
     .dd-row2 .dd-card, .dd-row3x2 .dd-card { display: flex; flex-direction: column; min-height: 0; }
@@ -309,21 +309,27 @@
     .dd-card-scroll::-webkit-scrollbar-button { display: none; height: 0; }
 
     /* Blocos (Resumo Financeiro / Próxima Medição) */
-    .dd-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 8px; align-content: start; margin-top: 8px; }
+    .dd-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 6px; align-content: start; margin-top: 6px; }
     .dd-tile {
       background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
-      border-left: 3px solid var(--c, #4acf54); border-radius: 10px; padding: 7px 10px;
+      border-left: 3px solid var(--c, #4acf54); border-radius: 8px; padding: 5px 8px;
     }
-    .dd-tile-label { font-size: 0.56rem; color: #8fb391; text-transform: uppercase; letter-spacing: 0.04em; }
-    .dd-tile-valor { font-size: 0.84rem; font-weight: 800; color: var(--c, #4acf54); margin-top: 2px; white-space: nowrap; }
+    .dd-tile-label { font-size: 0.52rem; color: #8fb391; text-transform: uppercase; letter-spacing: 0.04em; }
+    .dd-tile-valor { font-size: 0.76rem; font-weight: 800; color: var(--c, #4acf54); margin-top: 1px; white-space: nowrap; }
+    /* Resumo Financeiro: rosca à esquerda, valores em coluna à direita */
+    .dd-fin-wrap { flex: 1; min-height: 0; display: flex; gap: 14px; align-items: stretch; }
+    #dd-donut-financeiro > div { flex-direction: column; align-items: flex-start; justify-content: center; }
+    .dd-tiles-col { grid-template-columns: 1fr; margin-top: 0; gap: 5px; flex: 1; }
+    .dd-tiles-col .dd-tile { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .dd-tiles-col .dd-tile-valor { margin-top: 0; }
 
     /* Rankings */
-    .dd-rank-item { padding: 5px 0; }
+    .dd-rank-item { padding: 3px 0; }
     .dd-rank-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 0.68rem; }
     .dd-rank-nome { color: #dcece0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .dd-rank-pos { display: inline-block; width: 22px; color: #8fb391; font-weight: 700; }
     .dd-rank-valor { color: #4acf54; font-weight: 800; white-space: nowrap; }
-    .dd-rank-bar { height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+    .dd-rank-bar { height: 3px; background: rgba(255,255,255,0.06); border-radius: 2px; margin-top: 3px; overflow: hidden; }
     .dd-rank-bar span { display: block; height: 100%; border-radius: 2px; background: linear-gradient(90deg, #2e7d32, #4acf54); }
 
     .dd-lista-item { display: flex; align-items: center; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.68rem; }
@@ -542,8 +548,10 @@
         <div class="dd-row3x2">
           <div class="dd-card" style="grid-column:1;grid-row:1 / span 2;">
             <div class="dd-card-header"><span class="dd-card-header-title">Resumo Financeiro</span></div>
-            <div id="dd-donut-financeiro" style="flex:0 0 auto;"></div>
-            <div id="dd-resumo-creditos" class="dd-card-scroll dd-tiles"></div>
+            <div class="dd-fin-wrap">
+              <div id="dd-donut-financeiro" style="flex:0 0 auto;"></div>
+              <div id="dd-resumo-creditos" class="dd-card-scroll dd-tiles dd-tiles-col"></div>
+            </div>
           </div>
           <div class="dd-card" style="grid-column:2;grid-row:1;">
             <div class="dd-card-header"><span class="dd-card-header-title">Progresso dos Serviços</span></div>
@@ -671,7 +679,7 @@
     // Substituído por um alerta (Cloud Function alertaSaidaEmAberto) que
     // avisa quem esqueceu, em vez de inventar um horário.
 
-    const VERSAO = '7.77';
+    const VERSAO = '7.78';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -1319,12 +1327,8 @@
         : `faltam ${diasUteisFechamento} dias úteis`;
 
       document.getElementById('dd-proxima-medicao').innerHTML = `
-        <div class="dd-card-delta ${diasUteisFechamento <= 1 ? 'neg' : 'pos'}" style="margin-bottom:8px;">📅 Fecha em ${fechamentoStr} · ${diasUteisLabel}</div>
+        <div class="dd-card-delta ${diasUteisFechamento <= 1 ? 'neg' : 'pos'}">📅 Fecha em ${fechamentoStr} · ${diasUteisLabel}${servPendentes ? ` · <b>${servPendentes} serviço${servPendentes !== 1 ? 's' : ''}</b>` : ''}</div>
         ${servPendentes ? `
-          <div style="display:flex;align-items:center;gap:12px;">
-            <div class="dd-card-icon" style="background:rgba(105,178,240,0.14);margin:0;">📐</div>
-            <div><div class="dd-card-value">${servPendentes}</div><div class="dd-card-title" style="margin:0;">SERVIÇO${servPendentes !== 1 ? 'S' : ''} EM MEDIÇÃO</div></div>
-          </div>
           <div class="dd-tiles" style="grid-template-columns:repeat(3,1fr);">
             <div class="dd-tile" style="--c:#69b2f0"><div class="dd-tile-label">Medição</div><div class="dd-tile-valor">${ddFmtMoeda(totalMedicaoPrev)}</div></div>
             <div class="dd-tile" style="--c:#ef4943"><div class="dd-tile-label">Retenção 5%</div><div class="dd-tile-valor">${totalRetencaoPrev > 0 ? '- ' + ddFmtMoeda(totalRetencaoPrev) : '—'}</div></div>
@@ -1384,7 +1388,7 @@
       html += `<text x="${cx}" y="${cy - 3}" font-size="13" font-weight="800" fill="#f1f8f2" text-anchor="middle">${ddFmtMoedaCompacta(saldoInter + saldoCef)}</text>`;
       html += `<text x="${cx}" y="${cy + 11}" font-size="7.5" fill="#8fb391" text-anchor="middle">Saldo Total</text>`;
       return `<div style="display:flex;align-items:center;gap:8px;height:100%;">
-        <svg viewBox="0 0 110 110" style="width:100px;height:100px;flex-shrink:0;">${html}</svg>
+        <svg viewBox="0 0 110 110" style="width:90px;height:90px;flex-shrink:0;">${html}</svg>
         <div class="dd-donut-legend">
           <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#3679f9"></span>Saldo INTER<br>${ddFmtMoeda(saldoInter)}</div>
           <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#ffca28"></span>Saldo CEF<br>${ddFmtMoeda(saldoCef)}</div>
@@ -1406,7 +1410,7 @@
       html += `<text x="${cx}" y="${cy - 3}" font-size="17" font-weight="800" fill="#f1f8f2" text-anchor="middle">${total > 0 ? Math.round(pct * 100) : 0}%</text>`;
       html += `<text x="${cx}" y="${cy + 11}" font-size="7.5" fill="#8fb391" text-anchor="middle">Concluído</text>`;
       return `<div style="display:flex;align-items:center;gap:8px;height:100%;">
-        <svg viewBox="0 0 110 110" style="width:100px;height:100px;flex-shrink:0;">${html}</svg>
+        <svg viewBox="0 0 110 110" style="height:100%;max-height:100px;width:auto;aspect-ratio:1/1;flex-shrink:0;">${html}</svg>
         <div class="dd-donut-legend">
           <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#4acf54"></span>Concluídos: ${concluidos}</div>
           <div class="dd-donut-legend-item"><span class="dd-donut-legend-dot" style="background:#ef4943"></span>Pendentes: ${pendentes}</div>
