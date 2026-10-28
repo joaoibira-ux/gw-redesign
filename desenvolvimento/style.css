@@ -242,3 +242,17 @@ header {
   padding: 60px 0;
   font-size: 0.9rem;
 }
+
+/* Anexos */
+.card-anexos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.anexo-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: #e3f2fd; border-radius: 14px; padding: 3px 4px 3px 10px; font-size: 0.74rem;
+}
+.anexo-chip a { color: #0d47a1; text-decoration: none; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.anexo-del { background: none; border: none; color: #90a4ae; font-size: 0.75rem; cursor: pointer; padding: 0 4px; }
+.btn-anexar {
+  width: 100%; background: #f0f2f5; color: #1a3322; border: 1.5px dashed #c5d6c8;
+  border-radius: 8px; padding: 9px; font-size: 0.86rem; font-weight: 600; cursor: pointer;
+}
+.anexos-pendentes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }

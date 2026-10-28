@@ -9,7 +9,7 @@
   <title>Desenvolvimento</title>
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <link rel="manifest" href="./manifest.json" />
-  <link rel="stylesheet" href="./style.css?v=1" />
+  <link rel="stylesheet" href="./style.css?v=1.1" />
   <link rel="apple-touch-icon" href="../Logo-gw.png" />
 </head>
 <body>
@@ -42,6 +42,11 @@
       <label for="f-texto">O que precisa ser feito</label>
       <textarea id="f-texto" rows="3" placeholder="Ex: Contas a Pagar: abrir o calendário no campo data"></textarea>
     </div>
+    <div class="full">
+      <button type="button" class="btn-anexar" onclick="document.getElementById('f-anexos').click()">📎 Anexar arquivo</button>
+      <input type="file" id="f-anexos" multiple style="display:none" />
+      <div id="anexos-pendentes" class="anexos-pendentes"></div>
+    </div>
     <button type="submit" class="btn-add" id="btn-add">+ Adicionar</button>
   </div>
 </form>
@@ -49,7 +54,9 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
-<script src="./app.js?v=1"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+<input type="file" id="anexo-direto" multiple style="display:none" />
+<script src="./app.js?v=1.1"></script>
 <script src="../agente.js"></script>
 <script src="../bfcache-fix.js"></script>
 </body>

@@ -16,5 +16,8 @@ service firebase.storage {
     match /funcionariosDocs/{funcId}/{arquivo} {
       allow read, write: if true;
     }
+    match /desenvolvimento/{docId}/{arquivo} {
+      allow read, write: if true;
+    }
   }
 }

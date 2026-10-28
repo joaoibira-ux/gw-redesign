@@ -1,8 +1,8 @@
-const VERSION = "desenvolvimento-v2";
+const VERSION = "desenvolvimento-v3";
 const ASSETS = [
   "./index.html",
-  "./style.css?v=1",
-  "./app.js?v=1",
+  "./style.css?v=1.1",
+  "./app.js?v=1.1",
   "./manifest.json"
 ];
 
