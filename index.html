@@ -679,7 +679,7 @@
     // Substituído por um alerta (Cloud Function alertaSaidaEmAberto) que
     // avisa quem esqueceu, em vez de inventar um horário.
 
-    const VERSAO = '7.79';
+    const VERSAO = '7.80';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -1276,14 +1276,20 @@
         if (p.tipo === 'entrada') item.entrada = true;
         if (p.tipo === 'saida')   item.saida   = true;
       });
+      // Falta/suspensão registrada hoje no Rel. Ponto: dia encerrado, fica
+      // numa linha própria (não conta como "no trabalho" nem "não bateu").
+      const hojeISO = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
+      const ocHojeSnap = await db.collection('ocorrencias').where('dataISO', '==', hojeISO).get().catch(() => ({ docs: [] }));
+      const ocHoje = new Map(ocHojeSnap.docs.map(d => [d.data().funcionarioId, d.data()]));
       let noTrabalho = 0, jaSairam = 0;
-      const naoBateram = [];
+      const naoBateram = [], comOcorrencia = [];
       funcAtivos.forEach(f => {
+        if (ocHoje.has(f.id)) { comOcorrencia.push(`${f.nome} (${ocHoje.get(f.id).tipo === 'suspensao' ? 'suspensão' : 'falta'})`); return; }
         const reg = pontoPorFunc.get(f.id) || pontoPorFunc.get(f.nome);
         if (!reg || !reg.entrada) { naoBateram.push(f.nome || '(sem nome)'); return; }
         if (reg.saida) jaSairam++; else noTrabalho++;
       });
-      const bateramPonto = funcAtivos.length - naoBateram.length;
+      const bateramPonto = funcAtivos.length - naoBateram.length - comOcorrencia.length;
       document.getElementById('dd-ponto-hoje').innerHTML = `
         <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px;">
           <div class="dd-card-icon" style="background:rgba(105,240,174,0.14);margin:0;">🕐</div>
@@ -1292,7 +1298,8 @@
         <div class="dd-lista-item"><span class="dd-lista-sub">No trabalho agora</span><span class="dd-lista-valor">${noTrabalho}</span></div>
         <div class="dd-lista-item"><span class="dd-lista-sub">Já saíram</span><span class="dd-lista-valor">${jaSairam}</span></div>
         <div class="dd-lista-item"><span class="dd-lista-sub">Não bateram ponto</span><span class="dd-lista-valor" style="color:${naoBateram.length ? '#ef4943' : '#4acf54'};">${naoBateram.length}</span></div>
-        <div id="dd-ponto-nomes">${naoBateram.map(n => `<div class="dd-lista-item"><span class="dd-lista-nome" style="color:#ef4943;">⚠️ ${ddEscHtml(n)}</span></div>`).join('')}</div>`;
+        ${comOcorrencia.length ? `<div class="dd-lista-item"><span class="dd-lista-sub">Falta/suspensão registrada</span><span class="dd-lista-valor" style="color:#ffca28;">${comOcorrencia.length}</span></div>` : ''}
+        <div id="dd-ponto-nomes">${naoBateram.map(n => `<div class="dd-lista-item"><span class="dd-lista-nome" style="color:#ef4943;">⚠️ ${ddEscHtml(n)}</span></div>`).join('')}${comOcorrencia.map(n => `<div class="dd-lista-item"><span class="dd-lista-nome" style="color:#ffca28;">⛔ ${ddEscHtml(n)}</span></div>`).join('')}</div>`;
 
       // ── Funcionários ──
       const ativos = func.filter(f => f.ativo !== false).length;

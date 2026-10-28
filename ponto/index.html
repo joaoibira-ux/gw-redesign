@@ -341,6 +341,13 @@
   <button class="btn-retry" onclick="voltarCamera()">↩ Voltar</button>
 </div>
 
+<div id="s-ponto-bloqueado" class="screen">
+  <div class="nf-icon">⛔</div>
+  <div class="nf-title">PONTO BLOQUEADO HOJE</div>
+  <div class="nf-msg" id="bloqueado-msg">—</div>
+  <button class="btn-retry" onclick="voltarCamera()">↩ Voltar</button>
+</div>
+
 <!-- face-api.js -->
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 
@@ -358,7 +365,7 @@ const FIREBASE_CONFIG = {
 };
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 const MATCH_THRESHOLD = 0.55;
-const VERSAO          = '2.19';
+const VERSAO          = '2.20';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let db;
@@ -586,6 +593,14 @@ async function reconhecerFace(video) {
     const func = getFuncById(match.label);
     if (!func) { paused = false; return; }
 
+    // Falta/suspensão registrada hoje no Rel. Ponto encerra o dia: não deixa
+    // bater mais nada (pedido do João, 2026-10-28).
+    const oc = await ocorrenciaHoje(func.id);
+    if (oc) {
+      mostrarPontoBloqueado(oc);
+      return;
+    }
+
     const { tipo, docId, avisoSaidaAberta, entradaTs } = await determinarTipo(func.id);
 
     // Horas mínimas entre entrada e saída (cadastro do funcionário, opcional)
@@ -613,18 +628,49 @@ async function reconhecerFace(video) {
 // quando isso acontece, a pessoa precisa ser avisada bem visível antes de
 // bater a entrada de hoje de novo, pra procurar o encarregado e corrigir o
 // dia anterior (o registro de hoje segue normal mesmo assim).
+function isoLocal(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+async function ocorrenciaHoje(funcId) {
+  try {
+    const snap = await db.collection('ocorrencias')
+      .where('funcionarioId', '==', funcId)
+      .where('dataISO', '==', isoLocal(new Date()))
+      .get();
+    return snap.empty ? null : snap.docs[0].data();
+  } catch (e) { console.error('ocorrenciaHoje:', e); return null; }
+}
+
+function mostrarPontoBloqueado(oc) {
+  const tipo = oc.tipo === 'suspensao' ? 'SUSPENSÃO' : 'FALTA';
+  document.getElementById('bloqueado-msg').textContent =
+    `${oc.funcionarioNome || ''}: foi registrada ${tipo} hoje (${oc.data}). O ponto deste dia está encerrado. Procure o encarregado.`;
+  showScreen('s-ponto-bloqueado');
+  // Volta sozinho pra câmera, pra o totem não ficar travado nessa tela.
+  setTimeout(() => {
+    if (document.getElementById('s-ponto-bloqueado').classList.contains('active')) voltarCamera();
+  }, 8000);
+}
+
 async function temSaidaEmAbertoAnterior(funcId) {
   try {
     const hoje = new Date();
     const inicioHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
     const inicioJanela = new Date(inicioHoje); inicioJanela.setDate(inicioJanela.getDate() - 7);
-    const snap = await db.collection('pontos')
-      .where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(inicioJanela))
-      .where('timestamp', '<',  firebase.firestore.Timestamp.fromDate(inicioHoje))
-      .get();
+    const [snap, ocSnap] = await Promise.all([
+      db.collection('pontos')
+        .where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(inicioJanela))
+        .where('timestamp', '<',  firebase.firestore.Timestamp.fromDate(inicioHoje))
+        .get(),
+      db.collection('ocorrencias').where('funcionarioId', '==', funcId).get()
+    ]);
+    // Dia com falta/suspensão está encerrado — entrada sem saída nele não conta.
+    const diasComOcorrencia = new Set(ocSnap.docs.map(d => d.data().dataISO));
     const eventos = snap.docs
       .map(d => d.data())
       .filter(p => p.funcionarioId === funcId && p.timestamp && p.tipo)
+      .filter(p => !diasComOcorrencia.has(isoLocal(p.timestamp.toDate())))
       .sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
     let aberto = false;
     eventos.forEach(e => {

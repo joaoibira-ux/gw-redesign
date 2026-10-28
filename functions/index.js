@@ -5596,6 +5596,14 @@ exports.relatorioRefeicoesHoje = onSchedule(
 // ponto, fica em silêncio.
 // Mesmo cálculo usado nos dois horários abaixo (9:00 e 9:40) — extraído pra
 // não duplicar a lógica de "quem ainda não bateu entrada hoje".
+// Funcionários com falta/suspensão registrada hoje (Rel. Ponto) — o dia
+// deles está encerrado, então ficam fora dos alertas/lembretes de ponto
+// (pedido do João, 2026-10-28).
+async function idsComOcorrenciaNoDia(hojeISO) {
+  const snap = await db.collection("ocorrencias").where("dataISO", "==", hojeISO).get();
+  return new Set(snap.docs.map(d => d.data().funcionarioId).filter(Boolean));
+}
+
 async function checarEAvisarPontoEmAberto() {
   const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
   const dataInicio = new Date(hojeISO + "T00:00:00-03:00");
@@ -5622,7 +5630,8 @@ async function checarEAvisarPontoEmAberto() {
     if (p.funcionarioNome) nomesComEntrada.add(p.funcionarioNome);
   });
 
-  const naoBateram = funcAtivos.filter(f => !idsComEntrada.has(f.id) && !nomesComEntrada.has(f.nome));
+  const comOcorrencia = await idsComOcorrenciaNoDia(hojeISO);
+  const naoBateram = funcAtivos.filter(f => !idsComEntrada.has(f.id) && !nomesComEntrada.has(f.nome) && !comOcorrencia.has(f.id));
 
   if (naoBateram.length === 0) return 0;
 
@@ -5705,7 +5714,9 @@ async function checarEAvisarSaidaEmAberto() {
     eventosPorFunc.get(p.funcionarioId).push({ tipo: p.tipo, ts: p.timestamp.toDate() });
   });
 
+  const comOcorrencia = await idsComOcorrenciaNoDia(hojeISO);
   const semSaida = funcAtivos.filter(f => {
+    if (comOcorrencia.has(f.id)) return false;
     const eventos = (eventosPorFunc.get(f.id) || []).sort((a, b) => a.ts - b.ts);
     if (!eventos.some(e => e.tipo === "entrada")) return false; // nem bateu entrada hoje
     let abertura = null;
@@ -5806,7 +5817,8 @@ exports.lembretePontoIndividual = onSchedule(
       if (p.funcionarioNome) nomesComEntrada.add(p.funcionarioNome);
     });
 
-    const naoBateram = funcAtivos.filter(f => !idsComEntrada.has(f.id) && !nomesComEntrada.has(f.nome));
+    const comOcorrencia = await idsComOcorrenciaNoDia(hojeISO);
+    const naoBateram = funcAtivos.filter(f => !idsComEntrada.has(f.id) && !nomesComEntrada.has(f.nome) && !comOcorrencia.has(f.id));
     if (naoBateram.length === 0) return;
 
     if (naoBateram.length > 5) {
