@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.55";
+const VERSAO = "3.56";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -1015,7 +1015,7 @@ function toggleAtivo(id) {
   const acao = f.ativo === false ? 'ATIVAR' : 'DESATIVAR';
   const senha = prompt(`${acao} funcionário?\n${f.nome}\n\nDigite a senha:`);
   if (senha === null) return;
-  if (senha !== '4512') { alert('Senha incorreta.'); return; }
+  if (senha !== '6535' && senha !== '1176') { alert('Senha incorreta.'); return; }
   col.doc(id).update({ ativo: f.ativo === false });
 }
 
