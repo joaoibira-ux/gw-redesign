@@ -6142,3 +6142,74 @@ GW Revestimentos`;
   await ocRef.update({ whatsappEnviado, erroWhatsapp });
   return { ok: true, whatsappEnviado, erroWhatsapp };
 });
+
+// Convocação por ausência / possível abandono de emprego (botão em
+// Funcionários, PIN 2248 ou 1176) — pedido do João, 2026-10-28. O texto é
+// montado aqui a partir do modelo dele (não aceita texto livre do cliente),
+// vai pro WhatsApp do funcionário com cópia no Telegram e fica registrado
+// em "convocacoes".
+exports.enviarConvocacaoAbandono = onCall({ secrets: [evolutionApiKey], timeoutSeconds: 60 }, async (request) => {
+  const { pin, funcionarioId, desdeData, prazo, local, horaInicio, horaFim } = request.data || {};
+
+  const cfgSnap = await db.collection("configuracoes").doc("geral").get();
+  const cfg = cfgSnap.exists ? cfgSnap.data() : {};
+  if (![cfg.pinCompleto || "2248", cfg.pinCadastro2 || "1176"].includes(String(pin || ""))) {
+    throw new HttpsError("permission-denied", "Só os PINs 2248 e 1176 podem enviar convocação.");
+  }
+  const limpa = v => String(v || "").trim();
+  const campos = { desdeData: limpa(desdeData), prazo: limpa(prazo), local: limpa(local), horaInicio: limpa(horaInicio), horaFim: limpa(horaFim) };
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(campos.desdeData)) throw new HttpsError("invalid-argument", "Data inválida (use DD/MM/AAAA).");
+  if (!campos.prazo || !campos.local || !campos.horaInicio || !campos.horaFim) throw new HttpsError("invalid-argument", "Preencha prazo, local e horários.");
+
+  const funcSnap = await db.collection("funcionarios").doc(String(funcionarioId || "")).get();
+  if (!funcSnap.exists) throw new HttpsError("not-found", "Funcionário não encontrado.");
+  const f = funcSnap.data();
+  const empresa = "F P Alves de Souza Argamassas";
+
+  const texto = `Olá, ${f.nome}.
+
+Você não comparece ao trabalho desde ${campos.desdeData}, sem justificativa, e seu contrato com a ${empresa} continua ativo.
+
+Fica convocado(a) a retornar em até ${campos.prazo} ou apresentar justificativa (ex.: atestado).
+
+Faltas sem justificativa por mais de 15 dias podem caracterizar abandono de emprego (art. 482, "i", da CLT), com rescisão por justa causa.
+
+Apresentar-se em: ${campos.local}, das ${campos.horaInicio} às ${campos.horaFim}.
+Dúvidas: João Siqueira (81 99211-4764).
+
+${empresa}`;
+
+  const numero = formatarNumeroWhatsApp(f.telefone);
+  let whatsappEnviado = false, erroWhatsapp = null;
+  if (!numero) {
+    erroWhatsapp = "funcionário sem telefone no cadastro";
+  } else {
+    try {
+      await enviarWhatsAppEvolution(texto, evolutionApiKey.value(), [numero]);
+      whatsappEnviado = true;
+    } catch (e) {
+      erroWhatsapp = e.message;
+      logger.error("[enviarConvocacaoAbandono] falha WhatsApp", { erro: e.message });
+    }
+  }
+
+  const status = whatsappEnviado ? `✅ enviada no WhatsApp (${numero})` : `❌ NÃO enviada no WhatsApp (${erroWhatsapp})`;
+  try {
+    await enviarTextoTelegram(`📨 Cópia da convocação — ${status}\nEnviada pelo PIN ${pin}\n\n${texto}`);
+  } catch (e) {
+    logger.error("[enviarConvocacaoAbandono] falha Telegram", { erro: e.message });
+  }
+
+  await db.collection("convocacoes").add({
+    funcionarioId: funcSnap.id,
+    funcionarioNome: f.nome || "",
+    ...campos,
+    texto,
+    enviadoPorPin: String(pin),
+    whatsappEnviado,
+    erroWhatsapp,
+    criadoEm: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  return { ok: true, whatsappEnviado, erroWhatsapp };
+});

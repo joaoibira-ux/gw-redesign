@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.56";
+const VERSAO = "3.57";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -168,6 +168,7 @@ function render(docs) {
         <div class="card-acoes">
           <button class="btn-consultar" onclick="consultarFuncionario('${doc.id}')">Consultar</button>
           <button class="btn-adiantamento" onclick="abrirAdiantamento('${doc.id}')">💰 Adiantamento</button>
+          <button class="btn-convocacao" onclick="abrirConvocacao('${doc.id}')">📨 Convocação</button>
           <button class="btn-documentos" onclick="abrirDocumentos('${doc.id}')">📎 Documentos${(f.documentosAnexados||[]).length ? ` (${(f.documentosAnexados||[]).length})` : ""}</button>
           <button class="btn-bloq-adiant ${bloqueado ? 'bloqueado' : ''}" onclick="toggleBloqueioAdiantamento('${doc.id}')">
             ${bloqueado ? '🔒 Adiantamento bloqueado' : '🔓 Bloquear adiantamento'}
@@ -452,6 +453,111 @@ async function confirmarSolicitar() {
 
 function fecharAdiantamento() {
   document.getElementById("adiant-overlay").style.display = "none";
+}
+
+// ── Convocação por ausência / abandono (pedido do João, 2026-10-28) ─────
+// Envia pelo WhatsApp do funcionário (cópia no Telegram do João) via Cloud
+// Function enviarConvocacaoAbandono, que monta o texto final. Só PIN 2248/1176.
+const EMPRESA_CONVOCACAO = "F P Alves de Souza Argamassas";
+let _convIdAtual = null;
+
+function _proximoDiaUtil(d) {
+  const n = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+  while (n.getDay() === 0 || n.getDay() === 6) n.setDate(n.getDate() + 1);
+  return n;
+}
+
+async function abrirConvocacao(id) {
+  const f = funcionariosCache[id];
+  if (!f) return;
+  _convIdAtual = id;
+  document.getElementById("conv-nome").textContent = f.nome;
+  let localSalvo = "";
+  try { localSalvo = localStorage.getItem("gw_conv_local") || ""; } catch (e) {}
+  document.getElementById("conv-local").value = localSalvo;
+  document.getElementById("conv-data").value = "";
+  document.getElementById("conv-overlay").style.display = "flex";
+  atualizarPreviaConvocacao();
+
+  // Sugere a data: próximo dia útil depois do último ponto batido.
+  try {
+    const snap = await db.collection("pontos").where("funcionarioId", "==", id).get();
+    let ultimo = null;
+    snap.docs.forEach(d => {
+      const ts = d.data().timestamp;
+      if (ts && (!ultimo || ts.toMillis() > ultimo.getTime())) ultimo = ts.toDate();
+    });
+    if (ultimo && _convIdAtual === id && !document.getElementById("conv-data").value) {
+      const dia = _proximoDiaUtil(ultimo);
+      document.getElementById("conv-data").value =
+        `${String(dia.getDate()).padStart(2, "0")}/${String(dia.getMonth() + 1).padStart(2, "0")}/${dia.getFullYear()}`;
+      atualizarPreviaConvocacao();
+    }
+  } catch (e) { console.error(e); }
+}
+
+function _camposConvocacao() {
+  const v = id => document.getElementById(id).value.trim();
+  return { desdeData: v("conv-data"), prazo: v("conv-prazo"), local: v("conv-local"), horaInicio: v("conv-hini"), horaFim: v("conv-hfim") };
+}
+
+function atualizarPreviaConvocacao() {
+  const f = funcionariosCache[_convIdAtual];
+  if (!f) return;
+  const c = _camposConvocacao();
+  const p = (x, ph) => x || `[${ph}]`;
+  document.getElementById("conv-previa").textContent =
+`Olá, ${f.nome}.
+
+Você não comparece ao trabalho desde ${p(c.desdeData, "data")}, sem justificativa, e seu contrato com a ${EMPRESA_CONVOCACAO} continua ativo.
+
+Fica convocado(a) a retornar em até ${p(c.prazo, "prazo")} ou apresentar justificativa (ex.: atestado).
+
+Faltas sem justificativa por mais de 15 dias podem caracterizar abandono de emprego (art. 482, "i", da CLT), com rescisão por justa causa.
+
+Apresentar-se em: ${p(c.local, "local")}, das ${p(c.horaInicio, "hora")} às ${p(c.horaFim, "hora")}.
+Dúvidas: João Siqueira (81 99211-4764).
+
+${EMPRESA_CONVOCACAO}`;
+}
+
+function fecharConvocacao() {
+  document.getElementById("conv-overlay").style.display = "none";
+  _convIdAtual = null;
+}
+
+async function enviarConvocacao() {
+  const f = funcionariosCache[_convIdAtual];
+  if (!f) return;
+  const c = _camposConvocacao();
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(c.desdeData)) { alert("Informe a data no formato DD/MM/AAAA."); return; }
+  if (!c.prazo || !c.local || !c.horaInicio || !c.horaFim) { alert("Preencha prazo, local e horários."); return; }
+  if (!f.telefone) { alert("Este funcionário não tem telefone no cadastro."); return; }
+
+  let pin = PIN_ATUAL;
+  if (pin !== "2248" && pin !== "1176") {
+    const p = prompt("Digite seu PIN (2248 ou 1176):");
+    if (p === null) return;
+    pin = p.trim();
+    if (pin !== "2248" && pin !== "1176") { alert("PIN não autorizado."); return; }
+  }
+  if (!confirm(`Enviar a convocação para o WhatsApp de ${f.nome}?`)) return;
+
+  try { localStorage.setItem("gw_conv_local", c.local); } catch (e) {}
+  const btn = document.getElementById("btn-conv-enviar");
+  btn.disabled = true; btn.textContent = "Enviando...";
+  try {
+    const fn = firebase.functions().httpsCallable("enviarConvocacaoAbandono");
+    const res = await fn({ pin, funcionarioId: _convIdAtual, ...c });
+    fecharConvocacao();
+    alert(res.data.whatsappEnviado
+      ? "Convocação enviada no WhatsApp do funcionário. Cópia no Telegram."
+      : "NÃO foi enviada no WhatsApp (" + (res.data.erroWhatsapp || "erro") + "). Cópia com o aviso no Telegram.");
+  } catch (e) {
+    alert("Erro: " + (e.message || e));
+  } finally {
+    btn.disabled = false; btn.textContent = "Enviar no WhatsApp";
+  }
 }
 
 // ── Documentos anexados (pedido do João, 2026-10-22) ────────────────────

@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-title" content="Funcionários" />
   <title>Cadastro de Funcionários</title>
   <link rel="manifest" href="./manifest.json" />
-  <link rel="stylesheet" href="./style.css?v=18" />
+  <link rel="stylesheet" href="./style.css?v=19" />
 </head>
 <body>
 
@@ -293,6 +293,29 @@
   </div>
 </div>
 
+<!-- MODAL CONVOCAÇÃO (ausência / abandono) -->
+<div id="conv-overlay" class="modal-overlay" style="display:none" onclick="if(event.target===this) fecharConvocacao()">
+  <div class="modal-box conv-box" onclick="event.stopPropagation()">
+    <div class="modal-titulo">📨 Convocação — <span id="conv-nome"></span></div>
+    <label class="conv-label">Não comparece desde</label>
+    <input type="text" id="conv-data" class="modal-input" placeholder="DD/MM/AAAA" oninput="atualizarPreviaConvocacao()" />
+    <label class="conv-label">Prazo para retornar</label>
+    <input type="text" id="conv-prazo" class="modal-input" value="48 horas" oninput="atualizarPreviaConvocacao()" />
+    <label class="conv-label">Apresentar-se em (local)</label>
+    <input type="text" id="conv-local" class="modal-input" placeholder="Ex: Obra KEL2, portaria" oninput="atualizarPreviaConvocacao()" />
+    <div style="display:flex;gap:8px;">
+      <div style="flex:1"><label class="conv-label">Das</label><input type="text" id="conv-hini" class="modal-input" value="07:00" oninput="atualizarPreviaConvocacao()" /></div>
+      <div style="flex:1"><label class="conv-label">Às</label><input type="text" id="conv-hfim" class="modal-input" value="17:00" oninput="atualizarPreviaConvocacao()" /></div>
+    </div>
+    <label class="conv-label">Prévia da mensagem</label>
+    <div id="conv-previa" class="conv-previa"></div>
+    <div class="modal-btns" style="display:flex;gap:8px;">
+      <button type="button" class="btn-cancel" style="flex:1" onclick="fecharConvocacao()">Cancelar</button>
+      <button type="button" class="btn-conv-enviar" id="btn-conv-enviar" onclick="enviarConvocacao()">Enviar no WhatsApp</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL DOCUMENTOS ANEXADOS -->
 <div id="docs-overlay" class="modal-overlay" style="display:none" onclick="if(event.target===this) fecharDocumentos()">
   <div class="modal-box" onclick="event.stopPropagation()">
@@ -361,7 +384,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
-<script src="./app.js?v=57"></script>
+<script src="./app.js?v=58"></script>
 <script src="../agente.js"></script>
 <script src="../bfcache-fix.js"></script>
 </body>
