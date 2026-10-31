@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "1.14";
+const VERSAO = "1.15";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -374,7 +374,7 @@ async function removerAnexo(id) {
   if (!c || !c.boletoUrl) return;
   const senha = prompt("EXCLUIR ANEXO?\n\n" + c.descricao + "\n\nDigite a senha:");
   if (senha === null) return;
-  if (senha !== "6535" && senha !== "4512") { alert("Senha incorreta."); return; }
+  if (senha !== "6535") { alert("Senha incorreta."); return; }
 
   try {
     await excluirComprovanteFn({ url: c.boletoUrl });
