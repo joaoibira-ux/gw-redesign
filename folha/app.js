@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.50";
+const VERSAO = "5.51";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -335,8 +335,13 @@ function diaSemanaDoLocalId(localId) {
 }
 
 function labelDiaria(d) {
-  if (d.horas) return `Diária (${d.horas}h)`;
   const diaSemana = diaSemanaDoLocalId(d.localId);
+  if (d.repouso) return diaSemana === 0 ? 'Rep Remunerado Dom' : 'Rep Remunerado Sáb';
+  if (d.horas) {
+    if (diaSemana === 6) return `Sábado (${d.horas}h)`;
+    if (diaSemana === 0) return `Domingo (${d.horas}h)`;
+    return `Diária (${d.horas}h)`;
+  }
   if (diaSemana === 6) return 'Sábado';
   if (diaSemana === 0) return 'Repouso Remunerado';
   return 'Diária';
@@ -362,7 +367,8 @@ function sincronizarDiaristas() {
         localId:          d.localId,
         servico:          labelDiaria(d),
         valor:            d.valor,
-        horas:            d.horas || null
+        horas:            d.horas || null,
+        repouso:          !!d.repouso
       });
     });
     preencherDiasZerados(doc, quinzenaAtualInicioSync);
@@ -402,7 +408,7 @@ function preencherDiasZerados(doc, quinzenaAtualInicio) {
       funcionario:      { id: doc.funcionarioId || '', nome: doc.funcionarioNome, cargo: doc.cargo || '' },
       firestoreLocalId: '',
       localId,
-      servico:          ds === 6 ? 'Sábado' : ds === 0 ? 'Repouso Remunerado' : 'Sem ponto',
+      servico:          ds === 6 ? 'Sábado' : ds === 0 ? 'Domingo' : 'Sem ponto',
       valor:            0,
       horas:            null,
       zerado:           true
@@ -453,7 +459,8 @@ async function editarDiaZerado(idx) {
       const domingo = new Date(segunda); domingo.setDate(domingo.getDate() + 6);
       [sabado, domingo].forEach(d => {
         const id = _fmtDiaMes(d);
-        if (!comValor.has(id)) dias.push({ localId: id, valor: Math.round(diaria(d) * 100) / 100, ajusteManual: true });
+        const jaTemRepouso = dias.some(x => (x.localId || '').replace(' ½', '').trim() === id && (x.repouso || !x.horas) && Number(x.valor) > 0);
+        if (!jaTemRepouso) dias.push({ localId: id, valor: Math.round(diaria(d) * 100) / 100, repouso: true, ajusteManual: true });
       });
       msgSemana = '\n\nSemana completa: sábado e domingo voltaram a ser pagos.';
     }
@@ -775,102 +782,84 @@ async function sincronizarDiariasAjudantesPorPonto() {
       return Math.round((valorDiaria(func, date) / divisor) * horasPagas * 100) / 100;
     }
 
+    // Feriados (mesma lista de functions/index.js e caixa/relatorio.html):
+    // não contam como falta na semana.
+    const FERIADOS_FOLHA = [
+      "2026-01-01", "2026-02-16", "2026-02-17", "2026-04-03", "2026-04-21",
+      "2026-05-01", "2026-06-04", "2026-09-07", "2026-10-12", "2026-11-02",
+      "2026-11-15", "2026-11-20", "2026-12-25",
+      "2027-01-01", "2027-02-08", "2027-02-09", "2027-03-26", "2027-04-21",
+      "2027-05-01", "2027-05-27", "2027-09-07", "2027-10-12", "2027-11-02",
+      "2027-11-15", "2027-11-20", "2027-12-25"
+    ];
+    const ehFeriado = d => FERIADOS_FOLHA.includes(
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+
     for (const func of ajudantes) {
-      const novosDias = new Map(); // localId ('dd/mm') → { valor, horas? }
+      // chave = 'dd/mm' (dia trabalhado) ou 'dd/mm|R' (repouso remunerado) —
+      // o mesmo sábado/domingo pode ter as duas coisas (pedido do João,
+      // 2026-11-01, opção "a": semana completa ganha o repouso E as horas).
+      const novosDias = new Map();
+      const add = (date, item) => novosDias.set(fmtDiaMes(date) + (item.repouso ? '|R' : ''), { localId: fmtDiaMes(date), ...item });
+      const admissao = /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(func.admissao || '')
+        ? (([d, m, a]) => new Date(a, m - 1, d))(func.admissao.split('/').map(Number)) : null;
 
-      // 1. Dias da quinzena (domingo fica de fora, é tratado à parte no bônus semanal)
+      // 1. Dias trabalhados (segunda a domingo) — valor pelas horas líquidas
       for (let d = new Date(quinzenaInicio); d <= quinzenaFim; d.setDate(d.getDate() + 1)) {
-        if (d.getDay() === 0 || jaPago(d)) continue;
-
-        if (d < hojeSemHora) {
-          // Dia já passado: regra antiga, valor cheio se bateu entrada+saída
-          if (trabalhou(func.id, d)) novosDias.set(fmtDiaMes(d), { valor: valorDiaria(func, d) });
+        if (jaPago(d)) continue;
+        const fds = d.getDay() === 0 || d.getDay() === 6;
+        if (d < hojeSemHora && !fds) {
+          // Dia útil já passado sem diária: regra antiga, valor cheio se bateu entrada+saída
+          if (trabalhou(func.id, d)) add(d, { valor: valorDiaria(func, d) });
           continue;
         }
-
-        // Hoje em diante: valor proporcional às horas líquidas (já sem o
-        // almoço) batidas no ponto
         const horas = horasLiquidasDia(func.id, d);
         if (horas !== null && horas > 0) {
-          novosDias.set(fmtDiaMes(d), { valor: valorDiariaPorHoras(func, d, horas), horas: Math.round(horas * 10) / 10 });
+          add(d, { valor: valorDiariaPorHoras(func, d, horas), horas: Math.round(horas * 10) / 10 });
         }
       }
 
-      // 2. Bônus semanal — avaliado em cada segunda-feira dentro da quinzena
-      for (let d = new Date(quinzenaInicio); d <= quinzenaFim; d.setDate(d.getDate() + 1)) {
-        if (d.getDay() !== 1) continue; // 1 = segunda-feira
-
-        const segunda         = new Date(d);
-        const domingo         = new Date(segunda); domingo.setDate(domingo.getDate() - 1); // dia anterior
-        const sabado          = new Date(segunda); sabado.setDate(sabado.getDate() - 2);   // sábado da semana passada
-        const segundaAnterior = new Date(segunda); segundaAnterior.setDate(segundaAnterior.getDate() - 7);
-
-        if (domingo >= hojeSemHora) {
-          // Regra nova: domingo só entra como Repouso Remunerado (valor
-          // cheio) se o total de horas LÍQUIDAS (já sem almoço) batidas de
-          // segunda a sábado daquela semana for >= 44 — confirmado pelo
-          // João, 2026-10-01: 4 dias×9h líquidas + sexta×8h líquidas = 44h
-          // bate exato com a semana cheia (seg-sex, sábado nem precisa).
-          // Sábado em si já foi tratado no passo 1 (por horas, como
-          // qualquer outro dia) — aqui só decide o domingo.
-          let totalHorasSemana = 0;
-          for (let i = 0; i < 6; i++) { // 0=segunda ... 5=sábado
-            const dia = new Date(segundaAnterior); dia.setDate(dia.getDate() + i);
-            totalHorasSemana += horasLiquidasDia(func.id, dia) || 0;
-          }
-          // Sem corte de jaPago aqui de propósito: essa semana (seg-sáb) é
-          // SEMPRE a anterior à quinzena atual, por desenho (olha pra trás
-          // a partir da 1ª segunda) — cai antes do último pagamento na
-          // maioria das quinzenas (até nas fechadas no prazo, sem atraso
-          // nenhum), não é sinal de duplicidade. O guarda de duplicidade
-          // real pra esse bônus é o chavesAtuais, no upsert incremental.
-          if (totalHorasSemana >= 44) {
-            novosDias.set(fmtDiaMes(domingo), { valor: valorDiaria(func, domingo) });
-          }
-          continue;
+      // 2. Repouso remunerado (sábado + domingo), pedido do João 2026-11-01:
+      // semana com segunda a sexta todos trabalhados → ganha os dois; qualquer
+      // falta (inclusive falta/suspensão registrada) → perde os dois. Feriado
+      // e dias antes da admissão não contam como falta. Avaliado a partir do
+      // domingo da semana.
+      for (let dom = new Date(quinzenaInicio); dom <= quinzenaFim && dom <= hojeSemHora; dom.setDate(dom.getDate() + 1)) {
+        if (dom.getDay() !== 0) continue;
+        const segunda = new Date(dom); segunda.setDate(segunda.getDate() - 6);
+        let completa = true;
+        for (let i = 0; i < 5; i++) {
+          const dia = new Date(segunda); dia.setDate(dia.getDate() + i);
+          if (ehFeriado(dia) || (admissao && dia < admissao)) continue;
+          if (!trabalhou(func.id, dia)) { completa = false; break; }
         }
-
-        // Regra antiga (semana toda antes de hoje — não mexe em nada já apurado)
-        let diasUteisTrabalhados = 0; // segunda a sexta (0..4) da semana passada
-        let sabadoTrabalhado = false;
-        for (let i = 0; i < 6; i++) { // 0=segunda ... 5=sábado, da semana passada
-          const dia  = new Date(segundaAnterior); dia.setDate(dia.getDate() + i);
-          const trab = trabalhou(func.id, dia);
-          if (i <= 4 && trab) diasUteisTrabalhados++;
-          if (i === 5) sabadoTrabalhado = trab;
-        }
-
-        // Sábado é garantido (pago mesmo sem trabalhar) enquanto houver no
-        // máximo 2 faltas na semana (seg-sex); com mais faltas, só é pago se
-        // ele realmente trabalhou nesse sábado.
-        const faltasSemana    = 5 - diasUteisTrabalhados;
-        const sabadoGarantido = faltasSemana <= 2;
-        if (sabadoGarantido || sabadoTrabalhado) {
-          novosDias.set(fmtDiaMes(sabado), { valor: valorDiaria(func, sabado) });
-        }
-
-        // Domingo só entra com base na presença real (sábado garantido não conta):
-        // seg-sex completo (5/5) → 1 diária; se além disso trabalhou o sábado
-        // de verdade (compensando falta) → 2 diárias.
-        const totalRealTrabalhado = diasUteisTrabalhados + (sabadoTrabalhado ? 1 : 0);
-        if (totalRealTrabalhado >= 5) {
-          novosDias.set(fmtDiaMes(domingo), { valor: (sabadoTrabalhado ? 2 : 1) * valorDiaria(func, domingo) });
-        }
+        if (!completa) continue;
+        const sabado = new Date(dom); sabado.setDate(sabado.getDate() - 1);
+        if (!jaPago(sabado)) add(sabado, { valor: valorDiaria(func, sabado), repouso: true });
+        if (!jaPago(dom))    add(new Date(dom), { valor: valorDiaria(func, dom), repouso: true });
       }
 
       if (novosDias.size === 0) continue;
 
-      // 3. Upsert incremental — só adiciona dias que ainda não existem
+      // 3. Upsert incremental — só adiciona o que ainda não existe
       const docRef  = db.collection('diarias').doc(func.id || func.nome);
       const docSnap = await docRef.get();
       const diasAtuais   = docSnap.exists ? (docSnap.data().dias || []) : [];
-      const chavesAtuais = new Set(diasAtuais.map(dd => (dd.localId || '').replace(' ½', '').trim()));
+      const chaveDia = dd => (dd.localId || '').replace(' ½', '').trim() + (dd.repouso ? '|R' : '');
+      const chavesAtuais = new Set(diasAtuais.map(chaveDia));
+      // Transição: sábado/domingo já pago pela regra antiga (lançamento cheio,
+      // sem horas e sem a marca de repouso) já É o repouso daquele dia.
+      const repousoAntigo = new Set(diasAtuais
+        .filter(dd => !dd.repouso && !dd.horas)
+        .map(dd => (dd.localId || '').replace(' ½', '').trim()));
 
       const diasParaAdicionar = [];
-      novosDias.forEach((info, localId) => {
-        if (chavesAtuais.has(localId)) return;
-        const item = { localId, valor: info.valor };
+      novosDias.forEach((info, chave) => {
+        if (chavesAtuais.has(chave)) return;
+        if (info.repouso && repousoAntigo.has(info.localId)) return;
+        const item = { localId: info.localId, valor: info.valor };
         if (info.horas) item.horas = info.horas;
+        if (info.repouso) item.repouso = true;
         diasParaAdicionar.push(item);
       });
       if (!diasParaAdicionar.length) continue;
@@ -906,6 +895,9 @@ function abrirCalendario(func) {
   entradas.forEach(e => {
     if ((e.funcionario.id || e.funcionario.nome) !== funcKey) return;
     if (e.firestoreLocalId !== '') return;
+    // Linha de R$ 0,00 (só exibição) e repouso remunerado não são dias
+    // trabalhados — se entrassem aqui, salvar o calendário pagaria esses dias.
+    if (e.zerado || e.repouso) return;
     if (modoDiariaHoras) {
       const [dia, mes] = e.localId.trim().split('/');
       if (!dia || !mes) return;
@@ -1078,6 +1070,11 @@ async function confirmarDias() {
   }
 
   const docRef = db.collection('diarias').doc(docId);
+  // O calendário só mexe nos dias trabalhados: repousos remunerados (sábado/
+  // domingo de semana completa) lançados pelo sincronismo continuam.
+  const docAtual = await docRef.get().catch(() => null);
+  const repousos = docAtual && docAtual.exists ? (docAtual.data().dias || []).filter(d => d.repouso) : [];
+  dias = [...dias, ...repousos];
   if (dias.length === 0) {
     await docRef.delete().catch(() => {});
   } else {
@@ -1646,7 +1643,8 @@ async function removerDiaria(idx) {
     const docRef = db.collection('diarias').doc(docId);
     const doc    = await docRef.get().catch(() => null);
     if (doc && doc.exists) {
-      const newDias = (doc.data().dias || []).filter(d => d.localId !== e.localId);
+      // Mesmo dia pode ter horas trabalhadas E repouso — remove só o clicado.
+      const newDias = (doc.data().dias || []).filter(d => !(d.localId === e.localId && !!d.repouso === !!e.repouso));
       if (newDias.length === 0) await docRef.delete().catch(() => {});
       else await docRef.update({ dias: newDias }).catch(() => {});
     }

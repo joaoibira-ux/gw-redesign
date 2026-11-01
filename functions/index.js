@@ -4549,68 +4549,47 @@ async function sincronizarDiariasAjudantesPorPonto(periodoForcado) {
   let totalSincronizados = 0;
   const detalhes = [];
 
+  // Mesma regra de folha/app.js (sincronizarDiariasAjudantesPorPonto),
+  // pedido do João 2026-11-01: horas trabalhadas em qualquer dia (inclusive
+  // sábado/domingo) + repouso remunerado de sábado e domingo só pra semana
+  // com segunda a sexta completos (qualquer falta perde os dois; feriado e
+  // dia antes da admissão não contam). Chave 'dd/mm' ou 'dd/mm|R' (repouso),
+  // porque o mesmo sábado/domingo pode ter as duas coisas.
+  const ehFeriadoSync = d => FERIADOS_GW.includes(
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+
   for (const func of ajudantes) {
     const novosDias = new Map();
+    const add = (date, item) => novosDias.set(fmtDiaMes(date) + (item.repouso ? "|R" : ""), { localId: fmtDiaMes(date), ...item });
+    const admissao = /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(func.admissao || "")
+      ? (([d, m, a]) => new Date(a, m - 1, d))(func.admissao.split("/").map(Number)) : null;
 
     for (let d = new Date(quinzenaInicio); d <= quinzenaFim; d.setDate(d.getDate() + 1)) {
-      if (d.getDay() === 0 || jaPago(d)) continue;
-
-      if (d < hojeSemHora) {
-        if (trabalhou(func.id, d)) novosDias.set(fmtDiaMes(d), { valor: valorDiaria(func, d) });
+      if (jaPago(d)) continue;
+      const fds = d.getDay() === 0 || d.getDay() === 6;
+      if (d < hojeSemHora && !fds) {
+        if (trabalhou(func.id, d)) add(d, { valor: valorDiaria(func, d) });
         continue;
       }
-
       const horas = horasLiquidasDia(func.id, d);
       if (horas !== null && horas > 0) {
-        novosDias.set(fmtDiaMes(d), { valor: valorDiariaPorHoras(func, d, horas), horas: Math.round(horas * 10) / 10 });
+        add(d, { valor: valorDiariaPorHoras(func, d, horas), horas: Math.round(horas * 10) / 10 });
       }
     }
 
-    for (let d = new Date(quinzenaInicio); d <= quinzenaFim; d.setDate(d.getDate() + 1)) {
-      if (d.getDay() !== 1) continue;
-
-      const segunda         = new Date(d);
-      const domingo         = new Date(segunda); domingo.setDate(domingo.getDate() - 1);
-      const sabado          = new Date(segunda); sabado.setDate(sabado.getDate() - 2);
-      const segundaAnterior = new Date(segunda); segundaAnterior.setDate(segundaAnterior.getDate() - 7);
-
-      if (domingo >= hojeSemHora) {
-        let totalHorasSemana = 0;
-        for (let i = 0; i < 6; i++) {
-          const dia = new Date(segundaAnterior); dia.setDate(dia.getDate() + i);
-          totalHorasSemana += horasLiquidasDia(func.id, dia) || 0;
-        }
-        // Sem corte de jaPago aqui de propósito: essa semana (seg-sáb) é
-        // SEMPRE a anterior à quinzena atual, por desenho (olhar pra trás a
-        // partir da 1ª segunda) — então ela cai antes do último pagamento
-        // na maioria das quinzenas (inclusive no caso normal, sem atraso
-        // nenhum), não é sinal de duplicidade. O guarda de duplicidade real
-        // pra esse bônus é o chavesAtuais (só abaixo, no upsert incremental).
-        if (totalHorasSemana >= 44) {
-          novosDias.set(fmtDiaMes(domingo), { valor: valorDiaria(func, domingo) });
-        }
-        continue;
+    for (let dom = new Date(quinzenaInicio); dom <= quinzenaFim && dom <= hojeSemHora; dom.setDate(dom.getDate() + 1)) {
+      if (dom.getDay() !== 0) continue;
+      const segunda = new Date(dom); segunda.setDate(segunda.getDate() - 6);
+      let completa = true;
+      for (let i = 0; i < 5; i++) {
+        const dia = new Date(segunda); dia.setDate(dia.getDate() + i);
+        if (ehFeriadoSync(dia) || (admissao && dia < admissao)) continue;
+        if (!trabalhou(func.id, dia)) { completa = false; break; }
       }
-
-      let diasUteisTrabalhados = 0;
-      let sabadoTrabalhado = false;
-      for (let i = 0; i < 6; i++) {
-        const dia  = new Date(segundaAnterior); dia.setDate(dia.getDate() + i);
-        const trab = trabalhou(func.id, dia);
-        if (i <= 4 && trab) diasUteisTrabalhados++;
-        if (i === 5) sabadoTrabalhado = trab;
-      }
-
-      const faltasSemana    = 5 - diasUteisTrabalhados;
-      const sabadoGarantido = faltasSemana <= 2;
-      if (sabadoGarantido || sabadoTrabalhado) {
-        novosDias.set(fmtDiaMes(sabado), { valor: valorDiaria(func, sabado) });
-      }
-
-      const totalRealTrabalhado = diasUteisTrabalhados + (sabadoTrabalhado ? 1 : 0);
-      if (totalRealTrabalhado >= 5) {
-        novosDias.set(fmtDiaMes(domingo), { valor: (sabadoTrabalhado ? 2 : 1) * valorDiaria(func, domingo) });
-      }
+      if (!completa) continue;
+      const sabado = new Date(dom); sabado.setDate(sabado.getDate() - 1);
+      if (!jaPago(sabado)) add(sabado, { valor: valorDiaria(func, sabado), repouso: true });
+      if (!jaPago(dom))    add(new Date(dom), { valor: valorDiaria(func, dom), repouso: true });
     }
 
     if (novosDias.size === 0) continue;
@@ -4618,13 +4597,21 @@ async function sincronizarDiariasAjudantesPorPonto(periodoForcado) {
     const docRef  = db.collection("diarias").doc(func.id || func.nome);
     const docSnap = await docRef.get();
     const diasAtuais   = docSnap.exists ? (docSnap.data().dias || []) : [];
-    const chavesAtuais = new Set(diasAtuais.map(dd => (dd.localId || "").replace(" ½", "").trim()));
+    const chaveDia = dd => (dd.localId || "").replace(" ½", "").trim() + (dd.repouso ? "|R" : "");
+    const chavesAtuais = new Set(diasAtuais.map(chaveDia));
+    // Transição: sábado/domingo já pago pela regra antiga (cheio, sem horas,
+    // sem marca de repouso) já é o repouso daquele dia.
+    const repousoAntigo = new Set(diasAtuais
+      .filter(dd => !dd.repouso && !dd.horas)
+      .map(dd => (dd.localId || "").replace(" ½", "").trim()));
 
     const diasParaAdicionar = [];
-    novosDias.forEach((info, localId) => {
-      if (chavesAtuais.has(localId)) return;
-      const item = { localId, valor: info.valor };
+    novosDias.forEach((info, chave) => {
+      if (chavesAtuais.has(chave)) return;
+      if (info.repouso && repousoAntigo.has(info.localId)) return;
+      const item = { localId: info.localId, valor: info.valor };
       if (info.horas) item.horas = info.horas;
+      if (info.repouso) item.repouso = true;
       diasParaAdicionar.push(item);
     });
     if (!diasParaAdicionar.length) continue;

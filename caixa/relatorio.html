@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.48";
+  const VERSAO = "2.49";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -2742,14 +2742,18 @@
       // da tela Folha. A soma dos itens é exatamente o mesmo valor que já
       // entrava no total (info.total / diaria.total), só detalhado.
       const chaveDataBR = s => { const [d, m, a] = (s || '').split('/').map(Number); return (a || 0) * 10000 + (m || 0) * 100 + (d || 0); };
+      // Mesmos rótulos da tela Folha (labelDiaria em folha/app.js).
       const labelDiariaRecibo = d => {
-        if (d.horas) return `Diária (${d.horas}h)`;
         const [dia, mes] = String(d.localId || '').replace(' ½', '').trim().split('/').map(Number);
-        if (dia && mes) {
-          const ds = new Date(new Date().getFullYear(), mes - 1, dia).getDay();
-          if (ds === 6) return 'Sábado';
-          if (ds === 0) return 'Repouso Remunerado';
+        const ds = dia && mes ? new Date(new Date().getFullYear(), mes - 1, dia).getDay() : null;
+        if (d.repouso) return ds === 0 ? 'Rep Remunerado Dom' : 'Rep Remunerado Sáb';
+        if (d.horas) {
+          if (ds === 6) return `Sábado (${d.horas}h)`;
+          if (ds === 0) return `Domingo (${d.horas}h)`;
+          return `Diária (${d.horas}h)`;
         }
+        if (ds === 6) return 'Sábado';
+        if (ds === 0) return 'Repouso Remunerado';
         return 'Diária';
       };
       const chaveDiaMes = localId => { const [d, m] = String(localId || '').replace(' ½', '').trim().split('/').map(Number); return (m || 0) * 100 + (d || 0); };
