@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.49";
+const VERSAO = "5.50";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -365,9 +365,107 @@ function sincronizarDiaristas() {
         horas:            d.horas || null
       });
     });
+    preencherDiasZerados(doc, quinzenaAtualInicioSync);
   });
   filtrarProducaoConflitanteComDiaria();
   filtrarDiariaConflitanteComProducaoPintor();
+}
+
+// Pedido do João (2026-11-01): na folha, o diarista aparece com TODOS os
+// dias do período (segunda a domingo), inclusive os sem diária, que ficam
+// com R$ 0,00 (linha "virtual", não grava nada em 'diarias'). Período = a
+// quinzena anterior à atual, estendido pra trás se o balde tiver dia mais
+// antigo; nunca antes da admissão.
+function _fmtDiaMes(d) {
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function preencherDiasZerados(doc, quinzenaAtualInicio) {
+  const fim = new Date(quinzenaAtualInicio); fim.setDate(fim.getDate() - 1);
+  let ini = new Date(fim.getFullYear(), fim.getMonth(), fim.getDate() > 15 ? 16 : 1);
+  const existentes = new Set();
+  (doc.dias || []).forEach(d => {
+    const data = resolverDataDiaMes(d.localId, quinzenaAtualInicio);
+    if (!data || data >= quinzenaAtualInicio) return;
+    existentes.add(_fmtDiaMes(data));
+    if (data < ini) ini = new Date(data);
+  });
+  const func = _todosFunc.find(f => f.id === doc.funcionarioId);
+  const admissao = func && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(func.admissao || '')
+    ? (([d, m, a]) => new Date(a, m - 1, d))(func.admissao.split('/').map(Number)) : null;
+  if (admissao && admissao > ini) ini = admissao;
+  for (let d = new Date(ini); d <= fim; d.setDate(d.getDate() + 1)) {
+    const localId = _fmtDiaMes(d);
+    if (existentes.has(localId)) continue;
+    const ds = d.getDay();
+    entradas.push({
+      funcionario:      { id: doc.funcionarioId || '', nome: doc.funcionarioNome, cargo: doc.cargo || '' },
+      firestoreLocalId: '',
+      localId,
+      servico:          ds === 6 ? 'Sábado' : ds === 0 ? 'Repouso Remunerado' : 'Sem ponto',
+      valor:            0,
+      horas:            null,
+      zerado:           true
+    });
+  }
+}
+
+// Item 4 do Desenvolvimento (2026-11-01): só a senha 6535 altera o valor de
+// um dia que está R$ 0,00. Se com isso a semana (seg-sex) ficar completa, o
+// sábado e o domingo dela voltam a ser pagos (diária cheia), se ainda não
+// estiverem lançados.
+async function editarDiaZerado(idx) {
+  if (folhaBloqueadaParaEdicao()) return;
+  const e = entradas[idx];
+  if (!e || !e.zerado) return;
+  const senha = prompt(`ALTERAR VALOR DO DIA ${e.localId}?\n${e.funcionario.nome}\n\nDigite a senha:`);
+  if (senha === null) return;
+  if (senha !== '6535') { alert('Senha incorreta.'); return; }
+
+  const func = _todosFunc.find(f => f.id === e.funcionario.id);
+  const ref = new Date();
+  const data = resolverDataDiaMes(e.localId, ref);
+  const diaria = d => func ? (func.salario || 0) / new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate() : 0;
+  const sugestao = Math.round(diaria(data) * 100) / 100;
+  const valorStr = prompt(`Valor do dia ${e.localId} (R$):`, String(sugestao).replace('.', ','));
+  if (valorStr === null) return;
+  const valor = parseFloat(valorStr.replace(/\./g, '').replace(',', '.'));
+  if (isNaN(valor) || valor <= 0) { alert('Valor inválido.'); return; }
+
+  const docRef = db.collection('diarias').doc(e.funcionario.id || e.funcionario.nome);
+  const snap = await docRef.get();
+  const atual = snap.exists ? snap.data() : {};
+  const dias = [...(atual.dias || [])];
+  dias.push({ localId: e.localId, valor: Math.round(valor * 100) / 100, ajusteManual: true });
+
+  // Semana completa? (seg a sex com valor > 0)
+  let msgSemana = '';
+  const ds = data.getDay();
+  if (ds >= 1 && ds <= 5) {
+    const segunda = new Date(data); segunda.setDate(segunda.getDate() - (ds - 1));
+    const comValor = new Set(dias.filter(d => Number(d.valor) > 0).map(d => (d.localId || '').replace(' ½', '').trim()));
+    const semanaCompleta = [0, 1, 2, 3, 4].every(i => {
+      const dia = new Date(segunda); dia.setDate(dia.getDate() + i);
+      return comValor.has(_fmtDiaMes(dia));
+    });
+    if (semanaCompleta) {
+      const sabado = new Date(segunda); sabado.setDate(sabado.getDate() + 5);
+      const domingo = new Date(segunda); domingo.setDate(domingo.getDate() + 6);
+      [sabado, domingo].forEach(d => {
+        const id = _fmtDiaMes(d);
+        if (!comValor.has(id)) dias.push({ localId: id, valor: Math.round(diaria(d) * 100) / 100, ajusteManual: true });
+      });
+      msgSemana = '\n\nSemana completa: sábado e domingo voltaram a ser pagos.';
+    }
+  }
+
+  await docRef.set({
+    funcionarioId:   e.funcionario.id || '',
+    funcionarioNome: e.funcionario.nome,
+    cargo:           e.funcionario.cargo || '',
+    dias
+  }, { merge: true });
+  alert(`Dia ${e.localId} ajustado para ${fmtMoeda(valor)}.${msgSemana}`);
 }
 
 db.collection('diarias').onSnapshot(snap => {
@@ -442,6 +540,7 @@ function filtrarProducaoConflitanteComDiaria() {
   const diasComDiaria = new Set();
   entradas.forEach(e => {
     if (e.firestoreLocalId) return; // só diárias
+    if (e.zerado) return; // linha de R$ 0,00 só de exibição, não é diária
     const diaMes = (e.localId || '').replace(' ½', '').trim();
     if (!diaMes) return;
     diasComDiaria.add(`${e.funcionario.id || e.funcionario.nome}|${diaMes}`);
@@ -482,6 +581,7 @@ function filtrarDiariaConflitanteComProducaoPintor() {
   const diasDiariaPorFunc = new Map();
   entradas.forEach(e => {
     if (e.firestoreLocalId) return;
+    if (e.zerado) return; // linha de R$ 0,00 só de exibição, não é diária
     if (!ehPintorOuRaspador(e.funcionario.cargo)) return;
     const diaMes = (e.localId || '').replace(' ½', '').trim();
     if (!diaMes) return;
@@ -1636,7 +1736,9 @@ function renderizarFolha() {
         <td>${escHtml(e.localId)}</td>
         <td>${escHtml(e.servico)}</td>
         <td class="td-valor">${fmtMoeda(e.valor)}</td>
-        <td class="td-del"><button class="btn-del-dia" onclick="removerDiaria(${e._idx})">✕</button></td>
+        <td class="td-del">${e.zerado
+          ? `<button class="btn-del-dia" onclick="editarDiaZerado(${e._idx})" title="Alterar valor (senha 6535)">✏</button>`
+          : `<button class="btn-del-dia" onclick="removerDiaria(${e._idx})">✕</button>`}</td>
       </tr>`).join('')}</tbody>
           <tfoot><tr><td colspan="3" class="td-sub-label">Subtotal</td><td class="td-sub-valor">${fmtMoeda(subtotalDiaria)}</td></tr></tfoot>
         </table>` : '';
