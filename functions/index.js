@@ -6200,3 +6200,58 @@ ${empresa}`;
 
   return { ok: true, whatsappEnviado, erroWhatsapp };
 });
+
+// Lista de compras no WhatsApp (pedido do João, 2026-10-29): cada nova
+// solicitação em Compras (re)agenda o aviso pra 5 min depois; se chegar
+// outra nesse meio tempo, o prazo recomeça. Passados os 5 min sem nada novo,
+// manda a lista de TODAS as compras pendentes (novas marcadas) pro João e
+// pro Antônio (encarregado).
+const EVOLUTION_DESTINATARIOS_COMPRAS = ["5581992114764", "5581999868043"]; // João + Antônio Neto
+
+exports.agendarAvisoCompras = onDocumentCreated("solicitacoesCompra/{id}", async () => {
+  await db.collection("configuracoes").doc("avisoCompras").set({
+    pendente: true,
+    enviarApos: admin.firestore.Timestamp.fromMillis(Date.now() + 5 * 60 * 1000)
+  }, { merge: true });
+});
+
+exports.enviarListaComprasPendente = onSchedule(
+  { schedule: "* * * * *", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey], timeoutSeconds: 120 },
+  async () => {
+    const ref = db.collection("configuracoes").doc("avisoCompras");
+    // Reivindica o envio numa transação, pra duas execuções seguidas nunca
+    // mandarem a mesma lista duas vezes.
+    const cfg = await db.runTransaction(async t => {
+      const s = await t.get(ref);
+      if (!s.exists) return null;
+      const c = s.data();
+      if (!c.pendente || !c.enviarApos || c.enviarApos.toMillis() > Date.now()) return null;
+      t.update(ref, { pendente: false });
+      return c;
+    });
+    if (!cfg) return;
+
+    const snap = await db.collection("solicitacoesCompra").where("status", "==", "pendente").get();
+    const itens = snap.docs.map(d => d.data())
+      .sort((a, b) => (a.criadoEm ? a.criadoEm.toMillis() : 0) - (b.criadoEm ? b.criadoEm.toMillis() : 0));
+    if (!itens.length) return;
+
+    const ultimoEnvio = cfg.ultimoEnvio ? cfg.ultimoEnvio.toMillis() : 0;
+    const linhas = itens.map(s => {
+      const nova = s.criadoEm && s.criadoEm.toMillis() > ultimoEnvio ? "🆕 " : "";
+      const qtd = s.quantidade ? ` — ${s.quantidade}` : "";
+      const obs = s.obs ? ` (${s.obs})` : "";
+      return `• ${nova}${s.item}${qtd}${obs}`;
+    });
+    const texto = `🛒 *Lista de compras pendentes* (${itens.length})\n\n${linhas.join("\n")}\n\n_Sistema GW · Compras_`;
+
+    try {
+      await enviarWhatsAppEvolution(texto, evolutionApiKey.value(), EVOLUTION_DESTINATARIOS_COMPRAS);
+      await ref.update({ ultimoEnvio: admin.firestore.FieldValue.serverTimestamp() });
+    } catch (e) {
+      // Volta a ficar pendente: tenta de novo na próxima passada (1 min).
+      logger.error("[enviarListaComprasPendente] falha ao enviar", { erro: e.message });
+      await ref.update({ pendente: true });
+    }
+  }
+);
