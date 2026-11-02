@@ -6510,7 +6510,7 @@ exports.saidaAutomaticaProducao = onSchedule(
 // Só mexe em dias ainda não pagos e não altera linhas de horas trabalhadas.
 // Disparada quando o cadastro de feriados muda e quando uma ocorrência é
 // criada ou excluída. Devolve a lista do que mudou (pro aviso no Telegram).
-async function reavaliarSemanaDiarista(funcId, segundaISO) {
+async function reavaliarSemanaDiarista(funcId, segundaISO, simular = false) {
   process.env.TZ = "America/Sao_Paulo";
   const funcSnap = await db.collection("funcionarios").doc(funcId).get();
   if (!funcSnap.exists) return [];
@@ -6538,13 +6538,16 @@ async function reavaliarSemanaDiarista(funcId, segundaISO) {
   const corte = ultimoPag ? new Date(ultimoPag.getFullYear(), ultimoPag.getMonth(), ultimoPag.getDate()) : null;
   const jaPago = d => !!corte && d <= corte;
 
-  const ponto = new Map(); // iso -> { e, s }
+  const ponto = new Map(); // iso -> { e: Date (mais cedo), s: Date (mais tarde) }
   pontosSnap.docs.forEach(d => {
     const p = d.data();
     if (!p.timestamp || !p.tipo) return;
-    const k = iso(p.timestamp.toDate());
-    if (!ponto.has(k)) ponto.set(k, { e: false, s: false });
-    ponto.get(k)[p.tipo === "saida" ? "s" : "e"] = true;
+    const ts = p.timestamp.toDate();
+    const k = iso(ts);
+    if (!ponto.has(k)) ponto.set(k, { e: null, s: null });
+    const r = ponto.get(k);
+    if (p.tipo === "entrada" && (!r.e || ts < r.e)) r.e = ts;
+    if (p.tipo === "saida" && (!r.s || ts > r.s)) r.s = ts;
   });
   const diasOcorrencia = new Set(ocSnap.docs.map(d => d.data().dataISO));
   const admissao = /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(func.admissao || "")
@@ -6556,6 +6559,45 @@ async function reavaliarSemanaDiarista(funcId, segundaISO) {
   const antes = JSON.stringify(lista);
   const mudancas = [];
   const doDia = (d, filtro) => lista.filter(x => (x.localId || "").replace(" ½", "").trim() === fmt(d) && filtro(x));
+
+  // Horas trabalhadas (mesma conta do sincronismo): da entrada (piso 07:00)
+  // até a saída, menos 1h de almoço; valor = diária/9 (sexta /8) × horas,
+  // no máximo 9h (8h). Só recalcula linhas que o próprio sistema lançou por
+  // horas — lançamento à mão (✏, calendário, meio período) e linhas antigas
+  // de valor cheio ficam como estão.
+  for (const d of dias) {
+    if (jaPago(d) || d > hoje0) continue;
+    const k = fmt(d);
+    const p = ponto.get(iso(d));
+    let horas = null;
+    if (p && p.e && p.s && !diasOcorrencia.has(iso(d))) {
+      const piso = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 7, 0, 0);
+      const brutas = (p.s - (p.e > piso ? p.e : piso)) / 3600000;
+      horas = Math.max(0, brutas - 1);
+      if (horas <= 0) horas = null;
+    }
+    const auto = doDia(d, x => !x.repouso && !x.feriado && x.horas && !x.ajusteManual);
+    const outros = doDia(d, x => !x.repouso && !x.feriado && !(x.horas && !x.ajusteManual));
+    if (horas !== null) {
+      const divisor = d.getDay() === 5 ? 8 : 9;
+      const valor = Math.round((diaria(d) / divisor) * Math.min(horas, divisor) * 100) / 100;
+      const horasR = Math.round(horas * 10) / 10;
+      if (auto.length) {
+        if (auto[0].valor !== valor || auto[0].horas !== horasR) {
+          auto[0].valor = valor; auto[0].horas = horasR;
+          mudancas.push(`${k}: diária recalculada pelo ponto (${horasR}h)`);
+        }
+      } else if (!outros.length) {
+        lista.push({ localId: k, valor, horas: horasR });
+        mudancas.push(`${k}: diária lançada pelo ponto (${horasR}h)`);
+      }
+      const fer = doDia(d, x => x.feriado);
+      if (fer.length) { lista = lista.filter(x => !fer.includes(x)); mudancas.push(`${k}: trabalhou no feriado — vale o ponto`); }
+    } else if (auto.length) {
+      lista = lista.filter(x => !auto.includes(x));
+      mudancas.push(`${k}: diária removida (dia sem entrada e saída no ponto)`);
+    }
+  }
 
   // Dias úteis: falta registrada e feriado
   for (let i = 0; i < 5; i++) {
@@ -6586,7 +6628,7 @@ async function reavaliarSemanaDiarista(funcId, segundaISO) {
       if (feriados.includes(iso(d)) || (admissao && d < admissao)) return true;
       if (diasOcorrencia.has(iso(d))) return false;
       const p = ponto.get(iso(d));
-      return (p && p.e && p.s) || doDia(d, x => !x.repouso && Number(x.valor) > 0).length > 0;
+      return (p && p.e && p.s) || doDia(d, x => !x.repouso && !x.feriado && Number(x.valor) > 0).length > 0;
     });
     for (const d of [sab, dom]) {
       if (jaPago(d)) continue;
@@ -6603,6 +6645,7 @@ async function reavaliarSemanaDiarista(funcId, segundaISO) {
   }
 
   if (JSON.stringify(lista) === antes) return [];
+  if (simular) return mudancas.map(m => `${func.nome} — ${m}`);
   await docRef.set({
     funcionarioId: funcId,
     funcionarioNome: func.nome,
@@ -6652,4 +6695,17 @@ exports.reavaliarAoMudarOcorrencia = onDocumentWritten("ocorrencias/{id}", async
   const mudancas = await reavaliarSemanaDiarista(dados.funcionarioId, segundaDaSemanaISO(dados.dataISO));
   const fmtBR = dados.dataISO.split("-").reverse().join("/");
   await avisarReavaliacao(`Folha ajustada — ${excluida ? "ocorrência excluída" : "falta/suspensão registrada"} (${dados.funcionarioNome || ""}, ${fmtBR})`, mudancas);
+});
+
+exports.reavaliarAoMudarPonto = onDocumentWritten("pontos/{id}", async (event) => {
+  const dados = event.data.after.exists ? event.data.after.data() : event.data.before.data();
+  if (!dados || !dados.funcionarioId || !dados.timestamp) return;
+  const dataISO = dados.timestamp.toDate().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+  const mudancas = await reavaliarSemanaDiarista(dados.funcionarioId, segundaDaSemanaISO(dataISO));
+  // Ajuste de rotina (diária do dia sendo lançada pelo ponto de hoje) não
+  // precisa de aviso; só avisa quando mexeu em outra coisa.
+  const hojeBR = new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }).slice(0, 5);
+  const relevantes = mudancas.filter(m => !(m.includes(` — ${hojeBR}: diária lançada pelo ponto`)));
+  const fmtBR = dataISO.split("-").reverse().join("/");
+  await avisarReavaliacao(`Folha ajustada — ponto alterado (${dados.funcionarioNome || ""}, ${fmtBR})`, relevantes);
 });
