@@ -679,18 +679,19 @@
     // Substituído por um alerta (Cloud Function alertaSaidaEmAberto) que
     // avisa quem esqueceu, em vez de inventar um horário.
 
-    const VERSAO = '7.88';
+    const VERSAO = '7.89';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
     let modo = 'parcial'; // 'completo' | 'parcial' | 'limitado' | 'cadastro'
 
-    const APPS_PARCIAL_ACESSO = ['Caixa', 'Relatório', 'Rel. Folha', 'A Receber', 'A Pagar', 'Desenvolvimento'];
-    const APPS_LIMITADO = ['Rel. Ponto', 'Folha', 'Rel. Folha', 'Funcionários', 'Mapa', 'Compras'];
+    const APPS_PARCIAL_ACESSO = ['Caixa', 'Relatório', 'A Receber', 'A Pagar', 'Desenvolvimento'];
+    const APPS_LIMITADO = ['Rel. Ponto', 'Funcionários', 'Mapa', 'Compras'];
     const APPS_CADASTRO = ['Folha', 'Rel. Folha', 'Mapa', 'Funcionários', 'Ponto', 'Rel. Ponto', 'Almoxarifado', 'Compras', 'Diário de Obra'];
     // Dentro do modo "cadastro", o PIN 2912 (PIN_CADASTRO) não deve ver esses apps —
     // o PIN_CADASTRO2 (1176) continua com acesso completo ao modo. Pedido do João, 2026-10-18.
-    const APPS_BLOQUEADOS_PIN_CADASTRO = ['Compras', 'Diário de Obra', 'Almoxarifado'];
+    // Folha/Rel. Folha: só PIN 2248 (completo) e 1176 — pedido do João, 2026-11-02.
+    const APPS_BLOQUEADOS_PIN_CADASTRO = ['Compras', 'Diário de Obra', 'Almoxarifado', 'Folha', 'Rel. Folha'];
 
     const APPS = [
       { icon: '💰', name: 'Caixa',              desc: 'Lançamentos financeiros',   url: 'https://sistema.gwrevestimentos.com.br/caixa/' },

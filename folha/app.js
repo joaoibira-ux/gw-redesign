@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.53";
+const VERSAO = "5.54";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -32,6 +32,21 @@ function folhaBloqueadaParaEdicao() {
   return true;
 }
 document.querySelector("header span").textContent = `Folha de Pagamento da Produção v${VERSAO}`;
+
+// Acesso à Folha: só PIN 2248 (modo completo) e 1176 — pedido do João,
+// 2026-11-02. Sessão de "computador confiável" antiga em modo cadastro não
+// guarda o PIN: nesse caso pede na hora.
+(function checarAcessoFolha() {
+  if (sessionStorage.getItem('gw_auth') === 'completo') return;
+  let pin = sessionStorage.getItem('gw_pin') || '';
+  if (pin === '1176' || pin === '2248') return;
+  if (!pin && sessionStorage.getItem('gw_auth') === 'cadastro') {
+    const p = prompt('Digite seu PIN para abrir a Folha:');
+    if (p && (p.trim() === '1176' || p.trim() === '2248')) { sessionStorage.setItem('gw_pin', p.trim()); return; }
+  }
+  alert('A Folha só pode ser acessada com os PINs 2248 ou 1176.');
+  window.location.href = 'https://sistema.gwrevestimentos.com.br/';
+})();
 
 // ── Loading overlay ───────────────────────────────────────────
 const _loMsgs = [
