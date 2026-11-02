@@ -6130,29 +6130,12 @@ GW Revestimentos`;
   return { ok: true, whatsappEnviado, erroWhatsapp };
 });
 
-// Convocação por ausência / possível abandono de emprego (botão em
-// Funcionários, PIN 2248 ou 1176) — pedido do João, 2026-10-28. O texto é
-// montado aqui a partir do modelo dele (não aceita texto livre do cliente),
-// vai pro WhatsApp do funcionário com cópia no Telegram e fica registrado
-// em "convocacoes".
-exports.enviarConvocacaoAbandono = onCall({ secrets: [evolutionApiKey], timeoutSeconds: 60 }, async (request) => {
-  const { pin, funcionarioId, desdeData, prazo, local, horaInicio, horaFim } = request.data || {};
-
-  const cfgSnap = await db.collection("configuracoes").doc("geral").get();
-  const cfg = cfgSnap.exists ? cfgSnap.data() : {};
-  if (![cfg.pinCompleto || "2248", cfg.pinCadastro2 || "1176"].includes(String(pin || ""))) {
-    throw new HttpsError("permission-denied", "Só os PINs 2248 e 1176 podem enviar convocação.");
-  }
-  const limpa = v => String(v || "").trim();
-  const campos = { desdeData: limpa(desdeData), prazo: limpa(prazo), local: limpa(local), horaInicio: limpa(horaInicio), horaFim: limpa(horaFim) };
-  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(campos.desdeData)) throw new HttpsError("invalid-argument", "Data inválida (use DD/MM/AAAA).");
-  if (!campos.prazo || !campos.local || !campos.horaInicio || !campos.horaFim) throw new HttpsError("invalid-argument", "Preencha prazo, local e horários.");
-
-  const funcSnap = await db.collection("funcionarios").doc(String(funcionarioId || "")).get();
-  if (!funcSnap.exists) throw new HttpsError("not-found", "Funcionário não encontrado.");
+// Monta e envia a convocação (WhatsApp do funcionário + cópia no Telegram +
+// registro em "convocacoes"). Usada pelo botão em Funcionários e pela
+// convocação automática por faltas seguidas.
+async function enviarConvocacaoParaFuncionario(funcSnap, campos, origem) {
   const f = funcSnap.data();
   const empresa = "F P Alves de Souza Argamassas";
-
   const texto = `Olá, ${f.nome}.
 
 Você não comparece ao trabalho desde ${campos.desdeData}, sem justificativa, e seu contrato com a ${empresa} continua ativo.
@@ -6176,15 +6159,18 @@ ${empresa}`;
       whatsappEnviado = true;
     } catch (e) {
       erroWhatsapp = e.message;
-      logger.error("[enviarConvocacaoAbandono] falha WhatsApp", { erro: e.message });
+      logger.error("[convocacao] falha WhatsApp", { erro: e.message });
     }
   }
 
   const status = whatsappEnviado ? `✅ enviada no WhatsApp (${numero})` : `❌ NÃO enviada no WhatsApp (${erroWhatsapp})`;
   try {
-    await enviarTextoTelegram(`📨 Cópia da convocação — ${status}\nEnviada pelo PIN ${pin}\n\n${texto}`);
+    await enviarTextoTelegram(`📨 Cópia da convocação — ${status}
+Origem: ${origem}
+
+${texto}`);
   } catch (e) {
-    logger.error("[enviarConvocacaoAbandono] falha Telegram", { erro: e.message });
+    logger.error("[convocacao] falha Telegram", { erro: e.message });
   }
 
   await db.collection("convocacoes").add({
@@ -6192,12 +6178,35 @@ ${empresa}`;
     funcionarioNome: f.nome || "",
     ...campos,
     texto,
-    enviadoPorPin: String(pin),
+    origem,
     whatsappEnviado,
     erroWhatsapp,
     criadoEm: admin.firestore.FieldValue.serverTimestamp()
   });
+  return { whatsappEnviado, erroWhatsapp };
+}
 
+// Convocação por ausência / possível abandono de emprego (botão em
+// Funcionários, PIN 2248 ou 1176) — pedido do João, 2026-10-28. O texto é
+// montado aqui a partir do modelo dele (não aceita texto livre do cliente),
+// vai pro WhatsApp do funcionário com cópia no Telegram e fica registrado
+// em "convocacoes".
+exports.enviarConvocacaoAbandono = onCall({ secrets: [evolutionApiKey], timeoutSeconds: 60 }, async (request) => {
+  const { pin, funcionarioId, desdeData, prazo, local, horaInicio, horaFim } = request.data || {};
+
+  const cfgSnap = await db.collection("configuracoes").doc("geral").get();
+  const cfg = cfgSnap.exists ? cfgSnap.data() : {};
+  if (![cfg.pinCompleto || "2248", cfg.pinCadastro2 || "1176"].includes(String(pin || ""))) {
+    throw new HttpsError("permission-denied", "Só os PINs 2248 e 1176 podem enviar convocação.");
+  }
+  const limpa = v => String(v || "").trim();
+  const campos = { desdeData: limpa(desdeData), prazo: limpa(prazo), local: limpa(local), horaInicio: limpa(horaInicio), horaFim: limpa(horaFim) };
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(campos.desdeData)) throw new HttpsError("invalid-argument", "Data inválida (use DD/MM/AAAA).");
+  if (!campos.prazo || !campos.local || !campos.horaInicio || !campos.horaFim) throw new HttpsError("invalid-argument", "Preencha prazo, local e horários.");
+
+  const funcSnap = await db.collection("funcionarios").doc(String(funcionarioId || "")).get();
+  if (!funcSnap.exists) throw new HttpsError("not-found", "Funcionário não encontrado.");
+  const { whatsappEnviado, erroWhatsapp } = await enviarConvocacaoParaFuncionario(funcSnap, campos, `PIN ${pin}`);
   return { ok: true, whatsappEnviado, erroWhatsapp };
 });
 
@@ -6252,6 +6261,129 @@ exports.enviarListaComprasPendente = onSchedule(
       // Volta a ficar pendente: tenta de novo na próxima passada (1 min).
       logger.error("[enviarListaComprasPendente] falha ao enviar", { erro: e.message });
       await ref.update({ pendente: true });
+    }
+  }
+);
+
+// Convocação automática por faltas seguidas (pedido do João, 2026-10-29,
+// detalhes acertados em 2026-11-02): seg-sex às 13:00 procura quem está com
+// 4+ dias úteis seguidos sem bater entrada (ou com falta registrada no Rel.
+// Ponto), contando até ontem — feriado, fim de semana e dia antes da
+// admissão não contam. Cada um entra numa fila com intervalo aleatório de
+// 60-90 min entre um envio e outro (13:15 em diante, até ~17h; quem não
+// couber vai no dia seguinte), fora dos horários em que o WhatsApp já é
+// usado. Quem recebeu convocação nos últimos 7 dias (manual ou automática)
+// não entra. Mensagem igual à do botão: Obra, 07:00 às 17:00, 48 horas.
+const CONVOCACAO_AUTO_CAMPOS = { prazo: "48 horas", local: "Obra", horaInicio: "07:00", horaFim: "17:00" };
+
+exports.planejarConvocacoesAutomaticas = onSchedule(
+  { schedule: "0 13 * * 1-5", timeZone: "America/Sao_Paulo", timeoutSeconds: 120 },
+  async () => {
+    const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    if (FERIADOS_GW.includes(hojeISO)) return;
+    const hoje = new Date(hojeISO + "T12:00:00-03:00");
+    const iso = d => d.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+
+    // Últimos 15 dias úteis antes de hoje (mais recente primeiro)
+    const diasUteis = [];
+    for (let d = new Date(hoje); diasUteis.length < 15; ) {
+      d = new Date(d.getTime() - 86400000);
+      const ds = new Date(iso(d) + "T12:00:00-03:00").getDay();
+      if (ds === 0 || ds === 6 || FERIADOS_GW.includes(iso(d))) continue;
+      diasUteis.push(iso(d));
+    }
+    const inicioJanela = new Date(diasUteis[diasUteis.length - 1] + "T00:00:00-03:00");
+
+    const [funcSnap, pontosSnap, ocSnap, convSnap, filaSnap] = await Promise.all([
+      db.collection("funcionarios").get(),
+      db.collection("pontos").where("tipo", "==", "entrada").where("timestamp", ">=", inicioJanela).get(),
+      db.collection("ocorrencias").where("tipo", "==", "falta").get(),
+      db.collection("convocacoes").where("criadoEm", ">=", admin.firestore.Timestamp.fromMillis(Date.now() - 7 * 86400000)).get(),
+      db.collection("convocacoesFila").where("status", "==", "agendada").get()
+    ]);
+
+    const entradas = new Set();
+    pontosSnap.docs.forEach(d => {
+      const p = d.data();
+      if (p.funcionarioId && p.timestamp) entradas.add(`${p.funcionarioId}|${iso(p.timestamp.toDate())}`);
+    });
+    const faltasReg = new Set(ocSnap.docs.map(d => `${d.data().funcionarioId}|${d.data().dataISO}`));
+    const jaConvocados = new Set([
+      ...convSnap.docs.map(d => d.data().funcionarioId),
+      ...filaSnap.docs.map(d => d.data().funcionarioId)
+    ]);
+
+    const elegiveis = [];
+    funcSnap.docs.forEach(fd => {
+      const f = fd.data();
+      if (f.ativo === false || !f.telefone || jaConvocados.has(fd.id)) return;
+      const adm = /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(f.admissao || "")
+        ? (([d, m, a]) => `${a}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`)(f.admissao.split("/").map(Number)) : null;
+      let seguidas = 0, desde = null;
+      for (const dia of diasUteis) {
+        if (adm && dia < adm) break;
+        const ausente = !entradas.has(`${fd.id}|${dia}`) || faltasReg.has(`${fd.id}|${dia}`);
+        if (!ausente) break;
+        seguidas++;
+        desde = dia;
+      }
+      if (seguidas >= 4) elegiveis.push({ id: fd.id, nome: f.nome, desde, seguidas });
+    });
+    if (!elegiveis.length) return;
+
+    // Fila: 13:15, depois +60-90 min aleatórios, até 17:00
+    let horario = new Date(hojeISO + "T13:15:00-03:00").getTime();
+    const limite = new Date(hojeISO + "T17:00:00-03:00").getTime();
+    const batch = db.batch();
+    const agendados = [];
+    for (const e of elegiveis) {
+      if (horario > limite) break;
+      const [a, m, d] = e.desde.split("-");
+      batch.set(db.collection("convocacoesFila").doc(), {
+        funcionarioId: e.id,
+        funcionarioNome: e.nome,
+        desdeData: `${d}/${m}/${a}`,
+        diasSeguidos: e.seguidas,
+        enviarEm: admin.firestore.Timestamp.fromMillis(horario),
+        status: "agendada",
+        criadoEm: admin.firestore.FieldValue.serverTimestamp()
+      });
+      agendados.push(`${e.nome} (${e.seguidas} dias desde ${d}/${m}) às ${new Date(horario).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })}`);
+      horario += (60 + Math.floor(Math.random() * 31)) * 60000;
+    }
+    await batch.commit();
+    try {
+      await enviarTextoTelegram(`📨 Convocações automáticas agendadas hoje (faltas seguidas):\n\n${agendados.map(x => "• " + x).join("\n")}`);
+    } catch (e) {
+      logger.error("[planejarConvocacoesAutomaticas] falha Telegram", { erro: e.message });
+    }
+  }
+);
+
+exports.processarFilaConvocacoes = onSchedule(
+  { schedule: "*/5 13-18 * * 1-5", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey], timeoutSeconds: 120 },
+  async () => {
+    const snap = await db.collection("convocacoesFila").where("status", "==", "agendada").get();
+    const devidos = snap.docs.filter(d => d.data().enviarEm && d.data().enviarEm.toMillis() <= Date.now());
+    for (const item of devidos) {
+      // Reivindica o item antes de enviar (evita envio duplicado).
+      const ok = await db.runTransaction(async t => {
+        const s = await t.get(item.ref);
+        if (!s.exists || s.data().status !== "agendada") return false;
+        t.update(item.ref, { status: "enviando" });
+        return true;
+      });
+      if (!ok) continue;
+      const q = item.data();
+      const funcSnap = await db.collection("funcionarios").doc(q.funcionarioId).get();
+      if (!funcSnap.exists || funcSnap.data().ativo === false) {
+        await item.ref.update({ status: "cancelada" });
+        continue;
+      }
+      const r = await enviarConvocacaoParaFuncionario(funcSnap,
+        { desdeData: q.desdeData, ...CONVOCACAO_AUTO_CAMPOS },
+        `automática (${q.diasSeguidos} dias úteis seguidos sem ponto)`);
+      await item.ref.update({ status: "enviada", enviadaEm: admin.firestore.FieldValue.serverTimestamp(), ...r });
     }
   }
 );
