@@ -285,3 +285,10 @@ header {
   display: block;
   margin-top: 1px;
 }
+
+/* Fiscal do serviço */
+.btn-fiscal {
+  width: 100%; margin-top: 8px; padding: 8px; border: none; border-radius: 8px;
+  background: #e3f2fd; color: #0d47a1; font-size: 0.8rem; font-weight: 700; cursor: pointer;
+}
+.sel-fiscal { width: 100%; margin-top: 8px; padding: 8px; border: 1.5px solid #ddd; border-radius: 8px; font-size: 0.85rem; }

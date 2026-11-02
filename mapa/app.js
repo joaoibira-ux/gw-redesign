@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.24";
+const VERSAO = "3.25";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -127,6 +127,8 @@ function renderServicosDoLocal(local) {
   return servs.map(s =>
     `<div class="apt-serv ${s.status}"
           data-apt="${escHtml(local.identificacao)}"
+          data-localid="${escHtml(local.id)}"
+          data-fiscal="${escHtml((s.fiscal && s.fiscal.nome) || '')}"
           data-nome="${escHtml(s.nome)}"
           data-status="${s.status}"
           data-executor="${escHtml((s.executor && s.executor.nome) || '')}"
@@ -192,6 +194,8 @@ function verServico(e, el) {
   const valor         = el.dataset.valor;
   const data          = el.dataset.data;
   const dataRegistro  = el.dataset.dataregistro;
+  const fiscal        = el.dataset.fiscal;
+  _servicoPopup = { localId: el.dataset.localid, nome };
 
   const fmtValor = v => v ? "R$ " + parseFloat(v).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".") : "—";
 
@@ -210,6 +214,9 @@ function verServico(e, el) {
     <div class="pop-linha"><span class="pop-label">Funcionário</span><span>${escHtml(funcionario) || "—"}</span></div>
     <div class="pop-linha"><span class="pop-label">Registro</span><span>${escHtml(dataRegistro) || "—"}</span></div>`;
   }
+  html += `
+    <div class="pop-linha"><span class="pop-label">Fiscal</span><span>${escHtml(fiscal) || "—"}</span></div>
+    <button class="btn-fiscal" onclick="abrirEscolhaFiscal(event)">👷 ${fiscal ? "Trocar" : "Definir"} fiscal</button>`;
 
   const popup = document.getElementById("popup-det");
   popup.querySelector(".pop-body").innerHTML = html;
@@ -238,6 +245,60 @@ function verServico(e, el) {
   if (pr.left   < pad)       { left += (pad - pr.left)          / scale; popup.style.left = left + "px"; }
   if (pr.bottom > vvH - pad) {
     popup.style.top = (offT + rect.top / scale - popup.offsetHeight - 4) + "px";
+  }
+}
+
+// Fiscal (corresponsável) de cada serviço — pedido do João, 2026-11-02: quem
+// responde pela qualidade daquele serviço naquele local. Só registro, não
+// mexe em pagamento. Fica em locais/{id}.servicos[].fiscal = {id, nome}.
+// Só PIN 2248 ou 1176 define/troca.
+let _servicoPopup = null;
+
+function _pinFiscalOk() {
+  let pin = sessionStorage.getItem("gw_pin") || "";
+  if (pin === "2248" || pin === "1176") return true;
+  const p = prompt("Digite seu PIN (2248 ou 1176):");
+  if (p === null) return false;
+  if (p.trim() !== "2248" && p.trim() !== "1176") { alert("PIN não autorizado."); return false; }
+  sessionStorage.setItem("gw_pin", p.trim());
+  return true;
+}
+
+async function abrirEscolhaFiscal(e) {
+  e.stopPropagation();
+  if (!_servicoPopup || !_pinFiscalOk()) return;
+  const snap = await db.collection("funcionarios").get();
+  const ativos = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .filter(f => f.ativo !== false)
+    .sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"));
+  const body = document.getElementById("popup-det").querySelector(".pop-body");
+  body.innerHTML = `
+    <div class="pop-linha"><span class="pop-label">Serviço</span><span>${escHtml(_servicoPopup.nome)}</span></div>
+    <select id="sel-fiscal" class="sel-fiscal">
+      <option value="">— Sem fiscal —</option>
+      ${ativos.map(f => `<option value="${escHtml(f.id)}">${escHtml(f.nome)}</option>`).join("")}
+    </select>
+    <button class="btn-fiscal" onclick="salvarFiscal(event)">Salvar</button>`;
+}
+
+async function salvarFiscal(e) {
+  e.stopPropagation();
+  if (!_servicoPopup) return;
+  const sel = document.getElementById("sel-fiscal");
+  const fiscal = sel.value ? { id: sel.value, nome: sel.options[sel.selectedIndex].text } : null;
+  const local = locaisData.find(l => l.id === _servicoPopup.localId);
+  if (!local) return;
+  const servicos = (local.servicos || []).map(s => {
+    if (s.nome !== _servicoPopup.nome) return s;
+    const novo = { ...s };
+    if (fiscal) novo.fiscal = fiscal; else delete novo.fiscal;
+    return novo;
+  });
+  try {
+    await db.collection("locais").doc(local.id).update({ servicos });
+    fecharInfo();
+  } catch (err) {
+    alert("Erro ao salvar: " + (err.message || err));
   }
 }
 
