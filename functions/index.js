@@ -4555,7 +4555,8 @@ async function sincronizarDiariasAjudantesPorPonto(periodoForcado) {
   // com segunda a sexta completos (qualquer falta perde os dois; feriado e
   // dia antes da admissão não contam). Chave 'dd/mm' ou 'dd/mm|R' (repouso),
   // porque o mesmo sábado/domingo pode ter as duas coisas.
-  const ehFeriadoSync = d => FERIADOS_GW.includes(
+  const feriadosSync = await carregarFeriados();
+  const ehFeriadoSync = d => feriadosSync.includes(
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
 
   for (const func of ajudantes) {
@@ -4575,6 +4576,15 @@ async function sincronizarDiariasAjudantesPorPonto(periodoForcado) {
       if (horas !== null && horas > 0) {
         add(d, { valor: valorDiariaPorHoras(func, d, horas), horas: Math.round(horas * 10) / 10 });
       }
+    }
+
+    // Feriado em dia útil: diarista recebe a diária cheia sem trabalhar (9h
+    // seg-qui / 8h sex = a diária inteira pelo divisor do dia). Quem é por
+    // produção não recebe (nem passa por aqui). Pedido do João, 2026-11-02.
+    for (let d = new Date(quinzenaInicio); d <= quinzenaFim && d <= hojeSemHora; d.setDate(d.getDate() + 1)) {
+      if (d.getDay() === 0 || d.getDay() === 6 || !ehFeriadoSync(d) || jaPago(d)) continue;
+      if (admissao && d < admissao) continue;
+      if (!novosDias.has(fmtDiaMes(d))) add(new Date(d), { valor: valorDiaria(func, d), feriado: true });
     }
 
     for (let dom = new Date(quinzenaInicio); dom <= quinzenaFim && dom <= hojeSemHora; dom.setDate(dom.getDate() + 1)) {
@@ -4612,6 +4622,7 @@ async function sincronizarDiariasAjudantesPorPonto(periodoForcado) {
       const item = { localId: info.localId, valor: info.valor };
       if (info.horas) item.horas = info.horas;
       if (info.repouso) item.repouso = true;
+      if (info.feriado) item.feriado = true;
       diasParaAdicionar.push(item);
     });
     if (!diasParaAdicionar.length) continue;
@@ -5593,6 +5604,7 @@ async function idsComOcorrenciaNoDia(hojeISO) {
 
 async function checarEAvisarPontoEmAberto() {
   const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+  if ((await carregarFeriados()).includes(hojeISO)) return 0;
   const dataInicio = new Date(hojeISO + "T00:00:00-03:00");
   const dataFim = new Date(hojeISO + "T23:59:59-03:00");
 
@@ -5676,6 +5688,7 @@ exports.alertaPontoEmAberto940 = onSchedule(
 // folga depois do fim do expediente normal, fora de :00/:30 de propósito.
 async function checarEAvisarSaidaEmAberto() {
   const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+  if ((await carregarFeriados()).includes(hojeISO)) return 0;
   const dataInicio = new Date(hojeISO + "T00:00:00-03:00");
   const dataFim = new Date(hojeISO + "T23:59:59-03:00");
 
@@ -5751,6 +5764,20 @@ const FERIADOS_GW = [
   "2027-11-15", "2027-11-20", "2027-12-25"
 ];
 
+// Desde 2026-11-02 os feriados são cadastrados pelo calendário do Rel. Ponto
+// (configuracoes/feriados.datas, "AAAA-MM-DD"); a lista acima vira reserva
+// caso a leitura falhe.
+async function carregarFeriados() {
+  try {
+    const snap = await db.collection("configuracoes").doc("feriados").get();
+    const datas = snap.exists ? snap.data().datas : null;
+    return Array.isArray(datas) ? datas : FERIADOS_GW;
+  } catch (e) {
+    logger.error("[carregarFeriados] usando lista fixa", { erro: e.message });
+    return FERIADOS_GW;
+  }
+}
+
 // Variantes do texto do lembrete — manda uma diferente a cada envio (não
 // sempre o mesmo texto pra números diferentes), reduz mais um pouco o
 // padrão "mensagem em massa idêntica" que o WhatsApp vigia.
@@ -5778,7 +5805,7 @@ exports.lembretePontoIndividual = onSchedule(
   { schedule: "30 9 * * 1-5", timeZone: "America/Sao_Paulo", secrets: [evolutionApiKey], timeoutSeconds: 1800 },
   async () => {
     const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
-    if (FERIADOS_GW.includes(hojeISO)) return;
+    if ((await carregarFeriados()).includes(hojeISO)) return;
 
     const dataInicio = new Date(hojeISO + "T00:00:00-03:00");
     const dataFim = new Date(hojeISO + "T23:59:59-03:00");
@@ -6280,7 +6307,8 @@ exports.planejarConvocacoesAutomaticas = onSchedule(
   { schedule: "0 13 * * 1-5", timeZone: "America/Sao_Paulo", timeoutSeconds: 120 },
   async () => {
     const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
-    if (FERIADOS_GW.includes(hojeISO)) return;
+    const feriados = await carregarFeriados();
+    if (feriados.includes(hojeISO)) return;
     const hoje = new Date(hojeISO + "T12:00:00-03:00");
     const iso = d => d.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
 
@@ -6289,7 +6317,7 @@ exports.planejarConvocacoesAutomaticas = onSchedule(
     for (let d = new Date(hoje); diasUteis.length < 15; ) {
       d = new Date(d.getTime() - 86400000);
       const ds = new Date(iso(d) + "T12:00:00-03:00").getDay();
-      if (ds === 0 || ds === 6 || FERIADOS_GW.includes(iso(d))) continue;
+      if (ds === 0 || ds === 6 || feriados.includes(iso(d))) continue;
       diasUteis.push(iso(d));
     }
     const inicioJanela = new Date(diasUteis[diasUteis.length - 1] + "T00:00:00-03:00");

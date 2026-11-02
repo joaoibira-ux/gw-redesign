@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.54";
+const VERSAO = "5.55";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -357,6 +357,7 @@ function diaSemanaDoLocalId(localId) {
 
 function labelDiaria(d) {
   const diaSemana = diaSemanaDoLocalId(d.localId);
+  if (d.feriado) return 'Feriado';
   if (d.repouso) return diaSemana === 0 ? 'Rep Remunerado Dom' : 'Rep Remunerado Sáb';
   if (d.horas) {
     if (diaSemana === 6) return `Sábado (${d.horas}h)`;
@@ -803,16 +804,11 @@ async function sincronizarDiariasAjudantesPorPonto() {
       return Math.round((valorDiaria(func, date) / divisor) * horasPagas * 100) / 100;
     }
 
-    // Feriados (mesma lista de functions/index.js e caixa/relatorio.html):
-    // não contam como falta na semana.
-    const FERIADOS_FOLHA = [
-      "2026-01-01", "2026-02-16", "2026-02-17", "2026-04-03", "2026-04-21",
-      "2026-05-01", "2026-06-04", "2026-09-07", "2026-10-12", "2026-11-02",
-      "2026-11-15", "2026-11-20", "2026-12-25",
-      "2027-01-01", "2027-02-08", "2027-02-09", "2027-03-26", "2027-04-21",
-      "2027-05-01", "2027-05-27", "2027-09-07", "2027-10-12", "2027-11-02",
-      "2027-11-15", "2027-11-20", "2027-12-25"
-    ];
+    // Feriados: cadastrados pelo calendário do Rel. Ponto
+    // (configuracoes/feriados.datas) — não contam como falta na semana e o
+    // diarista recebe a diária do feriado.
+    const ferSnap = await db.collection('configuracoes').doc('feriados').get().catch(() => null);
+    const FERIADOS_FOLHA = ferSnap && ferSnap.exists && Array.isArray(ferSnap.data().datas) ? ferSnap.data().datas : [];
     const ehFeriado = d => FERIADOS_FOLHA.includes(
       `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
 
@@ -838,6 +834,15 @@ async function sincronizarDiariasAjudantesPorPonto() {
         if (horas !== null && horas > 0) {
           add(d, { valor: valorDiariaPorHoras(func, d, horas), horas: Math.round(horas * 10) / 10 });
         }
+      }
+
+      // 1b. Feriado em dia útil: diarista recebe a diária cheia sem trabalhar
+      // (9h seg-qui / 8h sex = a diária inteira pelo divisor do dia). Quem é
+      // por produção não entra nesta lista. Pedido do João, 2026-11-02.
+      for (let d = new Date(quinzenaInicio); d <= quinzenaFim && d <= hojeSemHora; d.setDate(d.getDate() + 1)) {
+        if (d.getDay() === 0 || d.getDay() === 6 || !ehFeriado(d) || jaPago(d)) continue;
+        if (admissao && d < admissao) continue;
+        if (!novosDias.has(fmtDiaMes(d))) add(new Date(d), { valor: valorDiaria(func, d), feriado: true });
       }
 
       // 2. Repouso remunerado (sábado + domingo), pedido do João 2026-11-01:
@@ -881,6 +886,7 @@ async function sincronizarDiariasAjudantesPorPonto() {
         const item = { localId: info.localId, valor: info.valor };
         if (info.horas) item.horas = info.horas;
         if (info.repouso) item.repouso = true;
+        if (info.feriado) item.feriado = true;
         diasParaAdicionar.push(item);
       });
       if (!diasParaAdicionar.length) continue;
@@ -960,6 +966,11 @@ function calMes(delta) {
   renderCalendario();
 }
 
+let _feriadosFolha = new Set();
+db.collection('configuracoes').doc('feriados').onSnapshot(snap => {
+  _feriadosFolha = new Set(snap.exists && Array.isArray(snap.data().datas) ? snap.data().datas : []);
+});
+
 function renderCalendario() {
   document.getElementById('cal-titulo').textContent = `${MESES_CAL[calMesAtual]} ${calAno}`;
   const primeiroDia = new Date(calAno, calMesAtual, 1).getDay();
@@ -980,7 +991,10 @@ function renderCalendario() {
       cls   = state === 'full' ? ' selecionado' : state === 'half' ? ' meio-periodo' : '';
       label = `${d}`;
     }
-    html += `<div class="cal-dia${cls}${isHj}" onclick="toggleDia('${key}')">${label}</div>`;
+    // Feriados vêm do calendário do Rel. Ponto (só exibição aqui).
+    const fer = _feriadosFolha.has(key) ? ' feriado' : '';
+    if (fer) label += '<br><span style="font-size:0.45rem">FER</span>';
+    html += `<div class="cal-dia${cls}${isHj}${fer}" onclick="toggleDia('${key}')">${label}</div>`;
   }
   document.getElementById('cal-grid').innerHTML = html;
 }

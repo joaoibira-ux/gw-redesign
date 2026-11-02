@@ -1,4 +1,4 @@
-const VERSION = "caixa-v124";
+const VERSION = "caixa-v125";
 const ASSETS = [
   "./index.html",
   "./style.css?v=35",

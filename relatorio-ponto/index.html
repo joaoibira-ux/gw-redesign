@@ -163,6 +163,48 @@
       font-size: 0.75rem; font-weight: 700; cursor: pointer; white-space: nowrap;
     }
     .tr-ocorrencia { background: #ffebee !important; }
+
+    /* ── MENU OPÇÕES / MAPA DE PONTO / CALENDÁRIO ───────────── */
+    .opc-lista { display: flex; flex-direction: column; gap: 8px; }
+    .opc-item {
+      display: flex; align-items: center; gap: 12px; padding: 14px; border: none; border-radius: 12px;
+      background: #f0f5f1; font-size: 0.92rem; font-weight: 700; color: #1a3322; cursor: pointer; text-align: left;
+    }
+    .opc-item small { display: block; font-weight: 400; color: #6a8a72; font-size: 0.72rem; }
+    .opc-item span.ic { font-size: 1.4rem; }
+    .tela-cheia {
+      position: fixed; inset: 0; background: #f0f4f1; z-index: 300; display: none; flex-direction: column;
+    }
+    .tela-cheia-top {
+      background: #1a3322; color: #fff; display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; padding-top: max(10px, env(safe-area-inset-top));
+    }
+    .tela-cheia-top b { flex: 1; font-size: 0.95rem; }
+    .tela-cheia-top button { background: rgba(255,255,255,0.12); border: none; color: #fff; border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+    .tela-cheia-legenda { font-size: 0.68rem; color: #555; padding: 6px 14px; background: #fff; border-bottom: 1px solid #e0e0e0; }
+    .tela-cheia-corpo { flex: 1; overflow: auto; padding: 10px; }
+    table.mapa-ponto { border-collapse: collapse; background: #fff; font-size: 0.66rem; }
+    table.mapa-ponto th, table.mapa-ponto td { border: 1px solid #e3ebe4; padding: 3px 4px; text-align: center; white-space: nowrap; }
+    table.mapa-ponto th { background: #1a3322; color: #a5d6a7; position: sticky; top: 0; z-index: 2; cursor: pointer; }
+    table.mapa-ponto th.th-fer { background: #2e7d32; color: #fff; }
+    table.mapa-ponto th.th-nome, table.mapa-ponto td.td-nome { position: sticky; left: 0; background: #fff; text-align: left; z-index: 1; font-weight: 600; }
+    table.mapa-ponto th.th-nome { background: #1a3322; z-index: 3; cursor: default; }
+    .mp-e { color: #2e7d32; font-weight: 700; } .mp-s { color: #b84d00; font-weight: 700; }
+    .mp-x { color: #d32f2f; font-weight: 800; } .mp-falta { color: #d32f2f; font-weight: 700; }
+    .mp-ok { color: #2e7d32; font-weight: 800; font-size: 0.85rem; }
+    .mp-oc { background: #ffebee; }
+    .mp-auto { color: #999; font-size: 0.55rem; }
+    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; max-width: 520px; margin: 0 auto; }
+    .cal-dow { text-align: center; font-size: 0.7rem; font-weight: 700; color: #6a8a72; }
+    .cal-dia {
+      background: #fff; border-radius: 10px; min-height: 54px; padding: 6px; font-size: 0.8rem; font-weight: 700;
+      color: #333; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between;
+    }
+    .cal-dia.fds, .cal-dia.fer { background: #e8f5e9; }
+    .cal-dia.fer { outline: 2px solid #2e7d32; }
+    .cal-dia .ok { color: #2e7d32; font-size: 1rem; align-self: flex-end; }
+    .cal-dia small { font-size: 0.55rem; color: #2e7d32; font-weight: 600; }
+    .cal-vazio { min-height: 54px; }
     .oc-badge {
       display: inline-block; background: #c62828; color: #fff;
       font-size: 0.66rem; font-weight: 700; padding: 2px 7px; border-radius: 10px;
@@ -201,9 +243,32 @@
     <img src="../Logo-gw.png" alt="GW" draggable="false" />
   </a>
   <span class="h-title">Relatório de Ponto</span>
-  <button class="btn-ocorrencia" id="btn-ocorrencia" style="display:none" onclick="abrirOcorrencia()">⚠️ Falta/Suspensão</button>
-  <span class="h-versao">v1.3</span>
+  <button class="btn-ocorrencia" id="btn-opcoes" onclick="abrirOpcoes()">☰ Opções</button>
+  <span class="h-versao">v1.4</span>
 </header>
+
+<div class="modal-ov" id="modal-opcoes" onclick="if(event.target===this) fecharOpcoes()">
+  <div class="modal-bx">
+    <h3 style="color:#1a3322">☰ Opções</h3>
+    <div class="opc-lista">
+      <button class="opc-item" id="opc-falta" onclick="fecharOpcoes();abrirOcorrencia()"><span class="ic">⚠️</span><div>Falta / Suspensão<small>Registra e envia a advertência no WhatsApp</small></div></button>
+      <button class="opc-item" onclick="fecharOpcoes();abrirMapaPonto()"><span class="ic">🗓️</span><div>Mapa de ponto do período<small>Funcionários × dias do mês, com entradas e saídas</small></div></button>
+      <button class="opc-item" onclick="fecharOpcoes();abrirCalendarioFeriados()"><span class="ic">📅</span><div>Calendário de feriados<small>Sábados, domingos e feriados; toque num dia útil pra marcar feriado</small></div></button>
+    </div>
+  </div>
+</div>
+
+<div class="tela-cheia" id="tela-mapa">
+  <div class="tela-cheia-top"><b id="mapa-titulo">Mapa de ponto</b><button onclick="fecharTela('tela-mapa')">✕ Fechar</button></div>
+  <div class="tela-cheia-legenda">E/S = entrada e saída · <span class="mp-x">✗</span> entrada sem saída · <span class="mp-falta">falta</span> dia útil sem registro · <span class="mp-ok">✓</span> sábado, domingo ou feriado sem registro · <span class="mp-auto">a</span> saída automática · toque na data do topo pra marcar/desmarcar feriado</div>
+  <div class="tela-cheia-corpo" id="mapa-corpo">Carregando...</div>
+</div>
+
+<div class="tela-cheia" id="tela-cal">
+  <div class="tela-cheia-top"><b id="cal-titulo">Calendário de feriados</b><button onclick="fecharTela('tela-cal')">✕ Fechar</button></div>
+  <div class="tela-cheia-legenda"><span class="mp-ok">✓</span> sábado, domingo ou feriado · contorno verde = feriado · toque num dia útil pra marcar/desmarcar feriado (PIN 2248 ou 1176)</div>
+  <div class="tela-cheia-corpo" id="cal-corpo">Carregando...</div>
+</div>
 
 <div class="modal-ov" id="modal-oc" onclick="if(event.target===this) fecharOcorrencia()">
   <div class="modal-bx">
@@ -252,7 +317,7 @@
 </div>
 
 <script>
-const VERSAO = '1.3';
+const VERSAO = '1.4';
 let PIN_ATUAL = sessionStorage.getItem('gw_pin') || '';
 const PIN_VALIDO = p => p === '2248' || p === '1176';
 // Sessões de "computador confiável" antigas não guardam o PIN (só o modo) —
@@ -422,7 +487,7 @@ async function carregar() {
 }
 
 // ── Falta/suspensão com advertência (PIN 2248 ou 1176) ──────────────────
-if (PODE_REGISTRAR_OCORRENCIA) document.getElementById('btn-ocorrencia').style.display = '';
+
 
 async function abrirOcorrencia() {
   const snap = await db.collection('funcionarios').get();
@@ -489,6 +554,133 @@ async function excluirOcorrencia(id) {
   if (senha !== '2248' && senha !== '1176') { alert('Senha incorreta.'); return; }
   await db.collection('ocorrencias').doc(id).delete();
   carregar();
+}
+
+// ── Menu Opções (pedido do João, 2026-11-02) ─────────────────────────────
+function abrirOpcoes() {
+  document.getElementById('opc-falta').style.display = PODE_REGISTRAR_OCORRENCIA ? '' : 'none';
+  document.getElementById('modal-opcoes').style.display = 'flex';
+}
+function fecharOpcoes() { document.getElementById('modal-opcoes').style.display = 'none'; }
+function fecharTela(id) { document.getElementById(id).style.display = 'none'; }
+
+const isoDe = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const DOW = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
+
+// Feriados: cadastro único em configuracoes/feriados.datas (AAAA-MM-DD),
+// usado também pela Folha, Passagens e alertas de ponto.
+async function carregarFeriadosRP() {
+  const snap = await db.collection('configuracoes').doc('feriados').get();
+  return new Set(snap.exists && Array.isArray(snap.data().datas) ? snap.data().datas : []);
+}
+
+async function alternarFeriado(iso, depois) {
+  if (!PIN_VALIDO(PIN_ATUAL)) {
+    const p = prompt('Digite seu PIN (2248 ou 1176) para marcar feriado:');
+    if (p === null) return;
+    if (!PIN_VALIDO(p.trim())) { alert('PIN não autorizado.'); return; }
+    PIN_ATUAL = p.trim();
+    sessionStorage.setItem('gw_pin', PIN_ATUAL);
+  }
+  const fer = await carregarFeriadosRP();
+  const [a, m, d] = iso.split('-');
+  const marcar = !fer.has(iso);
+  if (!confirm(`${marcar ? 'MARCAR' : 'DESMARCAR'} ${d}/${m}/${a} como feriado?`)) return;
+  const ref = db.collection('configuracoes').doc('feriados');
+  await ref.set({ datas: marcar ? firebase.firestore.FieldValue.arrayUnion(iso) : firebase.firestore.FieldValue.arrayRemove(iso) }, { merge: true });
+  if (depois) depois();
+}
+
+async function abrirMapaPonto() {
+  document.getElementById('tela-mapa').style.display = 'flex';
+  document.getElementById('mapa-titulo').textContent = `Mapa de ponto — ${MESES[mesAtual]} ${anoAtual}`;
+  const corpo = document.getElementById('mapa-corpo');
+  corpo.innerHTML = 'Carregando...';
+  try {
+    const inicio = new Date(anoAtual, mesAtual, 1);
+    const fim = new Date(anoAtual, mesAtual + 1, 1);
+    const isoIni = isoDe(inicio), isoFim = isoDe(fim);
+    const [funcSnap, pontosSnap, ocSnap, fer] = await Promise.all([
+      db.collection('funcionarios').get(),
+      db.collection('pontos')
+        .where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(inicio))
+        .where('timestamp', '<', firebase.firestore.Timestamp.fromDate(fim)).get(),
+      db.collection('ocorrencias').where('dataISO', '>=', isoIni).where('dataISO', '<', isoFim).get(),
+      carregarFeriadosRP()
+    ]);
+    const funcs = funcSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .filter(f => f.ativo !== false)
+      .sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
+
+    // funcId|iso -> { e: Date, s: Date, auto }
+    const reg = new Map();
+    pontosSnap.docs.forEach(doc => {
+      const p = doc.data();
+      if (!p.funcionarioId || !p.timestamp) return;
+      const ts = p.timestamp.toDate();
+      const k = `${p.funcionarioId}|${isoDe(ts)}`;
+      if (!reg.has(k)) reg.set(k, { e: null, s: null, auto: false });
+      const r = reg.get(k);
+      if (p.tipo === 'entrada' && (!r.e || ts < r.e)) r.e = ts;
+      if (p.tipo === 'saida' && (!r.s || ts > r.s)) { r.s = ts; r.auto = !!(p.fechamentoAutomatico || p.saidaAutomaticaProducao); }
+    });
+    const oc = new Map(ocSnap.docs.map(d => [`${d.data().funcionarioId}|${d.data().dataISO}`, d.data().tipo]));
+
+    const hoje0 = new Date(); hoje0.setHours(0, 0, 0, 0);
+    const dias = [];
+    for (let d = new Date(inicio); d < fim && d <= hoje0; d.setDate(d.getDate() + 1)) dias.push(new Date(d));
+
+    const head = `<tr><th class="th-nome">Funcionário</th>${dias.map(d => {
+      const iso = isoDe(d);
+      return `<th class="${fer.has(iso) ? 'th-fer' : ''}" onclick="alternarFeriado('${iso}', abrirMapaPonto)" title="Tocar pra marcar/desmarcar feriado">${String(d.getDate()).padStart(2, '0')}<br>${fer.has(iso) ? 'FER' : DOW[d.getDay()]}</th>`;
+    }).join('')}</tr>`;
+
+    const hm = t => t.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const linhas = funcs.map(f => {
+      const adm = /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(f.admissao || '')
+        ? (([dd, mm, aa]) => new Date(aa, mm - 1, dd))(f.admissao.split('/').map(Number)) : null;
+      const cels = dias.map(d => {
+        const iso = isoDe(d);
+        const r = reg.get(`${f.id}|${iso}`);
+        const o = oc.get(`${f.id}|${iso}`);
+        const cls = o ? ' class="mp-oc"' : '';
+        const tag = o ? `<br><b class="mp-falta">${o === 'suspensao' ? 'SUSP' : 'FALTA'}</b>` : '';
+        if (adm && d < adm) return '<td></td>';
+        if (r && r.e) {
+          const sai = r.s ? `<span class="mp-s">${hm(r.s)}</span>${r.auto ? '<span class="mp-auto">a</span>' : ''}` : '<span class="mp-x">✗</span>';
+          return `<td${cls}><span class="mp-e">${hm(r.e)}</span><br>${sai}${tag}</td>`;
+        }
+        if (d.getDay() === 0 || d.getDay() === 6 || fer.has(iso)) return `<td${cls}><span class="mp-ok">✓</span>${tag}</td>`;
+        return `<td${cls}><span class="mp-falta">falta<br>falta</span>${tag}</td>`;
+      }).join('');
+      return `<tr><td class="td-nome">${esc(f.nome || '')}</td>${cels}</tr>`;
+    }).join('');
+
+    corpo.innerHTML = `<table class="mapa-ponto"><thead>${head}</thead><tbody>${linhas}</tbody></table>`;
+  } catch (e) {
+    corpo.innerHTML = 'Erro ao carregar: ' + esc(e.message || String(e));
+  }
+}
+
+async function abrirCalendarioFeriados() {
+  document.getElementById('tela-cal').style.display = 'flex';
+  document.getElementById('cal-titulo').textContent = `Calendário de feriados — ${MESES[mesAtual]} ${anoAtual}`;
+  const corpo = document.getElementById('cal-corpo');
+  const fer = await carregarFeriadosRP();
+  const primeiro = new Date(anoAtual, mesAtual, 1);
+  const total = new Date(anoAtual, mesAtual + 1, 0).getDate();
+  let html = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => `<div class="cal-dow">${d}</div>`).join('');
+  for (let i = 0; i < primeiro.getDay(); i++) html += '<div class="cal-vazio"></div>';
+  for (let dia = 1; dia <= total; dia++) {
+    const d = new Date(anoAtual, mesAtual, dia);
+    const iso = isoDe(d);
+    const fds = d.getDay() === 0 || d.getDay() === 6;
+    const ehFer = fer.has(iso);
+    const cls = ehFer ? 'fer' : fds ? 'fds' : '';
+    const clique = fds ? '' : `onclick="alternarFeriado('${iso}', abrirCalendarioFeriados)"`;
+    html += `<div class="cal-dia ${cls}" ${clique}>${dia}${ehFer ? '<small>FERIADO</small>' : ''}${fds || ehFer ? '<span class="ok">✓</span>' : ''}</div>`;
+  }
+  corpo.innerHTML = `<div class="cal-grid">${html}</div>`;
 }
 
 carregar();

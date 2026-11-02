@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.50";
+  const VERSAO = "2.51";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1394,7 +1394,7 @@
   // calcularFaltasQuinzenaAtual nunca excluía feriado nenhum da conta de
   // "dias úteis exigidos", cobrando falta (e descontando passagem) de todo
   // mundo que não trabalhou em 12/10 (Nossa Senhora Aparecida).
-  const FERIADOS_GW = [
+  let FERIADOS_GW = [
     "2026-01-01", "2026-02-16", "2026-02-17", "2026-04-03", "2026-04-21",
     "2026-05-01", "2026-06-04", "2026-09-07", "2026-10-12", "2026-11-02",
     "2026-11-15", "2026-11-20", "2026-12-25",
@@ -1402,6 +1402,15 @@
     "2027-05-01", "2027-05-27", "2027-09-07", "2027-10-12", "2027-11-02",
     "2027-11-15", "2027-11-20", "2027-12-25"
   ];
+  // Desde 2026-11-02 os feriados vêm do cadastro feito no calendário do
+  // Rel. Ponto (configuracoes/feriados); a lista acima fica de reserva.
+  async function carregarFeriadosGW() {
+    try {
+      const snap = await db.collection('configuracoes').doc('feriados').get();
+      if (snap.exists && Array.isArray(snap.data().datas)) FERIADOS_GW = snap.data().datas;
+    } catch (e) { console.error('Falha ao carregar feriados:', e); }
+  }
+  carregarFeriadosGW();
   function ehFeriado(d) {
     return FERIADOS_GW.includes(d.toLocaleDateString("en-CA"));
   }
@@ -1483,6 +1492,7 @@
   // de quinzena); só o sábado (pra compensação/crédito) continua ligado à
   // semana como um todo, não importa se ela está inteira dentro da quinzena.
   async function calcularFaltasQuinzenaAtual(hoje) {
+    await carregarFeriadosGW();
     const { inicio: qIni, fim: qFim } = limitesQuinzenaAtual(hoje);
     // Janela de busca com folga de 1 semana pra cada lado, pra pegar o
     // sábado de uma semana cortada pela virada da quinzena.
@@ -2722,6 +2732,7 @@
       const labelDiariaRecibo = d => {
         const [dia, mes] = String(d.localId || '').replace(' ½', '').trim().split('/').map(Number);
         const ds = dia && mes ? new Date(new Date().getFullYear(), mes - 1, dia).getDay() : null;
+        if (d.feriado) return 'Feriado';
         if (d.repouso) return ds === 0 ? 'Rep Remunerado Dom' : 'Rep Remunerado Sáb';
         if (d.horas) {
           if (ds === 6) return `Sábado (${d.horas}h)`;

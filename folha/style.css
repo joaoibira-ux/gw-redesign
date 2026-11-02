@@ -621,3 +621,6 @@ header {
   .folha-paper { box-shadow: none; border-radius: 0; }
   .folha-rodape { display: none; }
 }
+
+/* Feriado (cadastrado no calendário do Rel. Ponto) */
+.cal-dia.feriado { box-shadow: inset 0 0 0 2px #2e7d32; color: #2e7d32; }
