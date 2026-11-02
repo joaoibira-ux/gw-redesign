@@ -6387,3 +6387,86 @@ exports.processarFilaConvocacoes = onSchedule(
     }
   }
 );
+
+// Saída automática pra quem é por produção (pedido do João, 2026-11-01):
+// funcionário por produção (Pintor/Raspador, ou Ajudante marcado
+// porProducao) que bateu ENTRADA, não bateu SAÍDA, mas tem produção
+// apontada naquele dia no mapa (serviço "em_pagamento" no nome dele com
+// dataRegistro = o dia) ganha uma saída automática 4h depois da entrada.
+// Roda todo dia às 21:30 olhando os últimos 7 dias; dia com falta/suspensão
+// registrada fica de fora. Resumo vai pro Telegram do João.
+function ehPorProducao(func) {
+  const cargo = (func && func.cargo || "").toLowerCase();
+  if (cargo.includes("pintor") || cargo.includes("raspador")) return true;
+  return ehAjudante(func && func.cargo) && func.porProducao === true;
+}
+
+exports.saidaAutomaticaProducao = onSchedule(
+  { schedule: "30 21 * * *", timeZone: "America/Sao_Paulo", timeoutSeconds: 120 },
+  async () => {
+    const tz = "America/Sao_Paulo";
+    const isoSP = d => d.toLocaleDateString("en-CA", { timeZone: tz });
+    const brSP = d => d.toLocaleDateString("pt-BR", { timeZone: tz });
+    const inicio = new Date(Date.now() - 7 * 86400000);
+
+    const [funcSnap, pontosSnap, locaisSnap, ocSnap] = await Promise.all([
+      db.collection("funcionarios").get(),
+      db.collection("pontos").where("timestamp", ">=", inicio).get(),
+      db.collection("locais").get(),
+      db.collection("ocorrencias").get()
+    ]);
+
+    const producao = new Map(funcSnap.docs
+      .filter(d => d.data().ativo !== false && ehPorProducao(d.data()))
+      .map(d => [d.id, d.data()]));
+    if (!producao.size) return;
+
+    // `${funcId}|dd/mm/aaaa` com produção apontada
+    const apontada = new Set();
+    locaisSnap.docs.forEach(l => (l.data().servicos || []).forEach(s => {
+      if (s.status === "em_pagamento" && s.funcionario && s.funcionario.id && s.dataRegistro) {
+        apontada.add(`${s.funcionario.id}|${s.dataRegistro}`);
+      }
+    }));
+    const comOcorrencia = new Set(ocSnap.docs.map(d => `${d.data().funcionarioId}|${d.data().dataISO}`));
+
+    // funcId|isoDia -> { entrada: Date (mais cedo), saida: bool, nome }
+    const dias = new Map();
+    pontosSnap.docs.forEach(d => {
+      const p = d.data();
+      if (!p.funcionarioId || !p.timestamp || !producao.has(p.funcionarioId)) return;
+      const ts = p.timestamp.toDate();
+      const k = `${p.funcionarioId}|${isoSP(ts)}`;
+      if (!dias.has(k)) dias.set(k, { entrada: null, saida: false, nome: p.funcionarioNome, ts });
+      const info = dias.get(k);
+      if (p.tipo === "entrada" && (!info.entrada || ts < info.entrada)) info.entrada = ts;
+      if (p.tipo === "saida") info.saida = true;
+    });
+
+    const criadas = [];
+    for (const [k, info] of dias) {
+      if (!info.entrada || info.saida) continue;
+      const [funcId, diaISO] = k.split("|");
+      if (comOcorrencia.has(`${funcId}|${diaISO}`)) continue;
+      if (!apontada.has(`${funcId}|${brSP(info.entrada)}`)) continue;
+      const saida = new Date(info.entrada.getTime() + 4 * 3600000);
+      await db.collection("pontos").add({
+        funcionarioId: funcId,
+        funcionarioNome: info.nome || producao.get(funcId).nome || "",
+        tipo: "saida",
+        timestamp: admin.firestore.Timestamp.fromDate(saida),
+        saidaAutomaticaProducao: true,
+        localizacao: null
+      });
+      criadas.push(`${info.nome || producao.get(funcId).nome} — ${brSP(info.entrada)}: entrada ${info.entrada.toLocaleTimeString("pt-BR", { timeZone: tz, hour: "2-digit", minute: "2-digit" })}, saída ${saida.toLocaleTimeString("pt-BR", { timeZone: tz, hour: "2-digit", minute: "2-digit" })}`);
+    }
+
+    if (criadas.length) {
+      try {
+        await enviarTextoTelegram(`🕓 Saída automática (produção apontada, sem saída no ponto — entrada + 4h):\n\n${criadas.map(x => "• " + x).join("\n")}`);
+      } catch (e) {
+        logger.error("[saidaAutomaticaProducao] falha Telegram", { erro: e.message });
+      }
+    }
+  }
+);
