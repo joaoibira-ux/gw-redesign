@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.51";
+const VERSAO = "5.52";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -96,7 +96,16 @@ const GRUPO_PASTA_EMASSAMENTO_IDS = new Set([
   'VzCl35HCooNTUsASsp7x', // 1.4 Emassamento de Parede
 ]);
 
-const GRUPOS_MARCACAO_CONJUNTA = [GRUPO_ACABAMENTO_IDS, GRUPO_PASTA_EMASSAMENTO_IDS];
+// Pedido do João (2026-11-02): em 02/11 e 03/11 só o gesso (1.1) é
+// marcado, sozinho (sem puxar o 1.4), e o 1.4 fica travado. A partir de
+// quarta, 04/11, volta o agrupamento 1.1 + 1.4 automaticamente.
+const SO_GESSO_ATE = new Date(2026, 10, 4); // vale até 03/11 (inclusive)
+const ID_EMASSAMENTO = 'VzCl35HCooNTUsASsp7x';
+const periodoSoGesso = () => new Date() < SO_GESSO_ATE;
+
+function gruposMarcacaoConjunta() {
+  return periodoSoGesso() ? [GRUPO_ACABAMENTO_IDS] : [GRUPO_ACABAMENTO_IDS, GRUPO_PASTA_EMASSAMENTO_IDS];
+}
 
 // Mesma trava de locais/app.js (pedido do João, 2026-10-13) — etapas finais
 // de acabamento exigem a senha 6535 pra marcar como feito. Achado ao vivo,
@@ -134,17 +143,18 @@ function _marcarServico(local, servico, localid, svidx, marcando) {
 // Nos grupos que marcam junto (1.1+1.4, 1.5-1.8), um bloqueado bloqueia o
 // grupo inteiro (pedido do João, 2026-10-23).
 function _liberadoNoCatalogo(servicoId) {
+  if (servicoId === ID_EMASSAMENTO && periodoSoGesso()) return false;
   const c = servicosCache.find(d => d.id === servicoId);
   return !c || c.liberadoFolha !== false;
 }
 
 function servicoLiberadoFolha(servicoId) {
-  const grupo = GRUPOS_MARCACAO_CONJUNTA.find(g => g.has(servicoId));
+  const grupo = gruposMarcacaoConjunta().find(g => g.has(servicoId));
   return (grupo ? [...grupo] : [servicoId]).every(_liberadoNoCatalogo);
 }
 
 function _servicosIrmaosDoGrupo(local, servicoClicado) {
-  const grupo = GRUPOS_MARCACAO_CONJUNTA.find(g => g.has(servicoClicado.id));
+  const grupo = gruposMarcacaoConjunta().find(g => g.has(servicoClicado.id));
   if (!grupo) return [];
   const ordenados = [...(local.servicos || [])].sort((a, b) => ordemServico(a.nome) - ordemServico(b.nome));
   const irmaos = [];
@@ -1560,6 +1570,10 @@ function onServicoClick(el) {
   const marcando = !servicosSelecionados.has(key);
 
   if (marcando && !servicoLiberadoFolha(servico.id)) {
+    if (servico.id === ID_EMASSAMENTO && periodoSoGesso()) {
+      alert('Emassamento travado até terça (03/11): hoje e amanhã só o gesso (1.1) é marcado.\n\nA partir de quarta (04/11) volta a marcar junto com o 1.1.');
+      return;
+    }
     const proprio = _liberadoNoCatalogo(servico.id) ? ' (faz parte de um grupo com serviço bloqueado)' : '';
     alert(`"${nomeAbrev(servico.nome)}" está bloqueado para apontamento na folha${proprio}.\n\nSó o PIN 2248 libera, no app Serviços.`);
     return;
