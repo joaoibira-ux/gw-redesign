@@ -6498,3 +6498,158 @@ exports.saidaAutomaticaProducao = onSchedule(
     }
   }
 );
+
+// ── Reavaliação automática da semana do diarista (pedido do João, 2026-11-02)
+// O sincronismo de diárias só ACRESCENTA dias novos e nunca volta atrás. Esta
+// função refaz, pra uma semana (seg-dom) de um diarista, as partes que
+// dependem de feriado e de falta registrada:
+//   • feriado em dia útil sem trabalho → linha "Feriado" (diária cheia);
+//     dia que deixou de ser feriado → a linha "Feriado" sai;
+//   • dia com falta/suspensão registrada → nenhuma diária no dia;
+//   • semana seg-sex completa → Rep Remunerado Sáb + Dom; incompleta → saem.
+// Só mexe em dias ainda não pagos e não altera linhas de horas trabalhadas.
+// Disparada quando o cadastro de feriados muda e quando uma ocorrência é
+// criada ou excluída. Devolve a lista do que mudou (pro aviso no Telegram).
+async function reavaliarSemanaDiarista(funcId, segundaISO) {
+  process.env.TZ = "America/Sao_Paulo";
+  const funcSnap = await db.collection("funcionarios").doc(funcId).get();
+  if (!funcSnap.exists) return [];
+  const func = { id: funcSnap.id, ...funcSnap.data() };
+  if (func.ativo === false || !ehAjudanteDiaria(func)) return [];
+
+  const [sa, sm, sd] = segundaISO.split("-").map(Number);
+  const dias = [...Array(7)].map((_, i) => new Date(sa, sm - 1, sd + i));
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const fmt = d => `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+  const diaria = d => (func.salario || 0) / new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  const hoje = new Date(); const hoje0 = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+
+  const [pagasSnap, pontosSnap, ocSnap, feriados] = await Promise.all([
+    db.collection("folhas").where("status", "==", "paga").get(),
+    db.collection("pontos").where("funcionarioId", "==", funcId).get(),
+    db.collection("ocorrencias").where("funcionarioId", "==", funcId).get(),
+    carregarFeriados()
+  ]);
+  let ultimoPag = null;
+  pagasSnap.docs.forEach(d => {
+    const dt = d.data().pagaEm || d.data().criadoEm;
+    if (dt && (!ultimoPag || dt.toDate() > ultimoPag)) ultimoPag = dt.toDate();
+  });
+  const corte = ultimoPag ? new Date(ultimoPag.getFullYear(), ultimoPag.getMonth(), ultimoPag.getDate()) : null;
+  const jaPago = d => !!corte && d <= corte;
+
+  const ponto = new Map(); // iso -> { e, s }
+  pontosSnap.docs.forEach(d => {
+    const p = d.data();
+    if (!p.timestamp || !p.tipo) return;
+    const k = iso(p.timestamp.toDate());
+    if (!ponto.has(k)) ponto.set(k, { e: false, s: false });
+    ponto.get(k)[p.tipo === "saida" ? "s" : "e"] = true;
+  });
+  const diasOcorrencia = new Set(ocSnap.docs.map(d => d.data().dataISO));
+  const admissao = /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(func.admissao || "")
+    ? (([d, m, a]) => new Date(a, m - 1, d))(func.admissao.split("/").map(Number)) : null;
+
+  const docRef = db.collection("diarias").doc(funcId);
+  const docSnap = await docRef.get();
+  let lista = docSnap.exists ? [...(docSnap.data().dias || [])] : [];
+  const antes = JSON.stringify(lista);
+  const mudancas = [];
+  const doDia = (d, filtro) => lista.filter(x => (x.localId || "").replace(" ½", "").trim() === fmt(d) && filtro(x));
+
+  // Dias úteis: falta registrada e feriado
+  for (let i = 0; i < 5; i++) {
+    const d = dias[i];
+    if (jaPago(d) || d > hoje0) continue;
+    const k = fmt(d);
+    if (diasOcorrencia.has(iso(d))) {
+      const tirar = doDia(d, x => !x.repouso);
+      if (tirar.length) { lista = lista.filter(x => !tirar.includes(x)); mudancas.push(`${k}: diária removida (falta registrada)`); }
+      continue;
+    }
+    const ehFer = feriados.includes(iso(d));
+    const trabalhouDia = doDia(d, x => !x.repouso && !x.feriado).length > 0;
+    if (ehFer && !trabalhouDia && !(admissao && d < admissao) && !doDia(d, x => x.feriado).length) {
+      lista.push({ localId: k, valor: Math.round(diaria(d) * 100) / 100, feriado: true });
+      mudancas.push(`${k}: Feriado lançado`);
+    }
+    if (!ehFer) {
+      const tirar = doDia(d, x => x.feriado);
+      if (tirar.length) { lista = lista.filter(x => !tirar.includes(x)); mudancas.push(`${k}: Feriado removido`); }
+    }
+  }
+
+  // Repouso de sábado e domingo (só com a semana encerrada)
+  const sab = dias[5], dom = dias[6];
+  if (dom <= hoje0) {
+    const completa = dias.slice(0, 5).every(d => {
+      if (feriados.includes(iso(d)) || (admissao && d < admissao)) return true;
+      if (diasOcorrencia.has(iso(d))) return false;
+      const p = ponto.get(iso(d));
+      return (p && p.e && p.s) || doDia(d, x => !x.repouso && Number(x.valor) > 0).length > 0;
+    });
+    for (const d of [sab, dom]) {
+      if (jaPago(d)) continue;
+      const rep = doDia(d, x => x.repouso);
+      const repAntigo = doDia(d, x => !x.repouso && !x.horas && !x.feriado && Number(x.valor) > 0);
+      if (completa && !rep.length && !repAntigo.length) {
+        lista.push({ localId: fmt(d), valor: Math.round(diaria(d) * 100) / 100, repouso: true });
+        mudancas.push(`${fmt(d)}: Rep Remunerado lançado (semana completa)`);
+      } else if (!completa && rep.length) {
+        lista = lista.filter(x => !rep.includes(x));
+        mudancas.push(`${fmt(d)}: Rep Remunerado removido (semana incompleta)`);
+      }
+    }
+  }
+
+  if (JSON.stringify(lista) === antes) return [];
+  await docRef.set({
+    funcionarioId: funcId,
+    funcionarioNome: func.nome,
+    cargo: func.cargo || "",
+    dias: lista
+  }, { merge: true });
+  return mudancas.map(m => `${func.nome} — ${m}`);
+}
+
+function segundaDaSemanaISO(dataISO) {
+  const [a, m, d] = dataISO.split("-").map(Number);
+  const dt = new Date(Date.UTC(a, m - 1, d));
+  const dow = dt.getUTCDay();
+  dt.setUTCDate(dt.getUTCDate() - (dow === 0 ? 6 : dow - 1));
+  return dt.toISOString().slice(0, 10);
+}
+
+async function avisarReavaliacao(titulo, mudancas) {
+  if (!mudancas.length) return;
+  try {
+    await enviarTextoTelegram(`🔁 ${titulo}\n\n${mudancas.map(x => "• " + x).join("\n")}`);
+  } catch (e) {
+    logger.error("[reavaliacao] falha Telegram", { erro: e.message });
+  }
+}
+
+exports.reavaliarAoMudarFeriados = onDocumentWritten("configuracoes/feriados", async (event) => {
+  const antes = new Set((event.data.before.exists && event.data.before.data().datas) || []);
+  const depois = new Set((event.data.after.exists && event.data.after.data().datas) || []);
+  const alteradas = [...antes].filter(d => !depois.has(d)).concat([...depois].filter(d => !antes.has(d)));
+  if (!alteradas.length) return;
+  const semanas = [...new Set(alteradas.map(segundaDaSemanaISO))];
+  const funcSnap = await db.collection("funcionarios").get();
+  const diaristas = funcSnap.docs.filter(d => d.data().ativo !== false && ehAjudanteDiaria(d.data())).map(d => d.id);
+  const mudancas = [];
+  for (const id of diaristas) {
+    for (const seg of semanas) mudancas.push(...await reavaliarSemanaDiarista(id, seg));
+  }
+  const fmtBR = s => s.split("-").reverse().join("/");
+  await avisarReavaliacao(`Folha ajustada — feriado alterado (${alteradas.map(fmtBR).join(", ")})`, mudancas);
+});
+
+exports.reavaliarAoMudarOcorrencia = onDocumentWritten("ocorrencias/{id}", async (event) => {
+  const dados = event.data.after.exists ? event.data.after.data() : event.data.before.data();
+  if (!dados || !dados.funcionarioId || !dados.dataISO) return;
+  const excluida = !event.data.after.exists;
+  const mudancas = await reavaliarSemanaDiarista(dados.funcionarioId, segundaDaSemanaISO(dados.dataISO));
+  const fmtBR = dados.dataISO.split("-").reverse().join("/");
+  await avisarReavaliacao(`Folha ajustada — ${excluida ? "ocorrência excluída" : "falta/suspensão registrada"} (${dados.funcionarioNome || ""}, ${fmtBR})`, mudancas);
+});
