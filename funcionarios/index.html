@@ -107,6 +107,11 @@
         <div class="form-group full">
           <label>Passagens (valor por dia útil) (R$)</label>
           <input type="text" inputmode="decimal" id="f-passagens" placeholder="0,00" />
+          <label class="checkbox-label" style="margin-top:8px">
+            <input type="checkbox" id="f-passagem-6pct" onchange="atualizarPassagem6pct()" />
+            Recebe de passagem os 6% (descontados no fim do mês) — valor por dia = 6% do salário ÷ dias úteis do mês
+          </label>
+          <small id="f-passagem-6pct-info" style="color:#6a8a72"></small>
         </div>
       </div>
       <div class="form-row">
@@ -384,7 +389,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
-<script src="./app.js?v=58"></script>
+<script src="./app.js?v=59"></script>
 <script src="../agente.js"></script>
 <script src="../bfcache-fix.js"></script>
 </body>

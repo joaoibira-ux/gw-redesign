@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.57";
+const VERSAO = "3.58";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -88,6 +88,41 @@ function calcDiaria(salario) {
 }
 function calcDescontoPassagens(salario) {
   return (salario || 0) * 0.06;
+}
+// Passagem = 6% do salário (pedido do João, 2026-11-03): quem tem o
+// checkbox "passagem6pct" recebe por dia útil 6% do salário ÷ dias úteis
+// do mês das passagens (seg-sex sem feriado). Mesma conta no Caixa e no
+// mapa de passagens do Rel. Ponto. Aqui só pra mostrar o valor do mês atual.
+let _feriadosFunc = [];
+db.collection("configuracoes").doc("feriados").get()
+  .then(s => { _feriadosFunc = (s.exists && s.data().datas) || []; atualizarPassagem6pct(); })
+  .catch(() => {});
+function diasUteisDoMes(ano, mes) {
+  let n = 0;
+  for (let d = new Date(ano, mes, 1); d.getMonth() === mes; d.setDate(d.getDate() + 1)) {
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    if (d.getDay() >= 1 && d.getDay() <= 5 && !_feriadosFunc.includes(iso)) n++;
+  }
+  return n;
+}
+function basePassagem6pct(f) {
+  return remuneradoPorProducao(f) ? (f.salarioReferencia || 0) : (f.salario || 0);
+}
+function atualizarPassagem6pct() {
+  const chk = document.getElementById("f-passagem-6pct");
+  const inp = document.getElementById("f-passagens");
+  const info = document.getElementById("f-passagem-6pct-info");
+  if (!chk || !inp || !info) return;
+  inp.disabled = chk.checked;
+  if (!chk.checked) { info.textContent = ""; return; }
+  const cargo = document.getElementById("f-cargo").value;
+  const porProd = ehPorProducao(cargo) || document.getElementById("f-por-producao").checked;
+  const base = parseMoeda(document.getElementById(porProd ? "f-salario-ref" : "f-salario").value);
+  const hoje = new Date();
+  const dias = diasUteisDoMes(hoje.getFullYear(), hoje.getMonth());
+  info.textContent = base > 0 && dias > 0
+    ? `Este mês: 6% de ${fmtMoeda(base)} = ${fmtMoeda(base * 0.06)} ÷ ${dias} dias úteis = ${fmtMoeda(base * 0.06 / dias)} por dia`
+    : "Preencha o salário pra ver o valor por dia.";
 }
 function calcDescontoInss(salario, percentual) {
   return (salario || 0) * (percentual || 0) / 100;
@@ -668,6 +703,7 @@ col.orderBy("criadoEm","asc").onSnapshot(snap => render(snap.docs), err => {
 function abrirFormulario() {
   editandoId = null;
   document.getElementById("form").reset();
+  atualizarPassagem6pct();
   document.getElementById("f-admissao").value = hoje();
   document.getElementById("wrap-salario").style.display = "";
   document.getElementById("wrap-descontos").style.display = "";
@@ -871,6 +907,7 @@ function lerCampos() {
     descontos:    parseFloat((v("f-descontos")||"0").replace(",",".")) || 0,
     salarioReferencia: porProducao ? parseMoeda(v("f-salario-ref")) : 0,
     passagens:    parseMoeda(v("f-passagens")),
+    passagem6pct: document.getElementById("f-passagem-6pct").checked,
     isentoPassagens: !document.getElementById("f-desconto-passagens").checked,
     tomaCafeObra: document.getElementById("f-toma-cafe-obra").checked,
     almocaObra:   document.getElementById("f-almoca-obra").checked,
@@ -946,6 +983,8 @@ function editarFuncionario(id) {
   // — o campo salvo continua isentoPassagens (invertido), então some ausente
   // (cadastro antigo) conta como desconto normal aplicado (checked=true).
   document.getElementById("f-desconto-passagens").checked = !f.isentoPassagens;
+  document.getElementById("f-passagem-6pct").checked = !!f.passagem6pct;
+  atualizarPassagem6pct();
   // Campo ausente (cadastro antigo, de antes desse checkbox existir) conta
   // como marcado — só fica desmarcado se alguém desmarcar explicitamente.
   document.getElementById("f-toma-cafe-obra").checked = f.tomaCafeObra !== false;
@@ -1178,7 +1217,10 @@ function consultarFuncionario(id) {
         ${!temProd ? c('Valor Líquido', fmtMoeda(calcLiquido(f.salario, f.descontos))) : ''}
       ` : ''}
       ${c('Telefone', f.telefone)}${c('Observações', f.obs)}
-      ${c('Passagens (valor por dia útil)', f.passagens > 0 ? fmtMoeda(f.passagens) : '')}
+      ${c('Passagens (valor por dia útil)', f.passagem6pct
+          ? (() => { const h = new Date(), n = diasUteisDoMes(h.getFullYear(), h.getMonth()), b = basePassagem6pct(f);
+                     return `6% do salário ÷ dias úteis do mês (este mês: ${fmtMoeda(b * 0.06)} ÷ ${n} = ${fmtMoeda(n ? b * 0.06 / n : 0)})`; })()
+          : f.passagens > 0 ? fmtMoeda(f.passagens) : '')}
     </div>
     ${sec('Dados Pessoais')}
       ${c('Nacionalidade', f.nacionalidade)}${c('Estado Civil', f.estadocivil)}

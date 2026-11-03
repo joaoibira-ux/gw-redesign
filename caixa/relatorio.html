@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.53";
+  const VERSAO = "2.54";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1419,6 +1419,19 @@
     return FERIADOS_GW.includes(d.toLocaleDateString("en-CA"));
   }
 
+  // Valor da passagem por dia útil (pedido do João, 2026-11-03): com o
+  // checkbox "passagem6pct" do cadastro = 6% do salário (o mesmo desconto de
+  // fim de mês; Salário de Referência pra quem é por produção) ÷ dias úteis
+  // do mês do período pago; sem ele, o valor digitado no cadastro.
+  function valorPassagemDia(f, dataPeriodo) {
+    if (!f.passagem6pct) return Number(f.passagens || 0);
+    const porProd = ['PINTOR', 'RASPADOR'].includes((f.cargo || '').toUpperCase()) || f.porProducao === true;
+    const base = porProd ? Number(f.salarioReferencia || 0) : Number(f.salario || 0);
+    const ano = dataPeriodo.getFullYear(), mes = dataPeriodo.getMonth();
+    const dias = contarDiasUteis(new Date(ano, mes, 1), new Date(ano, mes + 1, 0));
+    return dias > 0 ? Math.round(base * 0.06 / dias * 100) / 100 : 0;
+  }
+
   function limitesQuinzenaAtual(hoje) {
     const ano = hoje.getFullYear(), mes = hoje.getMonth();
     if (hoje.getDate() <= 15) return { inicio: new Date(ano, mes, 1), fim: new Date(ano, mes, 15) };
@@ -1672,7 +1685,7 @@
     snap.docs.forEach(d => {
       const f = d.data();
       if (f.ativo === false) return;
-      const valorDiario = Number(f.passagens || 0);
+      const valorDiario = valorPassagemDia(f, proxIni);
       if (valorDiario <= 0) return;
       const { faltasLiquidas } = combinarFaltasComCredito(_faltasMap, d.id, f.nome, f.creditoFaltas || 0);
       const diasIncompletos = _incompletosMap.get(d.id) || _incompletosMap.get(normNome(f.nome)) || 0;
@@ -2363,7 +2376,7 @@
     _funcionariosSnap.docs.forEach(d => {
       const f = d.data();
       if (f.ativo === false) return;
-      const valorDiario = Number(f.passagens || 0);
+      const valorDiario = valorPassagemDia(f, proxIni);
       if (valorDiario <= 0) return;
       const { faltasLiquidas } = combinarFaltasComCredito(_faltasMap, d.id, f.nome, f.creditoFaltas || 0);
       const dias = Math.max(0, diasUteisProxima - faltasLiquidas);
@@ -3061,7 +3074,7 @@
       funcSnap.docs.forEach(d => {
         const f = d.data();
         if (f.ativo === false) return;
-        const valorDiario = Number(f.passagens || 0);
+        const valorDiario = valorPassagemDia(f, proxIni);
         if (valorDiario <= 0) return;
         const { faltasLiquidas, creditoRestante } = combinarFaltasComCredito(faltasMap, d.id, f.nome, f.creditoFaltas || 0);
         const diasIncompletos = incompletosMap.get(d.id) || incompletosMap.get(normNome(f.nome)) || 0;
