@@ -194,6 +194,12 @@
     .mp-ok { color: #2e7d32; font-weight: 800; font-size: 0.85rem; }
     .mp-oc { background: #ffebee; }
     .mp-auto { color: #999; font-size: 0.55rem; }
+    table.mapa-ponto td.pv { font-weight: 700; text-align: right; background: #f7faf7; }
+    table.mapa-ponto th.pv { cursor: default; }
+    .pv-desc { color: #d32f2f; } .pv-liq { color: #1b5e20; }
+    .ps-comp { color: #888; text-decoration: line-through; } .ps-cred { color: #2e7d32; font-weight: 800; }
+    .ps-meia { background: #fff8e1; }
+    table.mapa-ponto tr.ps-total td { background: #1a3322; color: #fff; font-weight: 800; }
     .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; max-width: 520px; margin: 0 auto; }
     .cal-dow { text-align: center; font-size: 0.7rem; font-weight: 700; color: #6a8a72; }
     .cal-dia {
@@ -244,7 +250,7 @@
   </a>
   <span class="h-title">Relatório de Ponto</span>
   <button class="btn-ocorrencia" id="btn-opcoes" onclick="abrirOpcoes()">☰ Opções</button>
-  <span class="h-versao">v1.6</span>
+  <span class="h-versao">v1.7</span>
 </header>
 
 <div class="modal-ov" id="modal-opcoes" onclick="if(event.target===this) fecharOpcoes()">
@@ -253,6 +259,7 @@
     <div class="opc-lista">
       <button class="opc-item" id="opc-falta" onclick="fecharOpcoes();abrirOcorrencia()"><span class="ic">⚠️</span><div>Falta / Suspensão<small>Registra e envia a advertência no WhatsApp</small></div></button>
       <button class="opc-item" onclick="fecharOpcoes();abrirMapaPonto()"><span class="ic">🗓️</span><div>Mapa de ponto do período<small>Funcionários × dias do mês, com entradas e saídas</small></div></button>
+      <button class="opc-item" onclick="fecharOpcoes();abrirMapaPassagens()"><span class="ic">🎫</span><div>Mapa de passagens<small>Desconto de passagem por dia de falta, com total, descontos e valor a receber</small></div></button>
       <button class="opc-item" onclick="fecharOpcoes();abrirCalendarioFeriados()"><span class="ic">📅</span><div>Calendário de feriados<small>Sábados, domingos e feriados; toque num dia útil pra marcar feriado</small></div></button>
     </div>
   </div>
@@ -280,6 +287,12 @@
       <button class="btn-cancel-oc" onclick="fecharEdicaoPonto()">Fechar</button>
     </div>
   </div>
+</div>
+
+<div class="tela-cheia" id="tela-pass">
+  <div class="tela-cheia-top"><button onclick="mudarQuinzenaPass(-1)">‹</button><b id="pass-titulo">Mapa de passagens</b><button onclick="mudarQuinzenaPass(1)">›</button><button onclick="fecharTela('tela-pass')">✕ Fechar</button></div>
+  <div class="tela-cheia-legenda">Total = passagens dos dias úteis da quinzena seguinte (pagas adiantadas no fechamento desta) · <span class="mp-falta">-R$</span> desconto do dia: falta, falta/suspensão registrada ou <span class="ps-meia">&nbsp;só entrada&nbsp;</span> (entrada sem saída conta como falta inteira) · <span class="ps-comp">riscado</span> falta compensada pelo sábado trabalhado · <span class="ps-cred">+1</span> sábado que vira crédito · mesmas regras do fechamento de Passagens no Caixa</div>
+  <div class="tela-cheia-corpo" id="pass-corpo">Carregando...</div>
 </div>
 
 <div class="tela-cheia" id="tela-cal">
@@ -335,7 +348,7 @@
 </div>
 
 <script>
-const VERSAO = '1.6';
+const VERSAO = '1.7';
 let PIN_ATUAL = sessionStorage.getItem('gw_pin') || '';
 const PIN_VALIDO = p => p === '2248' || p === '1176';
 // Sessões de "computador confiável" antigas não guardam o PIN (só o modo) —
@@ -828,6 +841,145 @@ async function apagarRegistrosDia() {
   } catch (e) { alert('Erro: ' + (e.message || e)); }
 }
 
+
+// ── Mapa de passagens (pedido do João, 2026-11-02) ───────────────────────
+// Mesmas regras do fechamento de Passagens (caixa/relatorio.html,
+// calcularFaltasQuinzenaAtual + renderPrevisaoPassagens):
+//   • dia útil (seg-sex, fora feriado, a partir da admissão) só conta
+//     presença com ENTRADA E SAÍDA; sem registro, só entrada ou com
+//     falta/suspensão registrada = 1 dia de passagem descontado;
+//   • sábado trabalhado compensa 1 falta da mesma semana; sem falta pra
+//     compensar, vira crédito (que abate faltas de outras semanas);
+//   • crédito acumulado no cadastro (creditoFaltas) só entra na quinzena
+//     atual — nas passadas ele já foi consumido/atualizado no fechamento;
+//   • total = valor diário × dias úteis da quinzena SEGUINTE (pagamento
+//     antecipado), desconto limitado a esse número de dias.
+let passQIni = null;
+function mudarQuinzenaPass(delta) {
+  const d = new Date(passQIni);
+  if (delta < 0) d.setDate(d.getDate() - 1); else d.setTime(fimQuinzena(passQIni).getTime());
+  passQIni = quinzenaDe(d);
+  abrirMapaPassagens();
+}
+
+async function abrirMapaPassagens() {
+  if (!passQIni) passQIni = quinzenaDe(new Date());
+  document.getElementById('tela-pass').style.display = 'flex';
+  const inicio = new Date(passQIni);
+  const fim = fimQuinzena(inicio);
+  const ultimo = new Date(fim); ultimo.setDate(ultimo.getDate() - 1);
+  const dm = d => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+  document.getElementById('pass-titulo').textContent = `Mapa de passagens — ${dm(inicio)} a ${dm(ultimo)}/${ultimo.getFullYear()}`;
+  const corpo = document.getElementById('pass-corpo');
+  corpo.innerHTML = 'Carregando...';
+  try {
+    // Folga de uma semana pra cada lado, pra pegar o sábado de semana cortada pela virada
+    const buscaIni = new Date(inicio); buscaIni.setDate(buscaIni.getDate() - 7);
+    const buscaFim = new Date(fim); buscaFim.setDate(buscaFim.getDate() + 7);
+    const [funcSnap, pontosSnap, ocSnap, fer] = await Promise.all([
+      db.collection('funcionarios').get(),
+      db.collection('pontos')
+        .where('timestamp', '>=', firebase.firestore.Timestamp.fromDate(buscaIni))
+        .where('timestamp', '<', firebase.firestore.Timestamp.fromDate(buscaFim)).get(),
+      db.collection('ocorrencias').where('dataISO', '>=', isoDe(buscaIni)).where('dataISO', '<', isoDe(buscaFim)).get(),
+      carregarFeriadosRP()
+    ]);
+    const funcs = funcSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .filter(f => f.ativo !== false && Number(f.passagens || 0) > 0)
+      .sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
+
+    const reg = new Map(); // funcId|iso -> { e, s }
+    pontosSnap.docs.forEach(doc => {
+      const p = doc.data();
+      if (!p.funcionarioId || !p.timestamp || !p.tipo) return;
+      const k = `${p.funcionarioId}|${isoDe(p.timestamp.toDate())}`;
+      if (!reg.has(k)) reg.set(k, { e: false, s: false });
+      reg.get(k)[p.tipo === 'saida' ? 's' : 'e'] = true;
+    });
+    const oc = new Map(ocSnap.docs.map(d => [`${d.data().funcionarioId}|${d.data().dataISO}`, d.data().tipo]));
+
+    const ehUtil = d => d.getDay() >= 1 && d.getDay() <= 5 && !fer.has(isoDe(d));
+    const segundaDe = d => { const x = new Date(d); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return x; };
+
+    // Dias úteis da quinzena seguinte (bruto pago adiantado)
+    let diasUteisProx = 0;
+    for (let d = new Date(fim), f2 = fimQuinzena(fim); d < f2; d.setDate(d.getDate() + 1)) if (ehUtil(d)) diasUteisProx++;
+
+    const hoje0 = new Date(); hoje0.setHours(0, 0, 0, 0);
+    const ehAtual = hoje0 >= inicio && hoje0 < fim;
+    const dias = [];
+    for (let d = new Date(inicio); d < fim && d <= hoje0; d.setDate(d.getDate() + 1)) dias.push(new Date(d));
+
+    const fmtR = v => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    let somaTotal = 0, somaDesc = 0;
+
+    const linhas = funcs.map(f => {
+      const vd = Number(f.passagens);
+      const adm = /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(f.admissao || '')
+        ? (([dd, mm, aa]) => new Date(aa, mm - 1, dd))(f.admissao.split('/').map(Number)) : null;
+      const presente = d => { const r = reg.get(`${f.id}|${isoDe(d)}`); return !!(r && r.e && r.s) && !oc.has(`${f.id}|${isoDe(d)}`); };
+
+      // Faltas por dia (só dias da quinzena, até hoje)
+      const falta = new Map(); // iso -> 'falta' | 'meia' | 'oc'
+      dias.forEach(d => {
+        if (!ehUtil(d) || (adm && d < adm) || presente(d)) return;
+        const iso = isoDe(d), r = reg.get(`${f.id}|${iso}`);
+        falta.set(iso, oc.has(`${f.id}|${iso}`) ? 'oc' : (r && r.e ? 'meia' : 'falta'));
+      });
+
+      // Sábado de cada semana: compensa a última falta da semana ou vira crédito
+      const compensada = new Set(), sabCredito = new Set();
+      let creditos = 0;
+      const semanas = [...new Set(dias.filter(d => ehUtil(d) && !(adm && d < adm)).map(d => isoDe(segundaDe(d))))];
+      semanas.forEach(segISO => {
+        const [a, m, dd] = segISO.split('-').map(Number);
+        const sab = new Date(a, m - 1, dd + 5);
+        if (!presente(sab)) return;
+        const faltasSem = [...falta.keys()].filter(iso => isoDe(segundaDe(new Date(iso + 'T12:00'))) === segISO).sort();
+        if (faltasSem.length) compensada.add(faltasSem[faltasSem.length - 1]);
+        else { creditos++; sabCredito.add(isoDe(sab)); }
+      });
+
+      const nFaltas = falta.size - compensada.size;
+      const creditoSalvo = ehAtual ? Number(f.creditoFaltas || 0) : 0;
+      const usados = Math.min(nFaltas, creditos + creditoSalvo);
+      const faltasLiq = nFaltas - usados;
+      const total = diasUteisProx * vd;
+      const desc = Math.min(diasUteisProx, faltasLiq) * vd;
+      somaTotal += total; somaDesc += desc;
+
+      const cels = dias.map(d => {
+        const iso = isoDe(d);
+        if (adm && d < adm) return '<td></td>';
+        const tipo = falta.get(iso);
+        if (tipo) {
+          const val = `-${fmtR(vd)}`;
+          const rot = tipo === 'oc' ? 'FALTA' : tipo === 'meia' ? 'só entrada' : 'falta';
+          const cls = tipo === 'meia' ? ' class="ps-meia"' : tipo === 'oc' ? ' class="mp-oc"' : '';
+          if (compensada.has(iso)) return `<td${cls}><span class="ps-comp">${val}</span><br><small>comp. sáb</small></td>`;
+          return `<td${cls}><span class="mp-falta">${val}</span><br><small>${rot}</small></td>`;
+        }
+        if (sabCredito.has(iso)) return '<td><span class="ps-cred">+1</span><br><small>crédito</small></td>';
+        return ehUtil(d) ? '<td><span class="mp-ok">✓</span></td>' : '<td></td>';
+      }).join('');
+      const notaCred = usados > 0 ? `<br><small style="font-weight:400;color:#2e7d32">${usados} crédito${usados > 1 ? 's' : ''} usado${usados > 1 ? 's' : ''}</small>` : '';
+      return `<tr><td class="td-nome">${esc(f.nome || '')}<br><small style="font-weight:400;color:#888">${fmtR(vd)}/dia</small></td>`
+        + `<td class="pv">${fmtR(total)}</td><td class="pv pv-desc">${desc > 0 ? '-' + fmtR(desc) : '—'}${notaCred}</td><td class="pv pv-liq">${fmtR(total - desc)}</td>${cels}</tr>`;
+    }).join('');
+
+    const head = `<tr><th class="th-nome">Funcionário</th><th class="pv">Total<br><small>${diasUteisProx} dias</small></th><th class="pv">Descontos</th><th class="pv">A receber</th>${dias.map(d => {
+      const iso = isoDe(d);
+      return `<th class="${fer.has(iso) ? 'th-fer' : ''}" style="cursor:default">${String(d.getDate()).padStart(2, '0')}<br>${fer.has(iso) ? 'FER' : DOW[d.getDay()]}</th>`;
+    }).join('')}</tr>`;
+    const totalRow = `<tr class="ps-total"><td class="td-nome" style="background:#1a3322;color:#fff">Total</td><td>${fmtR(somaTotal)}</td><td>${somaDesc > 0 ? '-' + fmtR(somaDesc) : '—'}</td><td>${fmtR(somaTotal - somaDesc)}</td>${dias.map(() => '<td></td>').join('')}</tr>`;
+
+    corpo.innerHTML = funcs.length
+      ? `<table class="mapa-ponto"><thead>${head}</thead><tbody>${linhas}${totalRow}</tbody></table>`
+      : 'Nenhum funcionário ativo com valor de passagem no cadastro.';
+  } catch (e) {
+    corpo.innerHTML = 'Erro ao carregar: ' + esc(e.message || String(e));
+  }
+}
 carregar();
 </script>
 <script src="../agente.js"></script>
