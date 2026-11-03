@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.58";
+const VERSAO = "3.59";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -114,16 +114,30 @@ function atualizarPassagem6pct() {
   const info = document.getElementById("f-passagem-6pct-info");
   if (!chk || !inp || !info) return;
   inp.disabled = chk.checked;
-  if (!chk.checked) { info.textContent = ""; return; }
+  // Com o 6% marcado, o campo mostra o valor calculado do mês; o valor
+  // manual fica guardado em data-manual (é ele que vai pro cadastro) e volta
+  // pro campo se desmarcar.
+  if (!chk.checked) {
+    if (inp.dataset.manual !== undefined) { inp.value = inp.dataset.manual; delete inp.dataset.manual; }
+    info.textContent = "";
+    return;
+  }
+  if (inp.dataset.manual === undefined) inp.dataset.manual = inp.value;
   const cargo = document.getElementById("f-cargo").value;
   const porProd = ehPorProducao(cargo) || document.getElementById("f-por-producao").checked;
   const base = parseMoeda(document.getElementById(porProd ? "f-salario-ref" : "f-salario").value);
   const hoje = new Date();
   const dias = diasUteisDoMes(hoje.getFullYear(), hoje.getMonth());
-  info.textContent = base > 0 && dias > 0
-    ? `Este mês: 6% de ${fmtMoeda(base)} = ${fmtMoeda(base * 0.06)} ÷ ${dias} dias úteis = ${fmtMoeda(base * 0.06 / dias)} por dia`
+  const porDia = base > 0 && dias > 0 ? base * 0.06 / dias : 0;
+  inp.value = porDia > 0 ? porDia.toFixed(2).replace(".", ",") : "";
+  info.textContent = porDia > 0
+    ? `Este mês: 6% de ${fmtMoeda(base)} = ${fmtMoeda(base * 0.06)} ÷ ${dias} dias úteis = ${fmtMoeda(porDia)} por dia`
     : "Preencha o salário pra ver o valor por dia.";
 }
+["f-salario", "f-salario-ref", "f-cargo", "f-por-producao"].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) { el.addEventListener("input", atualizarPassagem6pct); el.addEventListener("change", atualizarPassagem6pct); }
+});
 function calcDescontoInss(salario, percentual) {
   return (salario || 0) * (percentual || 0) / 100;
 }
@@ -703,6 +717,7 @@ col.orderBy("criadoEm","asc").onSnapshot(snap => render(snap.docs), err => {
 function abrirFormulario() {
   editandoId = null;
   document.getElementById("form").reset();
+  delete document.getElementById("f-passagens").dataset.manual;
   atualizarPassagem6pct();
   document.getElementById("f-admissao").value = hoje();
   document.getElementById("wrap-salario").style.display = "";
@@ -906,7 +921,9 @@ function lerCampos() {
     salario:      porDiaria ? parseMoeda(v("f-salario")) : 0,
     descontos:    parseFloat((v("f-descontos")||"0").replace(",",".")) || 0,
     salarioReferencia: porProducao ? parseMoeda(v("f-salario-ref")) : 0,
-    passagens:    parseMoeda(v("f-passagens")),
+    passagens:    document.getElementById("f-passagem-6pct").checked
+                    ? parseMoeda(document.getElementById("f-passagens").dataset.manual || "")
+                    : parseMoeda(v("f-passagens")),
     passagem6pct: document.getElementById("f-passagem-6pct").checked,
     isentoPassagens: !document.getElementById("f-desconto-passagens").checked,
     tomaCafeObra: document.getElementById("f-toma-cafe-obra").checked,
@@ -983,6 +1000,7 @@ function editarFuncionario(id) {
   // — o campo salvo continua isentoPassagens (invertido), então some ausente
   // (cadastro antigo) conta como desconto normal aplicado (checked=true).
   document.getElementById("f-desconto-passagens").checked = !f.isentoPassagens;
+  delete document.getElementById("f-passagens").dataset.manual;
   document.getElementById("f-passagem-6pct").checked = !!f.passagem6pct;
   atualizarPassagem6pct();
   // Campo ausente (cadastro antigo, de antes desse checkbox existir) conta
