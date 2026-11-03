@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.52";
+  const VERSAO = "2.53";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1525,6 +1525,11 @@
       return presencaPorChave.get(chave);
     }
     const hojeStr = new Date().toDateString();
+    // Dia futuro ainda não é falta (pedido do João, 2026-11-03: fechamento
+    // atrasado / prévia no meio da quinzena). Hoje sem nenhuma entrada já
+    // conta como falta aqui — por isso o fechamento não soma mais "falta de
+    // hoje" à parte.
+    const hojeFimDia = new Date(); hojeFimDia.setHours(23, 59, 59, 999);
     // Presença só conta com ENTRADA E SAÍDA no mesmo dia — entrada sem saída
     // que não foi corrigida até o fechamento é falta (pedido do João,
     // 2026-11-01; substitui o desconto de meia passagem por dia incompleto).
@@ -1571,7 +1576,7 @@
     // que realmente estão dentro dela).
     const diasExigidosPorSemana = new Map(); // segundaISO -> [Date, ...]
     for (let d = new Date(qIni); d <= qFim; d.setDate(d.getDate() + 1)) {
-      if (d.getDay() >= 1 && d.getDay() <= 5 && !ehFeriado(d)) {
+      if (d.getDay() >= 1 && d.getDay() <= 5 && !ehFeriado(d) && d <= hojeFimDia) {
         const segISO = segundaDaSemanaDe(d).toISOString().slice(0, 10);
         if (!diasExigidosPorSemana.has(segISO)) diasExigidosPorSemana.set(segISO, []);
         diasExigidosPorSemana.get(segISO).push(new Date(d));
@@ -1623,19 +1628,32 @@
     return new Map([...faltas].map(([k, v]) => [k, v.meias || 0]));
   }
 
+  // Data de referência das Passagens (pedido do João, 2026-11-03): o
+  // próximo fechamento é SEMPRE o que começa logo depois do último período
+  // pago (configuracoes/geral.passagensPagasAte), não o calculado a partir
+  // de hoje. Assim, se o fechamento de 31/10 atrasou, fechar em 03/11 ainda
+  // paga 01–15/11 descontando as faltas de 16–31/10 (antes ele pularia pra
+  // 16–30/11). Sem esse campo, cai pra hoje (comportamento antigo).
+  async function refPassagens() {
+    try {
+      const c = await db.collection('configuracoes').doc('geral').get();
+      const ate = c.exists ? parseDataBRparaDate(c.data().passagensPagasAte || '') : null;
+      if (ate) return ate;
+    } catch (e) { console.error('Falha ao ler passagensPagasAte:', e); }
+    return new Date();
+  }
+
   // Carregado uma vez (dados de ponto já fechados no passado, não precisa de
   // listener ao vivo) — re-renderiza a prévia de passagens quando terminar.
+  let _refPassagens = new Date();
   let _faltasMap = new Map();
-  calcularFaltasQuinzenaAtual(new Date()).then(map => {
-    _faltasMap = map;
-    if (_funcionariosSnap) renderPrevisaoPassagens(_funcionariosSnap);
-  }).catch(e => console.error('Falha ao calcular faltas da quinzena atual:', e));
-
   let _incompletosMap = new Map();
-  calcularDiasIncompletosQuinzenaAtual(new Date()).then(map => {
-    _incompletosMap = map;
+  refPassagens().then(async ref => {
+    _refPassagens = ref;
+    _faltasMap = await calcularFaltasQuinzenaAtual(ref);
+    _incompletosMap = new Map([..._faltasMap].map(([k, v]) => [k, v.meias || 0]));
     if (_funcionariosSnap) renderPrevisaoPassagens(_funcionariosSnap);
-  }).catch(e => console.error('Falha ao calcular dias incompletos da quinzena atual:', e));
+  }).catch(e => console.error('Falha ao calcular faltas da quinzena das passagens:', e));
 
   // ── Passagens da Quinzena ──
   // "passagens" no cadastro agora é o valor por dia útil (não mais o total
@@ -1646,7 +1664,8 @@
   function renderPrevisaoPassagens(snap) {
     const el = document.getElementById('previsao-passagens');
     if (!el) return;
-    const { inicio: proxIni, fim: proxFim } = limitesProximaQuinzena(new Date());
+    const { inicio: proxIni, fim: proxFim } = limitesProximaQuinzena(_refPassagens);
+    const { inicio: qDescIni, fim: qDescFim } = limitesQuinzenaAtual(_refPassagens);
     const diasUteisProxima = contarDiasUteis(proxIni, proxFim);
     const linhas = [];
     let total = 0, totalDescontoFaltas = 0, totalDescontoIncompletos = 0, totalDias = 0, totalIncompletos = 0;
@@ -1685,7 +1704,7 @@
     el.innerHTML = `
       <div class="previsao-card">
         <div class="prev-titulo">
-          <span>Passagens da Quinzena</span>
+          <span>Passagens da Quinzena — paga ${fmtDataBR(proxIni)} a ${fmtDataBR(proxFim)} · faltas de ${fmtDataBR(qDescIni)} a ${fmtDataBR(qDescFim)}</span>
         </div>
         <div class="prev-header prev-cols-pass">
           <span>Funcionário</span><span>Passagens</span><span>Dias Falta</span><span>Entrada s/ Saída</span><span>Desconto</span><span>Líquido</span>
@@ -2338,7 +2357,7 @@
   // cálculo, só o total geral.
   function calcularTotalPassagensQuinzena() {
     if (!_funcionariosSnap) return 0;
-    const { inicio: proxIni, fim: proxFim } = limitesProximaQuinzena(new Date());
+    const { inicio: proxIni, fim: proxFim } = limitesProximaQuinzena(_refPassagens);
     const diasUteisProxima = contarDiasUteis(proxIni, proxFim);
     let total = 0;
     _funcionariosSnap.docs.forEach(d => {
@@ -3001,9 +3020,10 @@
         buscarEntradaHojeSet(),
         db.collection('configuracoes').doc('geral').get()
       ]);
-      const faltasMap = await calcularFaltasQuinzenaAtual(new Date());
-      const incompletosMap = await calcularDiasIncompletosQuinzenaAtual(new Date());
-      const { inicio: proxIni, fim: proxFim } = limitesProximaQuinzena(new Date());
+      const ref = await refPassagens();
+      const faltasMap = await calcularFaltasQuinzenaAtual(ref);
+      const incompletosMap = new Map([...faltasMap].map(([k, v]) => [k, v.meias || 0]));
+      const { inicio: proxIni, fim: proxFim } = limitesProximaQuinzena(ref);
       const diasUteisProxima = contarDiasUteis(proxIni, proxFim);
 
       // Achado real, 2026-09-30: esse botão sempre calcula o período "daqui
@@ -3045,9 +3065,9 @@
         if (valorDiario <= 0) return;
         const { faltasLiquidas, creditoRestante } = combinarFaltasComCredito(faltasMap, d.id, f.nome, f.creditoFaltas || 0);
         const diasIncompletos = incompletosMap.get(d.id) || incompletosMap.get(normNome(f.nome)) || 0;
-        const bateuHoje = entradaHoje.ids.has(d.id) || entradaHoje.nomes.has(normNome(f.nome));
-        const faltaHoje = (hojeEhDiaUtil && !bateuHoje) ? 1 : 0;
-        const dias = Math.max(0, diasUteisProxima - faltasLiquidas - faltaHoje);
+        // "Falta de hoje" já entra em calcularFaltasQuinzenaAtual quando hoje
+        // está dentro da quinzena descontada (2026-11-03) — não soma de novo.
+        const dias = Math.max(0, diasUteisProxima - faltasLiquidas);
         // Meia passagem por dia com entrada sem saída, A MAIS do desconto de
         // falta (pedido do João, 2026-10-15).
         const descontoIncompletos = diasIncompletos * (valorDiario / 2);
