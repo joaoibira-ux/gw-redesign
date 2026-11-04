@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.55";
+const VERSAO = "5.56";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -688,8 +688,16 @@ async function sincronizarDiariasAjudantesPorPonto() {
       const dtPagamento = dt.toDate();
       if (!ultimoPagamento || dtPagamento > ultimoPagamento) ultimoPagamento = dtPagamento;
     });
+    // Corte = último dia da quinzena ANTERIOR à do pagamento (pedido do João,
+    // 2026-11-04): o fechamento só varre dias antes do início da quinzena em
+    // que é pago e preserva os da quinzena corrente. Antes o corte era o
+    // próprio dia do pagamento — a folha paga em 16/10 fez o 16/10 (dia
+    // trabalhado, ainda não sincronizado na hora) ser tratado como "já pago"
+    // e nunca entrar em folha nenhuma (Eduardo e Welington).
     const ultimoPagamentoSemHora = ultimoPagamento
-      ? new Date(ultimoPagamento.getFullYear(), ultimoPagamento.getMonth(), ultimoPagamento.getDate())
+      ? (ultimoPagamento.getDate() <= 15
+          ? new Date(ultimoPagamento.getFullYear(), ultimoPagamento.getMonth(), 0)
+          : new Date(ultimoPagamento.getFullYear(), ultimoPagamento.getMonth(), 15))
       : null;
     function jaPago(date) {
       return !!ultimoPagamentoSemHora && date <= ultimoPagamentoSemHora;

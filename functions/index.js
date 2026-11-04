@@ -4459,8 +4459,16 @@ async function sincronizarDiariasAjudantesPorPonto(periodoForcado) {
     const dtPagamento = dt.toDate();
     if (!ultimoPagamento || dtPagamento > ultimoPagamento) ultimoPagamento = dtPagamento;
   });
+  // Corte = último dia da quinzena ANTERIOR à do pagamento (pedido do João,
+  // 2026-11-04): o fechamento só varre dias antes do início da quinzena em
+  // que é pago e preserva os da quinzena corrente. Antes o corte era o
+  // próprio dia do pagamento — a folha paga em 16/10 fez o 16/10 (dia
+  // trabalhado, ainda não sincronizado na hora) ser tratado como "já pago"
+  // e nunca entrar em folha nenhuma (Eduardo e Welington).
   const ultimoPagamentoSemHora = ultimoPagamento
-    ? new Date(ultimoPagamento.getFullYear(), ultimoPagamento.getMonth(), ultimoPagamento.getDate())
+    ? (ultimoPagamento.getDate() <= 15
+        ? new Date(ultimoPagamento.getFullYear(), ultimoPagamento.getMonth(), 0)
+        : new Date(ultimoPagamento.getFullYear(), ultimoPagamento.getMonth(), 15))
     : null;
   function jaPago(date) {
     return !!ultimoPagamentoSemHora && date <= ultimoPagamentoSemHora;
@@ -6535,7 +6543,10 @@ async function reavaliarSemanaDiarista(funcId, segundaISO, simular = false) {
     const dt = d.data().pagaEm || d.data().criadoEm;
     if (dt && (!ultimoPag || dt.toDate() > ultimoPag)) ultimoPag = dt.toDate();
   });
-  const corte = ultimoPag ? new Date(ultimoPag.getFullYear(), ultimoPag.getMonth(), ultimoPag.getDate()) : null;
+  // Corte = fim da quinzena anterior à do pagamento (ver sincronizarDiariasAjudantesPorPonto).
+  const corte = ultimoPag
+    ? (ultimoPag.getDate() <= 15 ? new Date(ultimoPag.getFullYear(), ultimoPag.getMonth(), 0) : new Date(ultimoPag.getFullYear(), ultimoPag.getMonth(), 15))
+    : null;
   const jaPago = d => !!corte && d <= corte;
 
   const ponto = new Map(); // iso -> { e: Date (mais cedo), s: Date (mais tarde) }
