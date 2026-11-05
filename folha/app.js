@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.58";
+const VERSAO = "5.59";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -1624,17 +1624,24 @@ db.collection("locais").orderBy("identificacao", "asc").onSnapshot(snap => {
   document.getElementById("mapa").innerHTML = '<p class="empty">Erro ao conectar.</p>';
 });
 
+// Mapa da Folha: PIN 2248 e 1176 marcam/desmarcam sem senha; qualquer
+// outro PIN fica bloqueado (pedido do João, 2026-11-05).
+function pinLiberaMapaFolha() {
+  if (sessionStorage.getItem('gw_auth') === 'completo') return true;
+  const pin = sessionStorage.getItem('gw_pin') || '';
+  return pin === '2248' || pin === '1176';
+}
+
 function onServicoClick(el) {
   if (folhaBloqueadaParaEdicao()) return;
+  if (!pinLiberaMapaFolha()) { alert('O mapa da Folha só pode ser alterado com os PINs 2248 ou 1176.'); return; }
   const local    = locaisCache[el.dataset.localid];
   const servicos = [...(local.servicos || [])].sort((a, b) => ordemServico(a.nome) - ordemServico(b.nome));
   const servico  = servicos[parseInt(el.dataset.svidx)];
   if (servico.status === 'concluido') return;
 
   if (servico.status === 'em_pagamento') {
-    const senha = prompt(`Remover "${nomeAbrev(servico.nome)}" do local ${local.identificacao} da folha?\n\nDigite a senha:`);
-    if (senha === null) return;
-    if (senha !== '2248') { alert('Senha incorreta.'); return; }
+    if (!confirm(`Remover "${nomeAbrev(servico.nome)}" do local ${local.identificacao} da folha?`)) return;
     const novosServicos = (local.servicos || []).map(s =>
       s === servico ? { ...s, status: 'pendente', funcionario: null } : s
     );
@@ -1657,9 +1664,8 @@ function onServicoClick(el) {
   }
 
   if (marcando && servicoExigeSenhaRegistro(servico.nome)) {
-    const senha = prompt(`MARCAR "${nomeAbrev(servico.nome)}" COMO FEITO?\n\nLocal: ${local.identificacao}\n\nDigite a senha:`);
-    if (senha === null) return;
-    if (senha !== '6535') { alert('Senha incorreta.'); return; }
+    // Antes pedia a senha 6535; o PIN 2248/1176 (conferido acima) já autoriza.
+    if (!confirm(`MARCAR "${nomeAbrev(servico.nome)}" COMO FEITO?\n\nLocal: ${local.identificacao}`)) return;
   }
 
   if (marcando && !funcionarioAtual) {
