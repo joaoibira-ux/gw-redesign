@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.56";
+const VERSAO = "5.57";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -163,7 +163,10 @@ function servicoLiberadoFolha(servicoId) {
 function _servicosIrmaosDoGrupo(local, servicoClicado) {
   let grupo = gruposMarcacaoConjunta().find(g => g.has(servicoClicado.id));
   // 1.1 puxa o 1.4 a partir de 04/11 (direção única).
-  if (!grupo && servicoClicado.id === ID_GESSO && new Date() >= GESSO_PUXA_EMASSAMENTO_A_PARTIR) {
+  // Pode ser desligado em configuracoes/geral.gessoPuxaEmassamento = false
+  // (pedido do João, 2026-11-05: marcar gesso sozinho pra organizar a folha
+  // de fim de outubro).
+  if (!grupo && servicoClicado.id === ID_GESSO && new Date() >= GESSO_PUXA_EMASSAMENTO_A_PARTIR && _cfgGeral.gessoPuxaEmassamento !== false) {
     grupo = new Set([ID_GESSO, ID_EMASSAMENTO]);
   }
   if (!grupo) return [];
