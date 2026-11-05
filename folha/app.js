@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.57";
+const VERSAO = "5.58";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -963,10 +963,7 @@ function abrirCalendario(func) {
 
   document.getElementById('cal-func-nome').textContent = func.nome;
   renderCalendario();
-  const n   = diasSelecionados.size;
-  const btn = document.getElementById('btn-ok-cal');
-  btn.disabled    = false;
-  btn.textContent = n > 0 ? `OK (${n})` : 'OK';
+  atualizarBtnOkCal();
   mostrarView('view-calendario');
 }
 
@@ -997,7 +994,7 @@ function renderCalendario() {
     let cls, label;
     if (modoDiariaHoras) {
       cls   = state ? ' selecionado' : '';
-      label = state ? `${d}<br><span style="font-size:0.5rem">${state}h</span>` : `${d}`;
+      label = state ? `${d}<br><span style="font-size:0.5rem">${state}h<br>${fmtMoeda(state * VALOR_HORA_PINTOR)}</span>` : `${d}`;
     } else {
       cls   = state === 'full' ? ' selecionado' : state === 'half' ? ' meio-periodo' : '';
       label = `${d}`;
@@ -1032,6 +1029,58 @@ function contarDiariasNoDia(key, cargoAlvo, excluirFuncKey) {
   return count;
 }
 
+// Pedido do João, 2026-11-05 (Leonardo André, diária/produção): ao digitar
+// as horas do dia no calendário, já mostra o valor (horas × valor-hora do
+// pintor) — no campo, na célula e no total do botão OK.
+function atualizarBtnOkCal() {
+  const n = diasSelecionados.size;
+  const btn = document.getElementById('btn-ok-cal');
+  btn.disabled = false;
+  let txt = n > 0 ? `OK (${n})` : 'OK';
+  if (modoDiariaHoras && n > 0) {
+    const total = [...diasSelecionados.values()].reduce((a, h) => a + Number(h || 0) * VALOR_HORA_PINTOR, 0);
+    txt += ` · ${fmtMoeda(total)}`;
+  }
+  btn.textContent = txt;
+}
+
+function pedirHorasComValor(key) {
+  return new Promise(resolve => {
+    const [, mes, dia] = key.split('-');
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px';
+    ov.innerHTML = `
+      <div style="background:#fff;border-radius:14px;padding:18px;width:100%;max-width:320px;font-family:inherit">
+        <div style="font-weight:700;margin-bottom:4px">Horas trabalhadas em ${dia}/${mes}</div>
+        <div style="font-size:.8rem;color:#777;margin-bottom:10px">Valor da hora: ${fmtMoeda(VALOR_HORA_PINTOR)}</div>
+        <input id="ph-horas" type="text" inputmode="decimal" placeholder="Ex: 8 ou 7,5"
+          style="width:100%;box-sizing:border-box;font-size:1.2rem;padding:10px;border:1px solid #ccc;border-radius:10px" />
+        <div id="ph-valor" style="font-size:1.3rem;font-weight:800;color:#1b5e20;margin:12px 0;min-height:1.6em"></div>
+        <div style="display:flex;gap:8px">
+          <button id="ph-cancel" style="flex:1;padding:10px;border:none;border-radius:10px;background:#eee;font-weight:700">Cancelar</button>
+          <button id="ph-ok" style="flex:1;padding:10px;border:none;border-radius:10px;background:#2e7d32;color:#fff;font-weight:700">OK</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const inp = ov.querySelector('#ph-horas'), out = ov.querySelector('#ph-valor');
+    const ler = () => parseFloat((inp.value || '').replace(',', '.'));
+    const fechar = v => { ov.remove(); resolve(v); };
+    inp.addEventListener('input', () => {
+      const h = ler();
+      out.textContent = !isNaN(h) && h > 0 ? `${String(h).replace('.', ',')}h = ${fmtMoeda(h * VALOR_HORA_PINTOR)}` : '';
+    });
+    const ok = () => {
+      const h = ler();
+      if (isNaN(h) || h <= 0) { alert('Valor inválido.'); return; }
+      fechar(h);
+    };
+    ov.querySelector('#ph-ok').onclick = ok;
+    ov.querySelector('#ph-cancel').onclick = () => fechar(null);
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') ok(); if (e.key === 'Escape') fechar(null); });
+    setTimeout(() => inp.focus(), 50);
+  });
+}
+
 function toggleDia(key) {
   if (modoDiariaHoras) {
     const jaSelecionado = diasSelecionados.has(key);
@@ -1042,11 +1091,13 @@ function toggleDia(key) {
         alert(`Limite de ${limite} pintor(es) por diária já atingido nesse dia.\n\nAjuste o limite em Configurações se precisar liberar mais.`);
         return;
       }
-      const horasStr = prompt('Quantas horas trabalhadas neste dia?');
-      if (horasStr === null) return;
-      const horas = parseFloat(horasStr.replace(',', '.'));
-      if (isNaN(horas) || horas <= 0) { alert('Valor inválido.'); return; }
-      diasSelecionados.set(key, horas);
+      pedirHorasComValor(key).then(horas => {
+        if (horas === null) return;
+        diasSelecionados.set(key, horas);
+        renderCalendario();
+        atualizarBtnOkCal();
+      });
+      return;
     } else {
       if (diasPreCarregados.has(key)) {
         const senha = prompt('Remover este dia da folha?\n\nDigite a senha:');
@@ -1057,10 +1108,7 @@ function toggleDia(key) {
       diasSelecionados.delete(key);
     }
     renderCalendario();
-    const n2  = diasSelecionados.size;
-    const btn2 = document.getElementById('btn-ok-cal');
-    btn2.disabled    = false;
-    btn2.textContent = n2 > 0 ? `OK (${n2})` : 'OK';
+    atualizarBtnOkCal();
     return;
   }
   const state = diasSelecionados.get(key);
@@ -1084,10 +1132,7 @@ function toggleDia(key) {
     diasSelecionados.delete(key);
   }
   renderCalendario();
-  const n   = diasSelecionados.size;
-  const btn = document.getElementById('btn-ok-cal');
-  btn.disabled    = false;
-  btn.textContent = n > 0 ? `OK (${n})` : 'OK';
+  atualizarBtnOkCal();
 }
 
 async function confirmarDias() {
