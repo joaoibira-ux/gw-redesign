@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.61";
+const VERSAO = "5.62";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -97,8 +97,9 @@ let _pendingClick        = null; // serviço clicado antes de ter funcionário
 // visita, então marcar/desmarcar um no mapa da Folha já marca/desmarca os
 // outros 3 automaticamente (quando existirem e estiverem "pendente" nesse
 // local — os que já estiverem concluídos ou já na folha não são mexidos).
+// 1.5 (Textura Paredes WC e Cozinha) saiu do grupo e marca sozinho —
+// pedido do João, 2026-11-05.
 const GRUPO_ACABAMENTO_IDS = new Set([
-  'qLl71GecaYLw7TCxt1LH', // 1.5 Textura Paredes Wc e Cozinha
   'f8y9YD15Cc0A6sPXEDR5', // 1.6 Pintura do Teto Texturado
   'y7X626h09PkythNFbKxX', // 1.7 Pintura Demão 1
   'M5CVZ7HsvSXfYcDfuE7j', // 1.8 Pintura Demão 2
