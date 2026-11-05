@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "1.1";
+const VERSAO = "1.2";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -104,7 +104,7 @@ function toggleStatus(id) {
   const s = itensCache[id];
   if (!s) return;
   if (PIN_ATUAL !== PIN_MARCAR_COMPRADO) {
-    alert("Apenas o PIN 2248 pode marcar como comprado.");
+    alert("Acesso não autorizado.");
     return;
   }
   const novoStatus = s.status === "comprado" ? "pendente" : "comprado";
@@ -170,7 +170,7 @@ function toggleForm() {
   const fab  = document.getElementById("fab");
   const open = form.style.display === "none" || form.style.display === "";
   if (open && !PINS_AUTORIZADOS.includes(PIN_ATUAL)) {
-    alert("Apenas os PINs 2248 ou 1176 podem solicitar compras.");
+    alert("Acesso não autorizado.");
     return;
   }
   form.style.display = open ? "block" : "none";

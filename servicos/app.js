@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "1.9";
+const VERSAO = "1.10";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -87,7 +87,7 @@ function toggleLiberadoFolha(id) {
   const s = servicosCache[id];
   if (!s) return;
   if (!PODE_LIBERAR_FOLHA) {
-    alert("Só o PIN 2248 pode liberar ou bloquear serviços na Folha.");
+    alert("Acesso não autorizado.");
     return;
   }
   col.doc(id).update({ liberadoFolha: s.liberadoFolha === false });

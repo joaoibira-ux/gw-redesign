@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.59";
+const VERSAO = "3.60";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -585,7 +585,7 @@ async function enviarConvocacao() {
 
   let pin = PIN_ATUAL;
   if (pin !== "2248" && pin !== "1176") {
-    const p = prompt("Digite seu PIN (2248 ou 1176):");
+    const p = prompt("Digite seu PIN:");
     if (p === null) return;
     pin = p.trim();
     if (pin !== "2248" && pin !== "1176") { alert("PIN não autorizado."); return; }

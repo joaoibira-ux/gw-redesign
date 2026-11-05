@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.25";
+const VERSAO = "3.26";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -257,7 +257,7 @@ let _servicoPopup = null;
 function _pinFiscalOk() {
   let pin = sessionStorage.getItem("gw_pin") || "";
   if (pin === "2248" || pin === "1176") return true;
-  const p = prompt("Digite seu PIN (2248 ou 1176):");
+  const p = prompt("Digite seu PIN:");
   if (p === null) return false;
   if (p.trim() !== "2248" && p.trim() !== "1176") { alert("PIN não autorizado."); return false; }
   sessionStorage.setItem("gw_pin", p.trim());

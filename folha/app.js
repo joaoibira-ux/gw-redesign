@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.59";
+const VERSAO = "5.60";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -44,7 +44,7 @@ document.querySelector("header span").textContent = `Folha de Pagamento da Produ
     const p = prompt('Digite seu PIN para abrir a Folha:');
     if (p && (p.trim() === '1176' || p.trim() === '2248')) { sessionStorage.setItem('gw_pin', p.trim()); return; }
   }
-  alert('A Folha só pode ser acessada com os PINs 2248 ou 1176.');
+  alert('Acesso não autorizado.');
   window.location.href = 'https://sistema.gwrevestimentos.com.br/';
 })();
 
@@ -1634,7 +1634,7 @@ function pinLiberaMapaFolha() {
 
 function onServicoClick(el) {
   if (folhaBloqueadaParaEdicao()) return;
-  if (!pinLiberaMapaFolha()) { alert('O mapa da Folha só pode ser alterado com os PINs 2248 ou 1176.'); return; }
+  if (!pinLiberaMapaFolha()) { alert('Acesso não autorizado.'); return; }
   const local    = locaisCache[el.dataset.localid];
   const servicos = [...(local.servicos || [])].sort((a, b) => ordemServico(a.nome) - ordemServico(b.nome));
   const servico  = servicos[parseInt(el.dataset.svidx)];
@@ -1659,7 +1659,7 @@ function onServicoClick(el) {
 
   if (marcando && !servicoLiberadoFolha(servico.id)) {
     const proprio = _liberadoNoCatalogo(servico.id) ? ' (faz parte de um grupo com serviço bloqueado)' : '';
-    alert(`"${nomeAbrev(servico.nome)}" está bloqueado para apontamento na folha${proprio}.\n\nSó o PIN 2248 libera, no app Serviços.`);
+    alert(`"${nomeAbrev(servico.nome)}" está bloqueado para apontamento na folha${proprio}.`);
     return;
   }
 
@@ -1832,7 +1832,7 @@ function renderizarFolha() {
         <td>${escHtml(e.servico)}</td>
         <td class="td-valor">${fmtMoeda(e.valor)}</td>
         <td class="td-del">${e.zerado
-          ? `<button class="btn-del-dia" onclick="editarDiaZerado(${e._idx})" title="Alterar valor (senha 6535)">✏</button>`
+          ? `<button class="btn-del-dia" onclick="editarDiaZerado(${e._idx})" title="Alterar valor (pede senha)">✏</button>`
           : `<button class="btn-del-dia" onclick="removerDiaria(${e._idx})">✕</button>`}</td>
       </tr>`).join('')}</tbody>
           <tfoot><tr><td colspan="3" class="td-sub-label">Subtotal</td><td class="td-sub-valor">${fmtMoeda(subtotalDiaria)}</td></tr></tfoot>
