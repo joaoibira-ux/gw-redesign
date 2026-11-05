@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.60";
+const VERSAO = "5.61";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -1663,10 +1663,8 @@ function onServicoClick(el) {
     return;
   }
 
-  if (marcando && servicoExigeSenhaRegistro(servico.nome)) {
-    // Antes pedia a senha 6535; o PIN 2248/1176 (conferido acima) já autoriza.
-    if (!confirm(`MARCAR "${nomeAbrev(servico.nome)}" COMO FEITO?\n\nLocal: ${local.identificacao}`)) return;
-  }
+  // Etapas finais (demão etc.) pediam senha e depois confirmação; com o
+  // PIN 2248/1176 (conferido acima) marca direto (pedido do João, 2026-11-05).
 
   if (marcando && !funcionarioAtual) {
     _pendingClick = { key, local, servico, localid: el.dataset.localid, svidx: el.dataset.svidx };
