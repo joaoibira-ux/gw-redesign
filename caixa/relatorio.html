@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.58";
+  const VERSAO = "2.59";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1256,16 +1256,24 @@
     const servById   = {};
     const servByName = {};
     const catFallback = {};
+    const nomeServById = {};
     _servicosSnap.docs.forEach(d => {
       const s = d.data();
       servById[d.id]  = { medicao: s.medicao || 0, mdo: s.mdo || 0 };
+      nomeServById[d.id] = { nome: s.nomeMapa || nomeAbrev(s.nome), ordem: ordemServico(s.nome) };
       servByName[s.nome] = { medicao: s.medicao || 0, mdo: s.mdo || 0 };
       const cat = ordemServico(s.nome);
       if (cat !== 99 && !(cat in catFallback)) catFallback[cat] = { nome: nomeAbrev(s.nome), medicao: s.medicao || 0, mdo: s.mdo || 0 };
     });
 
+    // Uma linha por serviço do catálogo (id) — antes era por categoria de
+    // nome, e serviços diferentes caíam juntos com o preço de um só (achado
+    // real, 2026-11-07: "Pintuta do Teto Texturado" somado em Textura e
+    // "Textura Predes Wc e Cozinha" em Textura WC). Sem id no catálogo, cai
+    // na categoria como antes.
+    const chaveLinha = s => (s.id && servById[s.id]) ? 'id:' + s.id : 'cat:' + ordemServico(s.nome);
     const sumsByCat = {};
-    // Quantidade já concluída no mapa por categoria (medida em fechamentos
+    // Quantidade já concluída no mapa por linha (medida em fechamentos
     // anteriores) — colunas "Acum. antes/depois" (pedido do João, 2026-11-07).
     const concluidosByCat = {};
     const porFunc = new Map();
@@ -1273,8 +1281,8 @@
     _locaisSnap.docs.forEach(d => {
       (d.data().servicos || []).forEach(s => {
         if (s.status === 'concluido') {
-          const c = ordemServico(s.nome);
-          if (c !== 99) concluidosByCat[c] = (concluidosByCat[c] || 0) + 1;
+          const k = chaveLinha(s);
+          if (k !== 'cat:99') concluidosByCat[k] = (concluidosByCat[k] || 0) + 1;
           return;
         }
         if (s.status !== 'em_pagamento') return;
@@ -1301,11 +1309,21 @@
           custoApto += 10;
         }
 
-        if (cat !== 99) {
-          if (!sumsByCat[cat]) sumsByCat[cat] = { count: 0, subtotal: 0, custo: 0 };
-          sumsByCat[cat].count++;
-          sumsByCat[cat].subtotal += valores.medicao;
-          sumsByCat[cat].custo    += custoApto;
+        const linha = chaveLinha(s);
+        if (linha !== 'cat:99') {
+          if (!sumsByCat[linha]) {
+            const porId = linha.startsWith('id:');
+            const nomeCat = porId ? nomeServById[s.id].nome : (catFallback[cat] || {}).nome;
+            sumsByCat[linha] = {
+              count: 0, subtotal: 0, custo: 0,
+              ordem: porId ? nomeServById[s.id].ordem : cat,
+              nome: nomeCat || nomeAbrev(s.nome),
+              mdo: valores.mdo || 0, medicao: valores.medicao || 0
+            };
+          }
+          sumsByCat[linha].count++;
+          sumsByCat[linha].subtotal += valores.medicao;
+          sumsByCat[linha].custo    += custoApto;
         }
 
         // Bruto real (atual) por funcionário, p/ Previsão da Folha — guarda
@@ -1332,7 +1350,8 @@
     renderPrevisaoFolha();
 
     if (!el) return;
-    const cats = Object.keys(sumsByCat).map(Number).sort((a, b) => a - b);
+    const cats = Object.keys(sumsByCat).sort((a, b) =>
+      (sumsByCat[a].ordem - sumsByCat[b].ordem) || sumsByCat[a].nome.localeCompare(sumsByCat[b].nome));
     if (!cats.length) { el.innerHTML = ''; return; }
 
     // Monta o painel (linhas + total) — Centro Comunitário fica no MESMO
@@ -1343,10 +1362,9 @@
       if (!catsDoBloco.length) return '';
       let totalMedicao = 0, totalRetencao = 0, totalAReceber = 0, totalCusto = 0, totalAntes = 0, totalDepois = 0;
       const linhas = catsDoBloco.map(cat => {
-        const { count, subtotal, custo } = sumsByCat[cat];
+        const { count, subtotal, custo, nome, mdo: custoUd, medicao: medicaoUd } = sumsByCat[cat];
         const antes = concluidosByCat[cat] || 0;
         totalAntes += antes; totalDepois += antes + count;
-        const { nome, mdo: custoUd, medicao: medicaoUd } = catFallback[cat] || { nome: `Tipo ${cat}`, mdo: 0, medicao: 0 };
         const retencao = subtotal * 0.05;
         const aReceber = subtotal - retencao;
         totalMedicao  += subtotal;
