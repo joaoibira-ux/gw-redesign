@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.65";
+const VERSAO = "5.66";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -2245,13 +2245,17 @@ function calcularDescontosFixos(func) {
 
   const periodoIni = new Date(hoje.getFullYear(), mesPeriodo, 16);
   const periodoFim = new Date(hoje.getFullYear(), mesPeriodo + 1, 0);
-  const diasPeriodo = Math.round((periodoFim - periodoIni) / 86400000) + 1;
+  // INSS e 6% são do MÊS (descontados só na 16-fim): proporção = dias do
+  // mês desde a admissão ÷ dias do mês. Antes só valia pra admissão dentro
+  // de 16-fim — quem entrou dia 08 pagava o mês cheio (Antônio, 2026-11-07).
+  const mesIni = new Date(periodoIni.getFullYear(), periodoIni.getMonth(), 1);
+  const diasMes = periodoFim.getDate();
   const admissao = parseDataBRparaDate(f.admissao);
   let fator = 1;
   if (admissao && admissao > periodoFim) fator = 0;
-  else if (admissao && admissao > periodoIni) {
+  else if (admissao && admissao > mesIni) {
     const diasTrabalhados = Math.round((periodoFim - admissao) / 86400000) + 1;
-    fator = Math.max(0, Math.min(1, diasTrabalhados / diasPeriodo));
+    fator = Math.max(0, Math.min(1, diasTrabalhados / diasMes));
   }
 
   // Cargos que já são "por produção" por natureza (Pintor/Raspador) OU quem

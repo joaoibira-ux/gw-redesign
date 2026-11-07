@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.54";
+  const VERSAO = "2.55";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1963,13 +1963,16 @@
       });
       if (jaDescontou) descontaInssPassagens = false;
     }
-    const diasPeriodo = Math.round((periodoFim - periodoIni) / 86400000) + 1;
+    // Proporção pelos dias do MÊS desde a admissão (INSS e 6% são mensais) —
+    // mesma regra de folha/app.js (Antônio, admitido 08/10, 2026-11-07).
+    const mesIniProrata = new Date(periodoIni.getFullYear(), periodoIni.getMonth(), 1);
+    const diasMesProrata = periodoFim.getDate();
     function fatorProrata(admissaoStr) {
       const admissao = parseDataBRparaDate(admissaoStr);
-      if (!admissao || admissao <= periodoIni) return 1;
+      if (!admissao || admissao <= mesIniProrata) return 1;
       if (admissao > periodoFim) return 0;
       const diasTrabalhados = Math.round((periodoFim - admissao) / 86400000) + 1;
-      return Math.max(0, Math.min(1, diasTrabalhados / diasPeriodo));
+      return Math.max(0, Math.min(1, diasTrabalhados / diasMesProrata));
     }
 
     funcionariosSnap.docs.forEach(d => {
