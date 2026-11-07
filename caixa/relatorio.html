@@ -468,7 +468,7 @@
       gap: 10px;
     }
     .prev-cols { grid-template-columns: 1fr 100px 100px 100px 100px 100px; }
-    .prev-cols-med { grid-template-columns: 1fr 90px 90px 90px 90px 90px 90px; }
+    .prev-cols-med { grid-template-columns: 1fr 70px 70px 90px 90px 90px 90px 90px 90px; }
     .prev-cols-pass { grid-template-columns: 1fr 100px 80px 110px 100px 100px; }
     .prev-cols-quinz { grid-template-columns: 1fr 110px; }
     .prev-secao-titulo { color: #fff; font-size: 1.1rem; font-weight: 700; margin: 0 0 12px; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.57";
+  const VERSAO = "2.58";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1265,10 +1265,18 @@
     });
 
     const sumsByCat = {};
+    // Quantidade já concluída no mapa por categoria (medida em fechamentos
+    // anteriores) — colunas "Acum. antes/depois" (pedido do João, 2026-11-07).
+    const concluidosByCat = {};
     const porFunc = new Map();
     let nServTotal = 0;
     _locaisSnap.docs.forEach(d => {
       (d.data().servicos || []).forEach(s => {
+        if (s.status === 'concluido') {
+          const c = ordemServico(s.nome);
+          if (c !== 99) concluidosByCat[c] = (concluidosByCat[c] || 0) + 1;
+          return;
+        }
         if (s.status !== 'em_pagamento') return;
         nServTotal++;
         const cat = ordemServico(s.nome);
@@ -1333,9 +1341,11 @@
     // apartamento e não pode aparecer junto na mesma linha.
     function montarBloco(catsDoBloco, titulo) {
       if (!catsDoBloco.length) return '';
-      let totalMedicao = 0, totalRetencao = 0, totalAReceber = 0, totalCusto = 0;
+      let totalMedicao = 0, totalRetencao = 0, totalAReceber = 0, totalCusto = 0, totalAntes = 0, totalDepois = 0;
       const linhas = catsDoBloco.map(cat => {
         const { count, subtotal, custo } = sumsByCat[cat];
+        const antes = concluidosByCat[cat] || 0;
+        totalAntes += antes; totalDepois += antes + count;
         const { nome, mdo: custoUd, medicao: medicaoUd } = catFallback[cat] || { nome: `Tipo ${cat}`, mdo: 0, medicao: 0 };
         const retencao = subtotal * 0.05;
         const aReceber = subtotal - retencao;
@@ -1346,6 +1356,8 @@
         return `
           <div class="prev-linha prev-cols-med">
             <div class="prev-nome">${escHtml(nome)} <span class="prev-cargo">${count} serv${count !== 1 ? 's' : ''}</span></div>
+            <div class="prev-valor">${antes}</div>
+            <div class="prev-valor">${antes + count}</div>
             <div class="prev-custo">${fmt(custoUd)}</div>
             <div class="prev-valor">${fmt(medicaoUd)}</div>
             <div class="prev-custo">${fmt(custo)}</div>
@@ -1359,11 +1371,13 @@
         <div class="previsao-card">
           <div class="prev-titulo">${titulo}</div>
           <div class="prev-header prev-cols-med">
-            <span>Serviço</span><span>Custo (UD)</span><span>Medição (UD)</span><span>Custos</span><span>Medição</span><span>Retenção</span><span>A Receber</span>
+            <span>Serviço</span><span>Acum. antes</span><span>Acum. depois</span><span>Custo (UD)</span><span>Medição (UD)</span><span>Custos</span><span>Medição</span><span>Retenção</span><span>A Receber</span>
           </div>
           ${linhas}
           <div class="prev-total prev-cols-med">
             <span>Total</span>
+            <span>${totalAntes}</span>
+            <span>${totalDepois}</span>
             <span>—</span>
             <span>—</span>
             <span style="color:#ffb74d">${fmt(totalCusto)}</span>
