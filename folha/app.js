@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.66";
+const VERSAO = "5.67";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -2253,7 +2253,9 @@ function calcularDescontosFixos(func) {
   const admissao = parseDataBRparaDate(f.admissao);
   let fator = 1;
   if (admissao && admissao > periodoFim) fator = 0;
-  else if (admissao && admissao > mesIni) {
+  // descontoMesCheio = exceção definida pelo João (ex.: Eduardo, compensado
+  // de outra forma) — desconta o mês cheio mesmo admitido no meio do mês.
+  else if (admissao && admissao > mesIni && !f.descontoMesCheio) {
     const diasTrabalhados = Math.round((periodoFim - admissao) / 86400000) + 1;
     fator = Math.max(0, Math.min(1, diasTrabalhados / diasMes));
   }
