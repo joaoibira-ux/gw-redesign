@@ -6720,3 +6720,86 @@ exports.reavaliarAoMudarPonto = onDocumentWritten("pontos/{id}", async (event) =
   const fmtBR = dataISO.split("-").reverse().join("/");
   await avisarReavaliacao(`Folha ajustada — ponto alterado (${dados.funcionarioNome || ""}, ${fmtBR})`, relevantes);
 });
+
+// ── Recalcular a folha aberta quando o preço de um serviço muda ─────────────
+// Pedido do João, 2026-11-07: ao ajustar o valor (mdo) de um serviço em
+// Serviços, a folha em aberto salva (última de 'folhas' que não está paga)
+// passa a usar o preço novo na hora — antes só era repreçada quando alguém
+// abria a tela da Folha. Mesma conta de calcValor (folha/app.js): mdo do
+// catálogo, +R$10 no Tratamento feito por Pintor; item com valorManual no
+// local não muda. Só troca itens cujo valor ainda é o do preço antigo (os
+// zerados de propósito, ex. ajudante com diária no mesmo dia, ficam como
+// estão). Recalcula subtotais e o total geral e avisa no Telegram.
+exports.recalcularFolhaAoMudarServico = onDocumentWritten("servicos/{id}", async (event) => {
+  if (!event.data.before.exists || !event.data.after.exists) return;
+  const antes = event.data.before.data(), depois = event.data.after.data();
+  const mdoAntes = Number(antes.mdo || 0), mdoDepois = Number(depois.mdo || 0);
+  if (mdoAntes === mdoDepois) return;
+  const servicoId = event.params.id;
+
+  const folhaSnap = await db.collection("folhas").orderBy("criadoEm", "desc").limit(1).get();
+  if (folhaSnap.empty) return;
+  const folhaRef = folhaSnap.docs[0].ref;
+  const folha = folhaSnap.docs[0].data();
+  if (folha.status === "paga") return;
+
+  const valorCom = (mdo, nome, cargo) => {
+    const trat = (nome || "").toLowerCase().includes("tratamento");
+    const pintor = (cargo || "").toLowerCase().includes("pintor");
+    return trat && pintor ? mdo + 10 : mdo;
+  };
+
+  const locaisCache = new Map();
+  async function servicoNoLocal(localDocId, nomeServico) {
+    if (!localDocId) return null;
+    if (!locaisCache.has(localDocId)) {
+      const s = await db.collection("locais").doc(localDocId).get();
+      locaisCache.set(localDocId, s.exists ? (s.data().servicos || []) : []);
+    }
+    return locaisCache.get(localDocId).find(s => s.nome === nomeServico) || null;
+  }
+
+  const mudancas = [];
+  let totalProducao = 0, encarregadoTotal = 0;
+  const grupos = [];
+  for (const g of (folha.grupos || [])) {
+    if (g.isEncarregado) { grupos.push(g); encarregadoTotal += Number(g.subtotal || 0); continue; }
+    const itens = [];
+    for (const it of (g.itens || [])) {
+      let novo = it;
+      if (it.firestoreLocalId) {
+        const s = await servicoNoLocal(it.firestoreLocalId, it.servico);
+        if (s && s.id === servicoId && s.valorManual == null) {
+          const cargo = (g.funcionario || {}).cargo;
+          const vAntigo = valorCom(mdoAntes, it.servico, cargo);
+          const vNovo = valorCom(mdoDepois, it.servico, cargo);
+          if (Math.abs(Number(it.valor) - vAntigo) < 0.005 && vAntigo !== vNovo) {
+            novo = { ...it, valor: vNovo };
+            mudancas.push({ nome: (g.funcionario || {}).nome || "", local: it.localId, de: vAntigo, para: vNovo });
+          }
+        }
+      }
+      itens.push(novo);
+    }
+    const subtotal = itens.reduce((a, i) => a + Number(i.valor || 0), 0);
+    totalProducao += subtotal;
+    grupos.push({ ...g, itens, subtotal });
+  }
+  if (!mudancas.length) return;
+
+  const totalGeral = totalProducao + encarregadoTotal;
+  await folhaRef.update({ grupos, totalGeral });
+
+  const fmt = v => "R$ " + Number(v).toFixed(2).replace(".", ",");
+  const porFunc = new Map();
+  mudancas.forEach(m => porFunc.set(m.nome, (porFunc.get(m.nome) || 0) + (m.para - m.de)));
+  try {
+    await enviarTextoTelegram(
+      `💲 Folha recalculada — ${depois.nome || "serviço"}: ${fmt(valorCom(mdoAntes, depois.nome, ""))} → ${fmt(valorCom(mdoDepois, depois.nome, ""))}\n\n` +
+      [...porFunc].map(([n, d]) => `• ${n}: ${d >= 0 ? "+" : "-"}${fmt(Math.abs(d))}`).join("\n") +
+      `\n\n${mudancas.length} item(ns) · total da folha ${fmt(totalGeral)}`
+    );
+  } catch (e) {
+    logger.error("[recalcularFolhaAoMudarServico] falha Telegram", { erro: e.message });
+  }
+});
