@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.62";
+const VERSAO = "5.63";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -954,9 +954,14 @@ function abrirCalendario(func) {
     diasPreCarregados.add(key);
   });
 
-  // Navega para o mês da primeira entrada existente, ou mês atual
-  calAno      = anoAtual;
-  calMesAtual = new Date().getMonth();
+  // Navega para o mês da primeira entrada existente, ou para o mês do
+  // período da folha (quinzena ANTERIOR à atual) — antes abria no mês de
+  // hoje e um dia marcado ali caía na quinzena em andamento, que a folha
+  // não mostra (achado real, 2026-11-07: diária do Geryson foi pra 30/11
+  // em vez de 30/10 e "não salvava").
+  const fimPeriodoFolha = new Date(inicioQuinzenaAtualFolha().getTime() - 86400000);
+  calAno      = fimPeriodoFolha.getFullYear();
+  calMesAtual = fimPeriodoFolha.getMonth();
   if (diasSelecionados.size > 0) {
     const first = [...diasSelecionados.keys()].sort()[0];
     calMesAtual = parseInt(first.split('-')[1]) - 1;
@@ -1082,9 +1087,22 @@ function pedirHorasComValor(key) {
   });
 }
 
+function inicioQuinzenaAtualFolha() {
+  const h = new Date();
+  return new Date(h.getFullYear(), h.getMonth(), h.getDate() <= 15 ? 1 : 16);
+}
+
+// Dia da quinzena em andamento: fica gravado, mas só entra na próxima folha.
+function confirmarDiaQuinzenaAtual(key) {
+  const [a, m, d] = key.split('-').map(Number);
+  if (new Date(a, m - 1, d) < inicioQuinzenaAtualFolha()) return true;
+  return confirm(`${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')} é da quinzena em andamento.\n\nFica salvo, mas NÃO aparece nesta folha — só na próxima.\n\nMarcar mesmo assim?`);
+}
+
 function toggleDia(key) {
   if (modoDiariaHoras) {
     const jaSelecionado = diasSelecionados.has(key);
+    if (!jaSelecionado && !confirmarDiaQuinzenaAtual(key)) return;
     if (!jaSelecionado) {
       const funcKey = funcionarioAtual.id || funcionarioAtual.nome;
       const limite  = _cfgGeral.limitePintoresDiaria;
@@ -1113,6 +1131,7 @@ function toggleDia(key) {
     return;
   }
   const state = diasSelecionados.get(key);
+  if (!state && !confirmarDiaQuinzenaAtual(key)) return;
   if (!state) {
     const funcKey = funcionarioAtual.id || funcionarioAtual.nome;
     const limite  = _cfgGeral.limiteAjudantesDiaria;
