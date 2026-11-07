@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.64";
+const VERSAO = "5.65";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -740,10 +740,11 @@ async function sincronizarDiariasAjudantesPorPonto() {
       const diaKey = `${dt.getFullYear()}-${dt.getMonth()}-${dt.getDate()}`;
       if (!registrosPorFunc.has(d.funcionarioId)) registrosPorFunc.set(d.funcionarioId, new Map());
       const dias = registrosPorFunc.get(d.funcionarioId);
-      if (!dias.has(diaKey)) dias.set(diaKey, { entrada: null, saida: null });
+      if (!dias.has(diaKey)) dias.set(diaKey, { entrada: null, saida: null, editado: false });
       const info = dias.get(diaKey);
       if (d.tipo === 'entrada' && (!info.entrada || dt < info.entrada)) info.entrada = dt;
       if (d.tipo === 'saida'   && (!info.saida   || dt > info.saida))   info.saida   = dt;
+      if (d.editadoManual) info.editado = true;
     });
 
     // Dia com falta/suspensão registrada no Rel. Ponto não conta como
@@ -807,13 +808,15 @@ async function sincronizarDiariasAjudantesPorPonto() {
     // fixo por dia trabalhado e passa a ser proporcional às horas líquidas
     // batidas no ponto (já descontada 1h de almoço): valor_hora = diária/9
     // (dias normais) ou diária/8 (sextas), multiplicado pelas horas líquidas
-    // do dia (limitado ao divisor — hora extra não é paga aqui). Dias ANTES
+    // do dia (limitado ao divisor — hora extra não é paga aqui; exceção: dia
+    // com horário alterado no mapa do ponto paga as horas a mais pelo valor
+    // normal da hora, pedido do João 2026-11-07). Dias ANTES
     // de hoje que ainda não tinham diária lançada continuam pela regra
     // antiga (valor cheio se bateu entrada+saída) — não mexe em nada já
     // apurado.
-    function valorDiariaPorHoras(func, date, horasLiquidas) {
+    function valorDiariaPorHoras(func, date, horasLiquidas, semTeto) {
       const divisor = divisorLiquidoDia(date);
-      const horasPagas = Math.min(horasLiquidas, divisor);
+      const horasPagas = semTeto ? horasLiquidas : Math.min(horasLiquidas, divisor);
       return Math.round((valorDiaria(func, date) / divisor) * horasPagas * 100) / 100;
     }
 
@@ -842,7 +845,8 @@ async function sincronizarDiariasAjudantesPorPonto() {
         // pegava atrasado (achado real, 2026-11-07, Welington 04-06/11).
         const horas = horasLiquidasDia(func.id, d);
         if (horas !== null && horas > 0) {
-          add(d, { valor: valorDiariaPorHoras(func, d, horas), horas: Math.round(horas * 10) / 10 });
+          const ed = !!(registrosPorFunc.get(func.id)?.get(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`)?.editado);
+          add(d, { valor: valorDiariaPorHoras(func, d, horas, ed), horas: Math.round(horas * 10) / 10 });
         }
       }
 

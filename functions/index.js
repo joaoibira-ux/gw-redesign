@@ -4500,10 +4500,11 @@ async function sincronizarDiariasAjudantesPorPonto(periodoForcado) {
     const diaKey = `${dt.getFullYear()}-${dt.getMonth()}-${dt.getDate()}`;
     if (!registrosPorFunc.has(d.funcionarioId)) registrosPorFunc.set(d.funcionarioId, new Map());
     const dias = registrosPorFunc.get(d.funcionarioId);
-    if (!dias.has(diaKey)) dias.set(diaKey, { entrada: null, saida: null });
+    if (!dias.has(diaKey)) dias.set(diaKey, { entrada: null, saida: null, editado: false });
     const info = dias.get(diaKey);
     if (d.tipo === "entrada" && (!info.entrada || dt < info.entrada)) info.entrada = dt;
     if (d.tipo === "saida"   && (!info.saida   || dt > info.saida))   info.saida   = dt;
+    if (d.editadoManual) info.editado = true;
   });
 
   // Dia com falta/suspensão registrada no Rel. Ponto não conta como
@@ -4548,9 +4549,11 @@ async function sincronizarDiariasAjudantesPorPonto(periodoForcado) {
     return Math.max(0, brutas - 1);
   }
 
-  function valorDiariaPorHoras(func, date, horasLiquidas) {
+  // Teto de 9h (8h sex); dia com horário alterado no mapa do ponto não tem
+  // teto — hora a mais vale a hora normal (João, 2026-11-07).
+  function valorDiariaPorHoras(func, date, horasLiquidas, semTeto) {
     const divisor = divisorLiquidoDia(date);
-    const horasPagas = Math.min(horasLiquidas, divisor);
+    const horasPagas = semTeto ? horasLiquidas : Math.min(horasLiquidas, divisor);
     return Math.round((valorDiaria(func, date) / divisor) * horasPagas * 100) / 100;
   }
 
@@ -4578,7 +4581,8 @@ async function sincronizarDiariasAjudantesPorPonto(periodoForcado) {
       // Dia útil já passado também vai pelas horas (ver folha/app.js, 2026-11-07).
       const horas = horasLiquidasDia(func.id, d);
       if (horas !== null && horas > 0) {
-        add(d, { valor: valorDiariaPorHoras(func, d, horas), horas: Math.round(horas * 10) / 10 });
+        const ed = !!registrosPorFunc.get(func.id)?.get(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`)?.editado;
+        add(d, { valor: valorDiariaPorHoras(func, d, horas, ed), horas: Math.round(horas * 10) / 10 });
       }
     }
 
@@ -6551,8 +6555,9 @@ async function reavaliarSemanaDiarista(funcId, segundaISO, simular = false) {
     if (!p.timestamp || !p.tipo) return;
     const ts = p.timestamp.toDate();
     const k = iso(ts);
-    if (!ponto.has(k)) ponto.set(k, { e: null, s: null });
+    if (!ponto.has(k)) ponto.set(k, { e: null, s: null, ed: false });
     const r = ponto.get(k);
+    if (p.editadoManual) r.ed = true;
     if (p.tipo === "entrada" && (!r.e || ts < r.e)) r.e = ts;
     if (p.tipo === "saida" && (!r.s || ts > r.s)) r.s = ts;
   });
@@ -6569,7 +6574,8 @@ async function reavaliarSemanaDiarista(funcId, segundaISO, simular = false) {
 
   // Horas trabalhadas (mesma conta do sincronismo): da entrada (piso 07:00)
   // até a saída, menos 1h de almoço; valor = diária/9 (sexta /8) × horas,
-  // no máximo 9h (8h). Só recalcula linhas que o próprio sistema lançou por
+  // no máximo 9h (8h) — exceto dia com horário alterado no mapa do ponto,
+  // que paga a hora a mais pelo valor normal (João, 2026-11-07). Só recalcula linhas que o próprio sistema lançou por
   // horas — lançamento à mão (✏, calendário, meio período) e linhas antigas
   // de valor cheio ficam como estão.
   for (const d of dias) {
@@ -6587,7 +6593,7 @@ async function reavaliarSemanaDiarista(funcId, segundaISO, simular = false) {
     const outros = doDia(d, x => !x.repouso && !x.feriado && !(x.horas && !x.ajusteManual));
     if (horas !== null) {
       const divisor = d.getDay() === 5 ? 8 : 9;
-      const valor = Math.round((diaria(d) / divisor) * Math.min(horas, divisor) * 100) / 100;
+      const valor = Math.round((diaria(d) / divisor) * (p.ed ? horas : Math.min(horas, divisor)) * 100) / 100;
       const horasR = Math.round(horas * 10) / 10;
       if (auto.length) {
         if (auto[0].valor !== valor || auto[0].horas !== horasR) {
