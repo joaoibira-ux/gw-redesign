@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.63";
+const VERSAO = "5.64";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -526,6 +526,7 @@ let calAno           = new Date().getFullYear();
 let calMesAtual      = new Date().getMonth();
 let diasSelecionados  = new Map(); // key → 'full' | 'half' (ajudante) ou número de horas (pintor)
 let diasPreCarregados = new Set(); // dias já salvos na folha (exigem senha para remover)
+let diasPreCarregadosOriginal = new Set(); // os mesmos, como estavam ao abrir o calendário
 let modoDiariaHoras   = false; // true quando o calendário está sendo usado por um pintor em modo Diária
 
 function ehAjudante(cargo) {
@@ -836,12 +837,9 @@ async function sincronizarDiariasAjudantesPorPonto() {
       // 1. Dias trabalhados (segunda a domingo) — valor pelas horas líquidas
       for (let d = new Date(quinzenaInicio); d <= quinzenaFim; d.setDate(d.getDate() + 1)) {
         if (jaPago(d)) continue;
-        const fds = d.getDay() === 0 || d.getDay() === 6;
-        if (d < hojeSemHora && !fds) {
-          // Dia útil já passado sem diária: regra antiga, valor cheio se bateu entrada+saída
-          if (trabalhou(func.id, d)) add(d, { valor: valorDiaria(func, d) });
-          continue;
-        }
+        // Dia útil já passado também vai pelas horas do ponto — a regra
+        // antiga (valor cheio) lançava cheio todo dia que o sincronismo
+        // pegava atrasado (achado real, 2026-11-07, Welington 04-06/11).
         const horas = horasLiquidasDia(func.id, d);
         if (horas !== null && horas > 0) {
           add(d, { valor: valorDiariaPorHoras(func, d, horas), horas: Math.round(horas * 10) / 10 });
@@ -927,6 +925,7 @@ function abrirCalendario(func) {
 
   diasSelecionados  = new Map();
   diasPreCarregados = new Set();
+  diasPreCarregadosOriginal = new Set();
 
   // Pré-carrega dias já na folha para este ajudante
   const funcKey = func.id || func.nome;
@@ -953,6 +952,7 @@ function abrirCalendario(func) {
     diasSelecionados.set(key, meio ? 'half' : 'full');
     diasPreCarregados.add(key);
   });
+  diasPreCarregadosOriginal = new Set(diasPreCarregados);
 
   // Navega para o mês da primeira entrada existente, ou para o mês do
   // período da folha (quinzena ANTERIOR à atual) — antes abria no mês de
@@ -1158,6 +1158,14 @@ function toggleDia(key) {
 async function confirmarDias() {
   const docId = funcionarioAtual.id || funcionarioAtual.nome;
   let dias, diaria;
+  const docRef = db.collection('diarias').doc(docId);
+  const docAtual = await docRef.get().catch(() => null);
+  const atuais = docAtual && docAtual.exists ? (docAtual.data().dias || []) : [];
+  const anoCal = new Date().getFullYear();
+  const keyDe = d => {
+    const [dia, mes] = (d.localId || '').replace(' ½', '').trim().split('/');
+    return `${anoCal}-${(mes || '').padStart(2, '0')}-${(dia || '').padStart(2, '0')}`;
+  };
 
   if (modoDiariaHoras) {
     diaria = 0;
@@ -1173,19 +1181,28 @@ async function confirmarDias() {
     diaria = totalDiasMes > 0 ? (funcionarioAtual.salario || 0) / totalDiasMes : 0;
     dias = [...diasSelecionados.entries()]
       .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([key, state]) => {
-        const [, mes, dia] = key.split('-');
+      .flatMap(([key, state]) => {
+        const [ano, mes, dia] = key.split('-');
         const meio = state === 'half';
-        return { localId: `${dia}/${mes}${meio ? ' ½' : ''}`, valor: meio ? diaria / 2 : diaria };
+        // Dia que já estava lançado inteiro e continua marcado: mantém a linha
+        // como está (horas do ponto, feriado, ajuste ✏). Antes virava diária
+        // cheia e o diarista deixava de ser pago por hora (achado real,
+        // 2026-11-07, Welington).
+        if (!meio) {
+          const existentes = atuais.filter(d => !d.repouso && !(d.localId || '').includes('½') && keyDe(d) === key);
+          if (existentes.length) return existentes;
+        }
+        const diariaDia = (funcionarioAtual.salario || 0) / new Date(+ano, +mes, 0).getDate();
+        return [{ localId: `${dia}/${mes}${meio ? ' ½' : ''}`, valor: meio ? diariaDia / 2 : diariaDia }];
       });
   }
 
-  const docRef = db.collection('diarias').doc(docId);
-  // O calendário só mexe nos dias trabalhados: repousos remunerados (sábado/
-  // domingo de semana completa) lançados pelo sincronismo continuam.
-  const docAtual = await docRef.get().catch(() => null);
-  const repousos = docAtual && docAtual.exists ? (docAtual.data().dias || []).filter(d => d.repouso) : [];
-  dias = [...dias, ...repousos];
+  // O calendário só mexe nos dias que mostrou: repousos remunerados (sábado/
+  // domingo de semana completa) e dias fora do período da folha (ex.: a
+  // quinzena em andamento) continuam como estavam.
+  const preservar = atuais.filter(d => d.repouso
+    || (!diasPreCarregadosOriginal.has(keyDe(d)) && !diasSelecionados.has(keyDe(d))));
+  dias = [...dias, ...preservar];
   if (dias.length === 0) {
     await docRef.delete().catch(() => {});
   } else {

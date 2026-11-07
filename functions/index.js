@@ -4575,11 +4575,7 @@ async function sincronizarDiariasAjudantesPorPonto(periodoForcado) {
 
     for (let d = new Date(quinzenaInicio); d <= quinzenaFim; d.setDate(d.getDate() + 1)) {
       if (jaPago(d)) continue;
-      const fds = d.getDay() === 0 || d.getDay() === 6;
-      if (d < hojeSemHora && !fds) {
-        if (trabalhou(func.id, d)) add(d, { valor: valorDiaria(func, d) });
-        continue;
-      }
+      // Dia útil já passado também vai pelas horas (ver folha/app.js, 2026-11-07).
       const horas = horasLiquidasDia(func.id, d);
       if (horas !== null && horas > 0) {
         add(d, { valor: valorDiariaPorHoras(func, d, horas), horas: Math.round(horas * 10) / 10 });
