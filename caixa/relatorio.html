@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.56";
+  const VERSAO = "2.57";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -788,7 +788,13 @@
   function ordemServico(nome) {
     const n = (nome||'').toLowerCase();
     let cat;
+    // Demão antes de "massa": o catálogo renomeou 1.7/1.8 pra "Pint Dm1/
+    // Massa" e "Pint Dm 2 / Lixa" (nomeMapa "Demao 01/02") — achado real,
+    // 2026-11-07, apareciam como "Tipo 5/6" na Previsão da Medição.
+    const demao = n.match(/dem[aã]o\s*0?(\d)|\bdm\s*0?(\d)/);
     if (n.includes('tratamento'))                          cat = 0;
+    else if (demao && (demao[1] || demao[2]) === '1')      cat = 5;
+    else if (demao && (demao[1] || demao[2]) === '2')      cat = 6;
     else if (n.includes('pasta'))                          cat = 1;
     else if (n.includes('emassamento') || n.includes('massa')) cat = 2;
     else if (n.includes('textura') && n.includes('wc'))    cat = 3;
@@ -798,8 +804,6 @@
     // descartada do total da Previsão da Medição. Achado real, 2026-09-17:
     // R$ 1.592,00 em medição de "Pintura Demão 1/2" já na folha sumindo do
     // relatório financeiro sem aviso nenhum.
-    else if (/dem[aã]o\s*1/.test(n))                       cat = 5;
-    else if (/dem[aã]o\s*2/.test(n))                       cat = 6;
     else if (n.includes('revis'))                          cat = 7;
     else if (n.includes('pintura teto'))                   cat = 8;
     else return 99;
@@ -809,12 +813,12 @@
     const n = (nome||'').toLowerCase();
     const sufixo = isCentroComunitario(n) ? ' (CC)' : '';
     if (n.includes('tratamento')) return 'Tratamento' + sufixo;
+    const dm = n.match(/dem[aã]o\s*0?(\d+)|\bdm\s*0?(\d+)/);
+    if (dm) return 'Demão ' + (dm[1] || dm[2]) + sufixo;
     if (n.includes('pasta'))      return 'Gesso' + sufixo;
     if (n.includes('emassamento') || n.includes('massa')) return 'Massa' + sufixo;
     if (n.includes('textura') && n.includes('wc'))         return 'Textura WC' + sufixo;
     if (n.includes('textura'))    return 'Textura' + sufixo;
-    const demao = n.match(/dem[aã]o\s*(\d+)/);
-    if (demao) return 'Demão ' + demao[1] + sufixo;
     if (n.includes('revis'))      return 'Revisão' + sufixo;
     if (n.includes('pintura teto')) return 'Pintura Teto' + sufixo;
     return (nome||'').substring(0, 12);
@@ -1277,6 +1281,9 @@
         // real: 83 serviços desse tipo foram fechados a R$100 em vez dos
         // R$80 corretos do catálogo). id é estável e não muda com renomeação.
         const valores = servById[s.id] || servByName[s.nome] || catFallback[cat] || { medicao: 0, mdo: 0 };
+        // Categoria sem serviço correspondente no catálogo (nome mudou): usa o
+        // próprio item pro rótulo e preço unitário, em vez de "Tipo N" zerado.
+        if (cat !== 99 && !(cat in catFallback)) catFallback[cat] = { nome: nomeAbrev(s.nome), medicao: valores.medicao || 0, mdo: valores.mdo || 0 };
         // valorManual: ajuste pontual gravado direto no item (locais/{id}.
         // servicos[].valorManual) — substitui o preço do catálogo só pra
         // essa ocorrência, sem mudar o catálogo pra todo mundo. Pedido do
