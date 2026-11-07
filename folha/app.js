@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.67";
+const VERSAO = "5.68";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -233,6 +233,7 @@ function nomeAbrev(nome) {
   if (n.includes("tratamento")) return "Tratamento";
   if (n.includes("pasta"))      return "Gesso";
   if (n.includes("emassamento") || n.includes("massa")) return "Massa";
+  if (/pint\w*\s+(do\s+)?teto/.test(n)) return "Pintura Teto";
   if (n.includes("textura") && n.includes("wc")) return "Textura WC";
   if (n.includes("textura"))    return "Textura";
   const demao = n.match(/dem[aã]o\s*(\d+)/);
@@ -248,11 +249,15 @@ function nomeMapaServico(s) {
   return disp && disp.nomeMapa ? disp.nomeMapa : nomeAbrev(s.nome);
 }
 
-// Mesmo critério do Mapa, mas a partir do nome completo do serviço (usado na
-// folha/comprovante, onde só o nome — não o id — fica salvo nas entradas)
-function nomeExibicaoServico(nomeCompleto) {
-  const disp = servicosCache.find(d => d.nome === nomeCompleto);
-  return disp && disp.nomeMapa ? disp.nomeMapa : nomeAbrev(nomeCompleto);
+// Mesmo critério do Mapa, a partir do id do serviço (estável) ou, sem id, do
+// nome completo. Achado real, 2026-11-07: o nome gravado no mapa é cópia
+// congelada ("Pintuta do Teto Texturado", com erro) e não achava o catálogo
+// — aparecia como "Textura" na folha do Geryson.
+function nomeExibicaoServico(nomeCompleto, servicoId) {
+  const disp = (servicoId && servicosCache.find(d => d.id === servicoId))
+            || servicosCache.find(d => d.nome === nomeCompleto);
+  if (disp && disp.nomeMapa) return disp.nomeMapa;
+  return nomeAbrev(disp ? disp.nome : nomeCompleto);
 }
 
 // Identificações agora podem ter um prefixo de torre/fase antes do bloco
@@ -1883,7 +1888,7 @@ function renderizarFolha() {
           <tbody>${g.itensProd.map(e => `
       <tr>
         <td>${escHtml(e.localId)}</td>
-        <td>${escHtml(nomeExibicaoServico(e.servico))}</td>
+        <td>${escHtml(nomeExibicaoServico(e.servico, e.servicoId))}</td>
         <td style="font-size:0.75rem;color:#888">${escHtml(e.dataRegistro || '—')}</td>
         <td class="td-valor">${fmtMoeda(e.valor)}</td>
       </tr>`).join('')}</tbody>
@@ -1988,7 +1993,7 @@ async function salvarFolha(silencioso = false, completarAjudantes = true) {
   const gruposProducao = [...grupos.values()].map(g => ({
     funcionario: { id: g.funcionario.id || '', nome: g.funcionario.nome, cargo: g.funcionario.cargo || '' },
     subtotal:    g.itens.reduce((acc, e) => acc + Number(e.valor), 0),
-    itens:       g.itens.map(e => ({ firestoreLocalId: e.firestoreLocalId || '', localId: e.localId, servico: e.servico, valor: Number(e.valor), dataRegistro: e.dataRegistro || null }))
+    itens:       g.itens.map(e => ({ firestoreLocalId: e.firestoreLocalId || '', localId: e.localId, servico: e.servico, servicoId: e.servicoId || null, valor: Number(e.valor), dataRegistro: e.dataRegistro || null }))
   }));
 
   const grupoEncarregado = encarregadoCache ? [{
@@ -2395,7 +2400,7 @@ function mostrarComprovante(gruposData, encData, valorEnc, nServ, totalGeral, pa
     const proventosPessoa = itensOrdenados.map(e => {
       const isProd = !!e.firestoreLocalId;
       return {
-        label: `${e.localId} · ${isProd ? nomeExibicaoServico(e.servico) : e.servico}`,
+        label: `${e.localId} · ${isProd ? nomeExibicaoServico(e.servico, e.servicoId) : e.servico}`,
         valor: Number(e.valor),
         meta: isProd ? (e.dataRegistro || '') : ''
       };
