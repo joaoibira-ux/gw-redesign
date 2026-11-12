@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.26";
+const VERSAO = "3.27";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -125,7 +125,8 @@ function buildCols(wing) {
 function renderServicosDoLocal(local) {
   const servs = [...(local.servicos || [])].map(servicoComNomeMapa).sort((a, b) => ordemServico(a.nome) - ordemServico(b.nome));
   return servs.map(s =>
-    `<div class="apt-serv ${s.status}"
+    `<div class="apt-serv ${s.status}${s.status === 'pendente' && s.reservadoPara ? ' reservado' : ''}"
+          data-reservado="${escHtml((s.reservadoPara && s.reservadoPara.nome) || '')}"
           data-apt="${escHtml(local.identificacao)}"
           data-localid="${escHtml(local.id)}"
           data-fiscal="${escHtml((s.fiscal && s.fiscal.nome) || '')}"
@@ -195,6 +196,7 @@ function verServico(e, el) {
   const data          = el.dataset.data;
   const dataRegistro  = el.dataset.dataregistro;
   const fiscal        = el.dataset.fiscal;
+  const reservado     = el.dataset.reservado;
   _servicoPopup = { localId: el.dataset.localid, nome };
 
   const fmtValor = v => v ? "R$ " + parseFloat(v).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".") : "—";
@@ -217,6 +219,11 @@ function verServico(e, el) {
   html += `
     <div class="pop-linha"><span class="pop-label">Fiscal</span><span>${escHtml(fiscal) || "—"}</span></div>
     <button class="btn-fiscal" onclick="abrirEscolhaFiscal(event)">👷 ${fiscal ? "Trocar" : "Definir"} fiscal</button>`;
+  if (status === "pendente" && ehGesso(nome)) {
+    html += `
+    <div class="pop-linha"><span class="pop-label">Reservado</span><span>${escHtml(reservado) || "—"}</span></div>
+    <button class="btn-fiscal btn-reserva" onclick="abrirEscolhaReserva(event)">🔒 ${reservado ? "Trocar reserva" : "Reservar p/ funcionário"}</button>`;
+  }
 
   const popup = document.getElementById("popup-det");
   popup.querySelector(".pop-body").innerHTML = html;
@@ -292,6 +299,52 @@ async function salvarFiscal(e) {
     if (s.nome !== _servicoPopup.nome) return s;
     const novo = { ...s };
     if (fiscal) novo.fiscal = fiscal; else delete novo.fiscal;
+    return novo;
+  });
+  try {
+    await db.collection("locais").doc(local.id).update({ servicos });
+    fecharInfo();
+  } catch (err) {
+    alert("Erro ao salvar: " + (err.message || err));
+  }
+}
+
+// Reserva do Gesso pra um funcionário (pedido do João, 2026-11-11): o
+// serviço pendente fica azul claro no mapa e na Folha só esse funcionário
+// pode apontá-lo. Fica em locais/{id}.servicos[].reservadoPara = {id, nome}.
+// Mesmos PINs do fiscal.
+function ehGesso(nome) {
+  return (nome || "").toLowerCase().includes("pasta");
+}
+
+async function abrirEscolhaReserva(e) {
+  e.stopPropagation();
+  if (!_servicoPopup || !_pinFiscalOk()) return;
+  const snap = await db.collection("funcionarios").get();
+  const ativos = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .filter(f => f.ativo !== false)
+    .sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"));
+  const body = document.getElementById("popup-det").querySelector(".pop-body");
+  body.innerHTML = `
+    <div class="pop-linha"><span class="pop-label">Serviço</span><span>${escHtml(_servicoPopup.nome)}</span></div>
+    <select id="sel-reserva" class="sel-fiscal">
+      <option value="">— Sem reserva —</option>
+      ${ativos.map(f => `<option value="${escHtml(f.id)}">${escHtml(f.nome)}</option>`).join("")}
+    </select>
+    <button class="btn-fiscal" onclick="salvarReserva(event)">Salvar</button>`;
+}
+
+async function salvarReserva(e) {
+  e.stopPropagation();
+  if (!_servicoPopup) return;
+  const sel = document.getElementById("sel-reserva");
+  const reserva = sel.value ? { id: sel.value, nome: sel.options[sel.selectedIndex].text } : null;
+  const local = locaisData.find(l => l.id === _servicoPopup.localId);
+  if (!local) return;
+  const servicos = (local.servicos || []).map(s => {
+    if (s.nome !== _servicoPopup.nome) return s;
+    const novo = { ...s };
+    if (reserva) novo.reservadoPara = reserva; else delete novo.reservadoPara;
     return novo;
   });
   try {

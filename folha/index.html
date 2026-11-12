@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Folha de Pagamento da Produção</title>
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <link rel="stylesheet" href="style.css?v=4.25">
+  <link rel="stylesheet" href="style.css?v=4.26">
   <style>
     html.gw-blocked body > *:not(#aviso-instalacao) { display: none !important; }
     #aviso-instalacao {
@@ -112,6 +112,7 @@
       <span class="leg-item"><span class="leg-cor pendente"></span> Pendente</span>
       <span class="leg-item"><span class="leg-cor em_pagamento"></span> Na folha</span>
       <span class="leg-item"><span class="leg-cor selecionado"></span> Selecionado</span>
+      <span class="leg-item"><span class="leg-cor reservado"></span> Reservado</span>
     </div>
     <div id="mapa" class="mapa"></div>
   </div>
@@ -179,7 +180,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-  <script src="app.js?v=5.68"></script>
+  <script src="app.js?v=5.69"></script>
   <script>
     if (document.documentElement.classList.contains('gw-blocked')) {
       (function() {

@@ -59,6 +59,7 @@ header {
 .leg-cor.concluido    { background: #a5d6a7; border-color: #388e3c; }
 .leg-cor.em_pagamento { background: #fff59d; border-color: #f9a825; }
 .leg-cor.pendente     { background: #fff; }
+.leg-cor.reservado    { background: #b3e5fc; border-color: #0288d1; }
 
 .leg-clicavel {
   cursor: pointer;
@@ -161,6 +162,12 @@ header {
 .apt-serv.em_pagamento {
   background: #fff59d;
   color: #f57f17;
+  font-weight: 600;
+}
+
+.apt-serv.reservado {
+  background: #b3e5fc;
+  color: #01579b;
   font-weight: 600;
 }
 

@@ -207,6 +207,8 @@ header {
 
 .leg-cor.em_pagamento { background: #fff59d; border-color: #f9a825; }
 .leg-cor.selecionado  { background: #1a3322; border-color: #1a3322; }
+.leg-cor.reservado    { background: #b3e5fc; border-color: #0288d1; }
+.apt-serv.reservado   { background: #b3e5fc; color: #01579b; font-weight: 600; }
 
 .empty {
   text-align: center;

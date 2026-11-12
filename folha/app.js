@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.68";
+const VERSAO = "5.69";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -1271,10 +1271,20 @@ db.collection('funcionarios').orderBy('nome').onSnapshot(snap => {
   renderFuncionarios();
 });
 
+// Gesso reservado no Mapa pra outro funcionário não pode ser apontado
+// (pedido do João, 2026-11-11). Devolve true (e avisa) se bloqueia.
+function reservaBloqueia(servico) {
+  const r = servico && servico.status === 'pendente' && servico.reservadoPara;
+  if (!r || !funcionarioAtual || r.id === funcionarioAtual.id) return false;
+  alert(`Esse serviço está reservado para ${r.nome}.`);
+  return true;
+}
+
 function _aplicarPendingClick() {
   if (!_pendingClick) return;
   const { local, servico, localid, svidx } = _pendingClick;
   _pendingClick = null;
+  if (reservaBloqueia(servico)) return;
   _marcarServico(local, servico, localid, svidx, true);
   _servicosIrmaosDoGrupo(local, servico).forEach(({ servico: irmao, svidx: idx }) => {
     _marcarServico(local, irmao, localid, idx, true);
@@ -1453,7 +1463,9 @@ function renderServicosDoLocal(local) {
     const sel = servicosSelecionados.has(key) ? ' selecionado' : '';
     const cursor = (s.status === 'concluido' || s.status === 'em_pagamento') ? ' nao-clicavel' : '';
     const bloq = (s.status === 'pendente' && !servicoLiberadoFolha(s.id)) ? ' bloqueado-folha' : '';
-    return `<div class="apt-serv ${s.status}${sel}${cursor}${bloq}"
+    const res = (s.status === 'pendente' && s.reservadoPara) ? ' reservado' : '';
+    return `<div class="apt-serv ${s.status}${sel}${cursor}${bloq}${res}"
+                 title="${s.status === 'pendente' && s.reservadoPara ? 'Reservado: ' + escHtml(s.reservadoPara.nome) : ''}"
                  data-localid="${escHtml(local.id)}"
                  data-svidx="${i}"
                  onclick="onServicoClick(this)">${escHtml(nomeMapaServico(s))}</div>`;
@@ -1720,6 +1732,7 @@ function onServicoClick(el) {
     return;
   }
 
+  if (marcando && reservaBloqueia(servico)) return;
   _marcarServico(local, servico, el.dataset.localid, el.dataset.svidx, marcando);
   _servicosIrmaosDoGrupo(local, servico).forEach(({ servico: irmao, svidx }) => {
     _marcarServico(local, irmao, el.dataset.localid, svidx, marcando);
