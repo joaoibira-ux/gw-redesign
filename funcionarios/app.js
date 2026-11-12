@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.60";
+const VERSAO = "3.61";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -158,7 +158,11 @@ const PIN_COMPLETO = sessionStorage.getItem('gw_auth') === 'completo';
 // mas cada um tem direito a só METADE do limite individual de adiantamento
 // (evita que um dos dois consuma o limite inteiro de um funcionário sozinho).
 const PIN_ATUAL = sessionStorage.getItem('gw_pin') || '';
-const DIVIDE_LIMITE_POR_PIN = CADASTRO_SIMPLIFICADO && !!PIN_ATUAL;
+// Pedido do João, 2026-11-12: o limite deixou de ser dividido entre os dois
+// PINs do modo "cadastro" — só o 1176 solicita, com o limite individual
+// inteiro; o 2912 (Lucas) só consulta. PIN completo continua igual.
+const DIVIDE_LIMITE_POR_PIN = false;
+const PODE_SOLICITAR_ADIANT = !CADASTRO_SIMPLIFICADO || PIN_ATUAL === '1176';
 
 function aplicarModoSimplificado() {
   const display = CADASTRO_SIMPLIFICADO ? "none" : "";
@@ -429,6 +433,10 @@ function renderAdiantCorpo(usado, usadoTotal, usadoPorPin) {
   }
 
   const resta = Math.min(...restas);
+  if (!PODE_SOLICITAR_ADIANT) {
+    document.getElementById("adiant-corpo").innerHTML = `<div class="adiant-resumo">${linhas.join("")}</div>`;
+    return;
+  }
   const podeSolicitar = resta > 0 || PIN_COMPLETO;
   document.getElementById("adiant-corpo").innerHTML = `
     <div class="adiant-resumo">${linhas.join("")}</div>
@@ -463,6 +471,7 @@ async function confirmarSolicitar() {
   const erroEl = document.getElementById("adiant-solicitar-erro");
   const btn    = document.getElementById("adiant-btn-confirmar");
 
+  if (!PODE_SOLICITAR_ADIANT) { erroEl.textContent = "Acesso não autorizado."; return; }
   const valor = parseMoeda(inp.value);
   const acimaDoLimite = valor > resta + 0.005;
   if (!valor || valor <= 0) { erroEl.textContent = "Informe um valor maior que zero."; return; }
@@ -485,7 +494,7 @@ async function confirmarSolicitar() {
       // Pra que PIN (2912/1176) contar esse pedido contra a metade do
       // limite individual — null fora do modo "cadastro" (pedido do João,
       // 2026-10-13).
-      solicitadoPorPin: DIVIDE_LIMITE_POR_PIN ? PIN_ATUAL : null,
+      solicitadoPorPin: CADASTRO_SIMPLIFICADO ? PIN_ATUAL : null,
       criadoEm: firebase.firestore.FieldValue.serverTimestamp(),
     });
   } catch (e) {
