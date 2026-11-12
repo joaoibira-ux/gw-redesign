@@ -23,6 +23,10 @@ const EVOLUTION_INSTANCE = "gw";
 const EVOLUTION_DESTINATARIOS = ["5581992114764", "5581988310203"];
 const EVOLUTION_DESTINATARIOS_ADIANTAMENTO = ["5581992114764", "5581999868043"]; // João + Antônio Neto, encarregado (era Lucas, trocado 2026-10-14)
 const EVOLUTION_DESTINATARIOS_REFEICOES = ["5581992114764", "5581991725267"];
+// Anne (Contatos: "Ane") — recebe cópia da confirmação quando um documento
+// encaminhado ao agente vira lançamento no Contas a Pagar (pedido do João,
+// 2026-11-09, tela Desenvolvimento).
+const NUMERO_ANNE = "5581988310203";
 // Ordem de envio ESCALONADO do alerta de ponto em aberto (pedido do João,
 // 2026-10-14): Welington primeiro, depois Antônio (encarregado), João por
 // último — cada um só recebe minutos depois do anterior, não tudo de uma vez
@@ -3857,6 +3861,8 @@ CRÍTICO: consultar_ponto só serve para UM dia. Quando o usuário pedir ponto d
 
     let msgs = [...messages];
     let resposta = "";
+    // Documentos registrados no Contas a Pagar nesta mensagem (pra cópia à Anne).
+    const boletosRegistrados = [];
 
     // Achado ao vivo, 2026-10-15, REPRODUZIDO 2x seguidas: depois de pedir a
     // senha de autorização pra uma ação (ex: registrar 8 pontos de uma vez),
@@ -3905,6 +3911,9 @@ CRÍTICO: consultar_ponto só serve para UM dia. Quando o usuário pedir ponto d
           let resultado;
           try {
             resultado = await executarFerramenta(b.name, b.input, apiKeyValue);
+            if (b.name === "registrar_boleto_contas_pagar" && resultado && resultado.sucesso) {
+              boletosRegistrados.push({ ...b.input, senha: undefined });
+            }
             if (alteraBanco) {
               logger.info(`[ferramenta] ${b.name} concluída`, { input: b.input, resultado });
             }
@@ -3931,7 +3940,7 @@ CRÍTICO: consultar_ponto só serve para UM dia. Quando o usuário pedir ponto d
     }
 
     const novoHistorico = [...messages, { role: "assistant", content: resposta }];
-    return { resposta, historico: novoHistorico };
+    return { resposta, historico: novoHistorico, boletosRegistrados };
 }
 
 exports.agenteGW = onCall(
@@ -4090,7 +4099,7 @@ Houve uma falha técnica ao processar a imagem (${e.message}). Avise o usuário 
       const histSnap = await histRef.get();
       const historico = histSnap.exists ? (histSnap.data().historico || []) : [];
 
-      const { resposta, historico: novoHistorico } = await processarMensagemAgenteGW(texto, historico, apiKeyValue);
+      const { resposta, historico: novoHistorico, boletosRegistrados } = await processarMensagemAgenteGW(texto, historico, apiKeyValue);
 
       await histRef.set({
         historico: novoHistorico.slice(-12),
@@ -4102,6 +4111,17 @@ Houve uma falha técnica ao processar a imagem (${e.message}). Avise o usuário 
         headers: { "apikey": apiKeyValue, "Content-Type": "application/json" },
         body: JSON.stringify({ number: destinoResposta, text: resposta })
       });
+
+      // Cópia pra Anne da confirmação de documento lançado no Contas a Pagar.
+      if (boletosRegistrados && boletosRegistrados.length) {
+        const docs = boletosRegistrados.map(b =>
+          `• ${b.descricao} — R$ ${Number(b.valor || 0).toFixed(2).replace(".", ",")} — venc. ${b.data}${b.boletoUrl ? `\n  ${b.boletoUrl}` : ""}`).join("\n");
+        try {
+          await enviarWhatsAppEvolution(`📋 Cópia — lançado no Contas a Pagar:\n\n${docs}\n\n${resposta}`, apiKeyValue, [NUMERO_ANNE]);
+        } catch (e) {
+          logger.error("[pollingAgenteWhatsApp] falha na cópia pra Anne", { erro: e.message });
+        }
+      }
     } catch (e) {
       logger.error("[pollingAgenteWhatsApp] erro ao processar mensagem", { erro: e.message, msgId: msg.key.id });
     }
