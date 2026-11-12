@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.69";
+const VERSAO = "5.70";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -1684,6 +1684,84 @@ db.collection("locais").orderBy("identificacao", "asc").onSnapshot(snap => {
 
 // Mapa da Folha: PIN 2248 e 1176 marcam/desmarcam sem senha; qualquer
 // outro PIN fica bloqueado (pedido do João, 2026-11-05).
+// Alterar a data do registro da produção na própria folha (pedido do João,
+// 2026-11-03, tela Desenvolvimento). Confere o ponto do funcionário nesse
+// dia: sem entrada (ou com falta/suspensão registrada) = faltou, não deixa;
+// entrada sem saída = grava a saída automática 4h depois da entrada (mesma
+// regra de saidaAutomaticaProducao nas functions). Muda junto os outros
+// itens do mesmo funcionário, no mesmo local e com a mesma data antiga
+// (serviços marcados juntos, ex.: Gesso + Massa).
+async function alterarDataRegistro(idx) {
+  if (folhaBloqueadaParaEdicao()) return;
+  if (!pinLiberaMapaFolha()) { alert('Acesso não autorizado.'); return; }
+  const e = entradas[idx];
+  if (!e || !e.firestoreLocalId) return;
+  const txt = prompt(`Nova data do registro (dd/mm/aaaa)\n${e.funcionario.nome} — ${e.localId}`, e.dataRegistro || '');
+  if (txt === null) return;
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(txt.trim());
+  if (!m) { alert('Data inválida. Use dd/mm/aaaa.'); return; }
+  const [d, mo, a] = [+m[1], +m[2], +m[3]];
+  const ini = new Date(a, mo - 1, d);
+  if (ini.getDate() !== d || ini.getMonth() !== mo - 1) { alert('Data inválida.'); return; }
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  if (ini > hoje) { alert('A data não pode ser no futuro.'); return; }
+  const dataBR = `${String(d).padStart(2, '0')}/${String(mo).padStart(2, '0')}/${a}`;
+  const iso = `${a}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const fim = new Date(a, mo - 1, d + 1);
+  const funcId = e.funcionario.id;
+  if (!funcId) { alert('Funcionário sem cadastro — não dá pra conferir o ponto.'); return; }
+
+  let pontos, ocorrencias;
+  try {
+    [pontos, ocorrencias] = await Promise.all([
+      db.collection('pontos').where('funcionarioId', '==', funcId).get(),
+      db.collection('ocorrencias').where('funcionarioId', '==', funcId).get()
+    ]);
+  } catch (err) { alert('Erro ao conferir o ponto: ' + (err.message || err)); return; }
+
+  const oc = ocorrencias.docs.map(x => x.data()).find(o => o.dataISO === iso && (o.tipo === 'falta' || o.tipo === 'suspensao'));
+  const doDia = pontos.docs.map(x => x.data()).filter(p => {
+    const t = p.timestamp && p.timestamp.toDate ? p.timestamp.toDate() : null;
+    return t && t >= ini && t < fim;
+  });
+  const entradasDia = doDia.filter(p => p.tipo === 'entrada').map(p => p.timestamp.toDate()).sort((x, y) => x - y);
+  const temSaida = doDia.some(p => p.tipo === 'saida');
+
+  if (oc || !entradasDia.length) {
+    alert(`${e.funcionario.nome} faltou em ${dataBR}${oc ? ` (${oc.tipo === 'suspensao' ? 'suspensão' : 'falta'} registrada)` : ' (sem entrada no ponto)'}.\n\nA produção não pode ser registrada nesse dia.`);
+    return;
+  }
+
+  let avisoSaida = '';
+  if (!temSaida) {
+    const saida = new Date(entradasDia[0].getTime() + 4 * 3600000);
+    try {
+      await db.collection('pontos').add({
+        funcionarioId: funcId, funcionarioNome: e.funcionario.nome || '', cargo: e.funcionario.cargo || '',
+        tipo: 'saida', timestamp: firebase.firestore.Timestamp.fromDate(saida),
+        saidaAutomaticaProducao: true, localizacao: null
+      });
+    } catch (err) { alert('Erro ao registrar a saída automática: ' + (err.message || err)); return; }
+    avisoSaida = `\n\nEle tinha só a entrada nesse dia — saída registrada automaticamente às ${saida.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} (entrada + 4h).`;
+  }
+
+  const antiga = e.dataRegistro || null;
+  let n = 0;
+  entradas = entradas.map(x => {
+    if (x === e || (x.firestoreLocalId === e.firestoreLocalId && x.funcionario.id === funcId && (x.dataRegistro || null) === antiga)) {
+      n++;
+      return { ...x, dataRegistro: dataBR };
+    }
+    return x;
+  });
+  filtrarProducaoConflitanteComDiaria();
+  filtrarDiariaConflitanteComProducaoPintor();
+  renderizarFolha();
+  atualizarHeader();
+  salvarFolha(true, false);
+  alert(`Data do registro alterada para ${dataBR} (${n} serviço${n > 1 ? 's' : ''} em ${e.localId}).${avisoSaida}`);
+}
+
 function pinLiberaMapaFolha() {
   if (sessionStorage.getItem('gw_auth') === 'completo') return true;
   const pin = sessionStorage.getItem('gw_pin') || '';
@@ -1902,7 +1980,7 @@ function renderizarFolha() {
       <tr>
         <td>${escHtml(e.localId)}</td>
         <td>${escHtml(nomeExibicaoServico(e.servico, e.servicoId))}</td>
-        <td style="font-size:0.75rem;color:#888">${escHtml(e.dataRegistro || '—')}</td>
+        <td style="font-size:0.75rem;color:#888;white-space:nowrap">${escHtml(e.dataRegistro || '—')} <button class="btn-del-dia" onclick="alterarDataRegistro(${e._idx})" title="Alterar data do registro">✏</button></td>
         <td class="td-valor">${fmtMoeda(e.valor)}</td>
       </tr>`).join('')}</tbody>
           <tfoot><tr><td colspan="3" class="td-sub-label">Subtotal</td><td class="td-sub-valor">${fmtMoeda(subtotalProd)}</td></tr></tfoot>
