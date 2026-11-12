@@ -679,7 +679,7 @@
     // Substituído por um alerta (Cloud Function alertaSaidaEmAberto) que
     // avisa quem esqueceu, em vez de inventar um horário.
 
-    const VERSAO = '8.24';
+    const VERSAO = '8.25';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
@@ -691,7 +691,9 @@
     // Dentro do modo "cadastro", o PIN 2912 (PIN_CADASTRO) não deve ver esses apps —
     // o PIN_CADASTRO2 (1176) continua com acesso completo ao modo. Pedido do João, 2026-10-18.
     // Folha/Rel. Folha: só PIN 2248 (completo) e 1176 — pedido do João, 2026-11-02.
-    const APPS_BLOQUEADOS_PIN_CADASTRO = ['Compras', 'Diário de Obra', 'Almoxarifado', 'Folha', 'Rel. Folha'];
+    // Funcionários: sem acesso pro 2912 desde 2026-11-12 (pedido do João); nos
+    // apps que ele ainda vê (Mapa, Ponto, Rel. Ponto) é só consulta.
+    const APPS_BLOQUEADOS_PIN_CADASTRO = ['Compras', 'Diário de Obra', 'Almoxarifado', 'Folha', 'Rel. Folha', 'Funcionários'];
 
     const APPS = [
       { icon: '💰', name: 'Caixa',              desc: 'Lançamentos financeiros',   url: 'https://sistema.gwrevestimentos.com.br/caixa/' },

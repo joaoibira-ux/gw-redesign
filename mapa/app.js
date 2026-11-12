@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.27";
+const VERSAO = "3.28";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -271,8 +271,12 @@ function _pinFiscalOk() {
   return true;
 }
 
+// 2912: só consulta, sem aviso (pedido do João, 2026-11-12).
+const SO_LEITURA = sessionStorage.getItem("gw_auth") === "cadastro" && sessionStorage.getItem("gw_pin") === "2912";
+
 async function abrirEscolhaFiscal(e) {
   e.stopPropagation();
+  if (SO_LEITURA) return;
   if (!_servicoPopup || !_pinFiscalOk()) return;
   const snap = await db.collection("funcionarios").get();
   const ativos = snap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -319,6 +323,7 @@ function ehGesso(nome) {
 
 async function abrirEscolhaReserva(e) {
   e.stopPropagation();
+  if (SO_LEITURA) return;
   if (!_servicoPopup || !_pinFiscalOk()) return;
   const snap = await db.collection("funcionarios").get();
   const ativos = snap.docs.map(d => ({ id: d.id, ...d.data() }))

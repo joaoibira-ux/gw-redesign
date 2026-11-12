@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.61";
+const VERSAO = "3.62";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -162,6 +162,9 @@ const PIN_ATUAL = sessionStorage.getItem('gw_pin') || '';
 // PINs do modo "cadastro" — só o 1176 solicita, com o limite individual
 // inteiro; o 2912 (Lucas) só consulta. PIN completo continua igual.
 const DIVIDE_LIMITE_POR_PIN = false;
+// 2912 não acessa mais Funcionários (pedido do João, 2026-11-12) — volta pro
+// menu sem aviso, mesmo abrindo pelo link direto.
+if (CADASTRO_SIMPLIFICADO && PIN_ATUAL === '2912') location.replace('https://sistema.gwrevestimentos.com.br/');
 const PODE_SOLICITAR_ADIANT = !CADASTRO_SIMPLIFICADO || PIN_ATUAL === '1176';
 
 function aplicarModoSimplificado() {
