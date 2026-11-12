@@ -3875,9 +3875,15 @@ CRÍTICO: consultar_ponto só serve para UM dia. Quando o usuário pedir ponto d
     // alguma ferramenta em vez de só devolver texto. Rodadas seguintes
     // voltam a "auto" normalmente.
     const ultimaDoAssistente = messages.slice(0, -1).reverse().find(m => m.role === "assistant");
-    const pareceRespostaDeSenha = !!ultimaDoAssistente
+    // Também quando a própria mensagem do usuário traz a senha (achado real,
+    // 2026-11-11: boleto NF 542 do Gesso Soares, 14/10 — o usuário mandou a
+    // senha, o assistente respondeu "registrado" sem chamar ferramenta
+    // nenhuma, e a pergunta anterior não tinha a frase "senha de autoriza").
+    const mensagemTemSenha = typeof mensagem === "string" && mensagem.includes(SENHA_ALTERACAO_BANCO);
+    const pareceRespostaDeSenha = mensagemTemSenha || (!!ultimaDoAssistente
       && typeof ultimaDoAssistente.content === "string"
-      && /senha de autoriza/i.test(ultimaDoAssistente.content);
+      && /senha de autoriza/i.test(ultimaDoAssistente.content));
+    let gravouNoBanco = false;
 
     // Subido de 5 pra 20 rodadas — um lote de 8 chamadas registrar_ponto,
     // se o modelo não agrupar tudo num só turno, passa fácil de 5 (8
@@ -3911,6 +3917,7 @@ CRÍTICO: consultar_ponto só serve para UM dia. Quando o usuário pedir ponto d
           let resultado;
           try {
             resultado = await executarFerramenta(b.name, b.input, apiKeyValue);
+            if (alteraBanco && resultado && resultado.sucesso) gravouNoBanco = true;
             if (b.name === "registrar_boleto_contas_pagar" && resultado && resultado.sucesso) {
               boletosRegistrados.push({ ...b.input, senha: undefined });
             }
@@ -3937,6 +3944,13 @@ CRÍTICO: consultar_ponto só serve para UM dia. Quando o usuário pedir ponto d
     // que pode ter ficado pela metade.
     if (!resposta) {
       resposta = "A ação pode não ter sido concluída por inteiro (muitas etapas de uma vez) — confira o resultado antes de confiar que tudo foi feito, e se faltar algo, peça de novo em partes menores.";
+    }
+
+    // Senha enviada mas nenhuma gravação deu certo nesta mensagem: qualquer
+    // "registrado/feito" na resposta é falso — avisa em vez de confirmar.
+    if (mensagemTemSenha && !gravouNoBanco) {
+      logger.error("[agente] senha recebida mas nenhuma ferramenta gravou no banco", { resposta });
+      resposta = `⚠️ ATENÇÃO: nada foi gravado no sistema nesta mensagem — o pedido NÃO foi registrado. Mande de novo (ex: "registra esse boleto") e confira a confirmação.\n\n(Resposta do assistente, desconsidere se diz que foi feito: ${resposta})`;
     }
 
     const novoHistorico = [...messages, { role: "assistant", content: resposta }];
