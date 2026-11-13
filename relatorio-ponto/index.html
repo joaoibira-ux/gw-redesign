@@ -199,7 +199,7 @@
     .pv-desc { color: #d32f2f; } .pv-liq { color: #1b5e20; }
     /* Coluna do valor a pagar em destaque verde (pedido do João, 2026-11-13) */
     table.mapa-ponto td.pv.pv-liq { background: #c8e6c9; }
-    table.mapa-ponto tr.ps-total td.ps-liq-total { background: #2e7d32; color: #fff; }
+    table.mapa-ponto td.pv.pv-tot { background: #eeeeee; }
     .ps-meia { background: #fff8e1; }
     table.mapa-ponto tr.ps-total td { background: #1a3322; color: #fff; font-weight: 800; }
     .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; max-width: 520px; margin: 0 auto; }
@@ -252,7 +252,7 @@
   </a>
   <span class="h-title">Relatório de Ponto</span>
   <button class="btn-ocorrencia" id="btn-opcoes" onclick="abrirOpcoes()">☰ Opções</button>
-  <span class="h-versao">v1.17</span>
+  <span class="h-versao">v1.18</span>
 </header>
 
 <div class="modal-ov" id="modal-opcoes" onclick="if(event.target===this) fecharOpcoes()">
@@ -351,7 +351,7 @@
 </div>
 
 <script>
-const VERSAO = '1.17';
+const VERSAO = '1.18';
 let PIN_ATUAL = sessionStorage.getItem('gw_pin') || '';
 const PIN_VALIDO = p => p === '2248' || p === '1176';
 // Sessões de "computador confiável" antigas não guardam o PIN (só o modo) —
@@ -994,14 +994,14 @@ async function abrirMapaPassagens() {
         return ehUtil(d) ? '<td><span class="mp-ok">✓</span></td>' : '<td></td>';
       }).join('');
       return `<tr><td class="td-nome">${esc(f.nome || '')}<br><small style="font-weight:400;color:#888">${fmtR(vd)}/dia${f.passagem6pct ? ' (6%)' : ''}</small></td>`
-        + `<td class="pv">${fmtR(total)}</td><td class="pv pv-desc">${desc > 0 ? '-' + fmtR(desc) : '—'}</td><td class="pv pv-liq">${fmtR(total - desc)}</td>${cels}</tr>`;
+        + `<td class="pv pv-tot">${fmtR(total)}</td><td class="pv pv-desc">${desc > 0 ? '-' + fmtR(desc) : '—'}</td><td class="pv pv-liq">${fmtR(total - desc)}</td>${cels}</tr>`;
     }).join('');
 
     const head = `<tr><th class="th-nome">Funcionário</th><th class="pv">Total<br><small>${diasUteisProx} dias úteis de ${dm(fim)} a ${dm(proxFim)}</small></th><th class="pv">Descontos</th><th class="pv">A receber</th>${dias.map(d => {
       const iso = isoDe(d);
       return `<th class="${fer.has(iso) ? 'th-fer' : ''}" style="cursor:default">${String(d.getDate()).padStart(2, '0')}<br>${fer.has(iso) ? 'FER' : DOW[d.getDay()]}</th>`;
     }).join('')}</tr>`;
-    const totalRow = `<tr class="ps-total"><td class="td-nome" style="background:#1a3322;color:#fff">Total</td><td>${fmtR(somaTotal)}</td><td>${somaDesc > 0 ? '-' + fmtR(somaDesc) : '—'}</td><td class="ps-liq-total">${fmtR(somaTotal - somaDesc)}</td>${dias.map(() => '<td></td>').join('')}</tr>`;
+    const totalRow = `<tr class="ps-total"><td class="td-nome" style="background:#1a3322;color:#fff">Total</td><td>${fmtR(somaTotal)}</td><td>${somaDesc > 0 ? '-' + fmtR(somaDesc) : '—'}</td><td>${fmtR(somaTotal - somaDesc)}</td>${dias.map(() => '<td></td>').join('')}</tr>`;
 
     corpo.innerHTML = funcs.length
       ? `<table class="mapa-ponto"><thead>${head}</thead><tbody>${linhas}${totalRow}</tbody></table>`
