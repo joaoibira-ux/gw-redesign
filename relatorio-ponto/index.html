@@ -249,7 +249,7 @@
   </a>
   <span class="h-title">Relatório de Ponto</span>
   <button class="btn-ocorrencia" id="btn-opcoes" onclick="abrirOpcoes()">☰ Opções</button>
-  <span class="h-versao">v1.15</span>
+  <span class="h-versao">v1.16</span>
 </header>
 
 <div class="modal-ov" id="modal-opcoes" onclick="if(event.target===this) fecharOpcoes()">
@@ -291,7 +291,7 @@
 
 <div class="tela-cheia" id="tela-pass">
   <div class="tela-cheia-top"><button onclick="mudarQuinzenaPass(-1)">‹</button><b id="pass-titulo">Mapa de passagens</b><button onclick="mudarQuinzenaPass(1)">›</button><button onclick="fecharTela('tela-pass')">✕ Fechar</button></div>
-  <div class="tela-cheia-legenda">Total = passagens dos dias úteis da quinzena seguinte (pagas adiantadas no fechamento desta) · <span class="mp-falta">-R$</span> desconto do dia: falta ou falta/suspensão registrada = 1 passagem · <span class="ps-meia">&nbsp;só entrada&nbsp;</span> = meia passagem · sábado não compensa falta · mesmas regras do fechamento de Passagens no Caixa</div>
+  <div class="tela-cheia-legenda">Total = passagens dos próximos 5 dias úteis depois do período (pagas adiantadas, semanal) · <span class="mp-falta">-R$</span> desconto do dia: falta ou falta/suspensão registrada = 1 passagem · <span class="ps-meia">&nbsp;só entrada&nbsp;</span> = meia passagem · sábado não compensa falta · mesmas regras do fechamento de Passagens no Caixa</div>
   <div class="tela-cheia-corpo" id="pass-corpo">Carregando...</div>
 </div>
 
@@ -348,7 +348,7 @@
 </div>
 
 <script>
-const VERSAO = '1.15';
+const VERSAO = '1.16';
 let PIN_ATUAL = sessionStorage.getItem('gw_pin') || '';
 const PIN_VALIDO = p => p === '2248' || p === '1176';
 // Sessões de "computador confiável" antigas não guardam o PIN (só o modo) —
@@ -929,9 +929,14 @@ async function abrirMapaPassagens() {
 
     const ehUtil = d => d.getDay() >= 1 && d.getDay() <= 5 && !fer.has(isoDe(d));
 
-    // Dias úteis da quinzena seguinte (bruto pago adiantado)
+    // Bruto pago adiantado: desde 2026-11-13 as passagens são semanais — os
+    // próximos 5 dias úteis depois do período (mesma regra do Caixa,
+    // periodoPassagensAPagar). Ex.: quinzena 01–15/11 -> paga 16 a 23/11.
     let diasUteisProx = 0;
-    for (let d = new Date(fim), f2 = fimQuinzena(fim); d < f2; d.setDate(d.getDate() + 1)) if (ehUtil(d)) diasUteisProx++;
+    const proxFim = new Date(fim);
+    for (let d = new Date(fim); diasUteisProx < 5; d.setDate(d.getDate() + 1)) {
+      if (ehUtil(d)) { diasUteisProx++; proxFim.setTime(d.getTime()); }
+    }
 
     const hoje0 = new Date(); hoje0.setHours(0, 0, 0, 0);
     const dias = [];
@@ -989,7 +994,7 @@ async function abrirMapaPassagens() {
         + `<td class="pv">${fmtR(total)}</td><td class="pv pv-desc">${desc > 0 ? '-' + fmtR(desc) : '—'}</td><td class="pv pv-liq">${fmtR(total - desc)}</td>${cels}</tr>`;
     }).join('');
 
-    const head = `<tr><th class="th-nome">Funcionário</th><th class="pv">Total<br><small>${diasUteisProx} dias úteis de ${dm(fim)} a ${dm(new Date(fimQuinzena(fim).getTime() - 86400000))}</small></th><th class="pv">Descontos</th><th class="pv">A receber</th>${dias.map(d => {
+    const head = `<tr><th class="th-nome">Funcionário</th><th class="pv">Total<br><small>${diasUteisProx} dias úteis de ${dm(fim)} a ${dm(proxFim)}</small></th><th class="pv">Descontos</th><th class="pv">A receber</th>${dias.map(d => {
       const iso = isoDe(d);
       return `<th class="${fer.has(iso) ? 'th-fer' : ''}" style="cursor:default">${String(d.getDate()).padStart(2, '0')}<br>${fer.has(iso) ? 'FER' : DOW[d.getDay()]}</th>`;
     }).join('')}</tr>`;
