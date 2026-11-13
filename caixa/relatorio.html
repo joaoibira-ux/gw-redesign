@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.59";
+  const VERSAO = "2.60";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1487,6 +1487,28 @@
     return { inicio, fim: fimProxima };
   }
 
+  // Passagens SEMANAIS (pedido do João, 2026-11-13): pagas toda segunda à
+  // noite, adiantadas, cobrindo os próximos 5 dias úteis a partir do dia
+  // seguinte ao último período pago (configuracoes/geral.passagensPagasAte;
+  // feriado não conta como dia útil). Faltas descontadas = as do período
+  // pago anteriormente (passagensPagasDe a passagensPagasAte). Primeiro
+  // fechamento semanal: pagou 16/11 a 23/11 (20/11 feriado) descontando as
+  // faltas de 01–15/11, último período quinzenal.
+  const DIAS_UTEIS_PASSAGENS = 5;
+  function periodoPassagensAPagar(ate) {
+    const inicio = new Date(ate); inicio.setHours(0, 0, 0, 0); inicio.setDate(inicio.getDate() + 1);
+    let n = 0;
+    for (let i = 0; i < 40; i++) {
+      const d = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate() + i);
+      if (d.getDay() >= 1 && d.getDay() <= 5 && !ehFeriado(d) && ++n === DIAS_UTEIS_PASSAGENS) return { inicio, fim: d };
+    }
+    return { inicio, fim: new Date(inicio) };
+  }
+  function periodoFaltasPassagens(ate, de) {
+    const fim = new Date(ate); fim.setHours(0, 0, 0, 0);
+    return { inicio: de || limitesQuinzenaAtual(fim).inicio, fim };
+  }
+
   // Conta dias úteis (segunda a sexta, sem contar sábado) entre duas datas,
   // inclusive — pedido do João, 2026-09-30: o valor de Passagens virou "por
   // dia útil" (antes era um valor fixo de quinzena, aproximado como se toda
@@ -1547,9 +1569,9 @@
   // quinzena é exigido individualmente (mesmo em semana cortada pela virada
   // de quinzena); só o sábado (pra compensação/crédito) continua ligado à
   // semana como um todo, não importa se ela está inteira dentro da quinzena.
-  async function calcularFaltasQuinzenaAtual(hoje) {
+  async function calcularFaltasQuinzenaAtual(hoje, periodo) {
     await carregarFeriadosGW();
-    const { inicio: qIni, fim: qFim } = limitesQuinzenaAtual(hoje);
+    const { inicio: qIni, fim: qFim } = periodo || limitesQuinzenaAtual(hoje);
     // Janela de busca com folga de 1 semana pra cada lado, pra pegar o
     // sábado de uma semana cortada pela virada da quinzena.
     const buscaIni = new Date(qIni); buscaIni.setDate(buscaIni.getDate() - 7);
@@ -1686,9 +1708,11 @@
   // de hoje. Assim, se o fechamento de 31/10 atrasou, fechar em 03/11 ainda
   // paga 01–15/11 descontando as faltas de 16–31/10 (antes ele pularia pra
   // 16–30/11). Sem esse campo, cai pra hoje (comportamento antigo).
+  let _refPassagensDe = null; // início do último período pago (passagensPagasDe)
   async function refPassagens() {
     try {
       const c = await db.collection('configuracoes').doc('geral').get();
+      _refPassagensDe = c.exists ? parseDataBRparaDate(c.data().passagensPagasDe || '') : null;
       const ate = c.exists ? parseDataBRparaDate(c.data().passagensPagasAte || '') : null;
       if (ate) return ate;
     } catch (e) { console.error('Falha ao ler passagensPagasAte:', e); }
@@ -1702,12 +1726,12 @@
   let _incompletosMap = new Map();
   refPassagens().then(async ref => {
     _refPassagens = ref;
-    _faltasMap = await calcularFaltasQuinzenaAtual(ref);
+    _faltasMap = await calcularFaltasQuinzenaAtual(ref, periodoFaltasPassagens(ref, _refPassagensDe));
     _incompletosMap = new Map([..._faltasMap].map(([k, v]) => [k, v.meias || 0]));
     if (_funcionariosSnap) renderPrevisaoPassagens(_funcionariosSnap);
   }).catch(e => console.error('Falha ao calcular faltas da quinzena das passagens:', e));
 
-  // ── Passagens da Quinzena ──
+  // ── Passagens da Semana (era da Quinzena até 2026-11-13) ──
   // "passagens" no cadastro agora é o valor por dia útil (não mais o total
   // fixo da quinzena) — pedido do João, 2026-09-30. O bruto de cada pessoa é
   // esse valor diário vezes os dias úteis (seg-sex) da PRÓXIMA quinzena (a
@@ -1716,8 +1740,8 @@
   function renderPrevisaoPassagens(snap) {
     const el = document.getElementById('previsao-passagens');
     if (!el) return;
-    const { inicio: proxIni, fim: proxFim } = limitesProximaQuinzena(_refPassagens);
-    const { inicio: qDescIni, fim: qDescFim } = limitesQuinzenaAtual(_refPassagens);
+    const { inicio: proxIni, fim: proxFim } = periodoPassagensAPagar(_refPassagens);
+    const { inicio: qDescIni, fim: qDescFim } = periodoFaltasPassagens(_refPassagens, _refPassagensDe);
     const diasUteisProxima = contarDiasUteis(proxIni, proxFim);
     const linhas = [];
     let total = 0, totalDescontoFaltas = 0, totalDescontoIncompletos = 0, totalDias = 0, totalIncompletos = 0;
@@ -1756,7 +1780,7 @@
     el.innerHTML = `
       <div class="previsao-card">
         <div class="prev-titulo">
-          <span>Passagens da Quinzena — paga ${fmtDataBR(proxIni)} a ${fmtDataBR(proxFim)} · faltas de ${fmtDataBR(qDescIni)} a ${fmtDataBR(qDescFim)}</span>
+          <span>Passagens da Semana — paga ${fmtDataBR(proxIni)} a ${fmtDataBR(proxFim)} (${diasUteisProxima} dias úteis) · faltas de ${fmtDataBR(qDescIni)} a ${fmtDataBR(qDescFim)}</span>
         </div>
         <div class="prev-header prev-cols-pass">
           <span>Funcionário</span><span>Passagens</span><span>Dias Falta</span><span>Entrada s/ Saída</span><span>Desconto</span><span>Líquido</span>
@@ -2412,7 +2436,7 @@
   // cálculo, só o total geral.
   function calcularTotalPassagensQuinzena() {
     if (!_funcionariosSnap) return 0;
-    const { inicio: proxIni, fim: proxFim } = limitesProximaQuinzena(_refPassagens);
+    const { inicio: proxIni, fim: proxFim } = periodoPassagensAPagar(_refPassagens);
     const diasUteisProxima = contarDiasUteis(proxIni, proxFim);
     let total = 0;
     _funcionariosSnap.docs.forEach(d => {
@@ -2446,7 +2470,9 @@
     const totalFolha = calcularTotalFolhaAberta();
     if (totalFolha > 0) itens.push({ desc: 'Folha de Pagamento da Produção', data: dataFolha, valor: totalFolha });
     const totalPassagens = calcularTotalPassagensQuinzena();
-    if (totalPassagens > 0) itens.push({ desc: 'Passagens da Quinzena', data: dataPassagensRefeicoes, valor: totalPassagens });
+    // Passagens semanais: vencem na segunda (fechamento da segunda à noite).
+    const dataPassagens = new Date(hoje); dataPassagens.setDate(hoje.getDate() + ((8 - hoje.getDay()) % 7));
+    if (totalPassagens > 0) itens.push({ desc: 'Passagens da Semana', data: dataPassagens, valor: totalPassagens });
     const totalRefeicoes = _refeicoesQuinzena.custoCafe + _refeicoesQuinzena.custoAlmoco;
     if (totalRefeicoes > 0) itens.push({ desc: 'Refeições da Quinzena (café + almoço)', data: dataPassagensRefeicoes, valor: totalRefeicoes });
 
@@ -3076,9 +3102,9 @@
         db.collection('configuracoes').doc('geral').get()
       ]);
       const ref = await refPassagens();
-      const faltasMap = await calcularFaltasQuinzenaAtual(ref);
+      const faltasMap = await calcularFaltasQuinzenaAtual(ref, periodoFaltasPassagens(ref, _refPassagensDe));
       const incompletosMap = new Map([...faltasMap].map(([k, v]) => [k, v.meias || 0]));
-      const { inicio: proxIni, fim: proxFim } = limitesProximaQuinzena(ref);
+      const { inicio: proxIni, fim: proxFim } = periodoPassagensAPagar(ref);
       const diasUteisProxima = contarDiasUteis(proxIni, proxFim);
 
       // Achado real, 2026-09-30: esse botão sempre calcula o período "daqui
@@ -3137,15 +3163,16 @@
       }
 
       const periodoLabel = `${fmtDataBR(proxIni)} a ${fmtDataBR(proxFim)}`;
-      const dataVencimento = fmtDataBR(proximaSexta());
-      const resumo = `Passagens (pagamento antecipado, dias úteis de ${periodoLabel}): R$ ${fmt(totalPassagens)}\n\nVai ser criada uma conta a pagar com vencimento em ${dataVencimento}.\nA Folha continua aberta, sem ser fechada.\nQuem ainda não bateu entrada hoje entra como falta de hoje.`;
-      if (!confirm('Fechar Passagens da Quinzena?\n\n' + resumo)) return;
+      // Semanal: pago na própria noite do fechamento (segunda) — vence hoje.
+      const dataVencimento = fmtDataBR(new Date());
+      const resumo = `Passagens (pagamento antecipado, ${diasUteisProxima} dias úteis de ${periodoLabel}): R$ ${fmt(totalPassagens)}\n\nVai ser criada uma conta a pagar com vencimento em ${dataVencimento}.\nA Folha continua aberta, sem ser fechada.\nQuem ainda não bateu entrada hoje entra como falta de hoje.`;
+      if (!confirm('Fechar Passagens da Semana?\n\n' + resumo)) return;
 
       btn.textContent = '⏳ Fechando...';
       const batch = db.batch();
 
       batch.set(db.collection('contasPagar').doc(), {
-        data: dataVencimento, descricao: `Passagens da Quinzena (${periodoLabel})`, valor: totalPassagens,
+        data: dataVencimento, descricao: `Passagens da Semana (${periodoLabel})`, valor: totalPassagens,
         status: 'aberto', criadoEm: firebase.firestore.FieldValue.serverTimestamp()
       });
 
@@ -3160,6 +3187,7 @@
       });
 
       batch.set(db.collection('configuracoes').doc('geral'), {
+        passagensPagasDe: fmtDataBR(proxIni),
         passagensPagasAte: fmtDataBR(proxFim)
       }, { merge: true });
 
