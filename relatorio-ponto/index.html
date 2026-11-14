@@ -242,6 +242,16 @@
     .btn-cancel-oc { background: #eee; color: #555; }
     .btn-ok-oc { background: #c62828; color: #fff; }
     .btn-ok-oc:disabled { opacity: 0.5; }
+    /* Relatório de passagens do funcionário (clique no nome no Mapa de passagens) */
+    table.mapa-ponto td.td-nome.pass-clicavel { cursor: pointer; text-decoration: underline dotted #9e9e9e; }
+    .rp-cab { font-size: 0.8rem; color: #555; margin-bottom: 10px; line-height: 1.5; }
+    .rp-tab { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin: 6px 0 12px; }
+    .rp-tab th { text-align: left; font-size: 0.68rem; color: #888; text-transform: uppercase; border-bottom: 1px solid #ddd; padding: 4px 2px; }
+    .rp-tab td { padding: 5px 2px; border-bottom: 1px solid #f0f0f0; }
+    .rp-tab td.v { text-align: right; white-space: nowrap; }
+    .rp-res { border-top: 2px solid #1a3322; padding-top: 8px; font-size: 0.88rem; }
+    .rp-res div { display: flex; justify-content: space-between; padding: 3px 0; }
+    .rp-res .liq { font-weight: 800; font-size: 1rem; background: #c8e6c9; padding: 6px 8px; border-radius: 8px; margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -252,7 +262,7 @@
   </a>
   <span class="h-title">Relatório de Ponto</span>
   <button class="btn-ocorrencia" id="btn-opcoes" onclick="abrirOpcoes()">☰ Opções</button>
-  <span class="h-versao">v1.19</span>
+  <span class="h-versao">v1.20</span>
 </header>
 
 <div class="modal-ov" id="modal-opcoes" onclick="if(event.target===this) fecharOpcoes()">
@@ -288,6 +298,17 @@
       <button class="btn-ok-oc" id="ep-btn-falta" onclick="alternarFaltaPonto()">Marcar falta</button>
       <button class="btn-cancel-oc" onclick="apagarRegistrosDia()">Apagar registros do dia</button>
       <button class="btn-cancel-oc" onclick="fecharEdicaoPonto()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-ov" id="modal-rel-pass" onclick="if(event.target===this) fecharRelPassagem()" style="z-index:450">
+  <div class="modal-bx" style="max-width:460px">
+    <h3 style="color:#1a3322" id="rp-titulo">Passagens</h3>
+    <div id="rp-corpo"></div>
+    <div class="modal-acoes">
+      <button class="btn-ok-oc" style="background:#1a3322" onclick="imprimirRelPassagem()">🖨 Imprimir</button>
+      <button class="btn-cancel-oc" onclick="fecharRelPassagem()">Fechar</button>
     </div>
   </div>
 </div>
@@ -351,7 +372,7 @@
 </div>
 
 <script>
-const VERSAO = '1.19';
+const VERSAO = '1.20';
 let PIN_ATUAL = sessionStorage.getItem('gw_pin') || '';
 const PIN_VALIDO = p => p === '2248' || p === '1176';
 // Sessões de "computador confiável" antigas não guardam o PIN (só o modo) —
@@ -894,6 +915,54 @@ function mudarQuinzenaPass(delta) {
   abrirMapaPassagens();
 }
 
+// Relatório de passagens de UM funcionário (pedido do João, 2026-11-13):
+// clicar no nome no Mapa de passagens abre o detalhamento — período pago,
+// valor por dia, cada dia descontado e o líquido. Usa os mesmos números já
+// calculados no mapa (guardados em _relPass ao montar a tabela).
+const _relPass = new Map();
+const DOW_EXT = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+function abrirRelPassagem(id) {
+  const r = _relPass.get(id);
+  if (!r) return;
+  const fmtR = v => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const dmy = d => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+  const rot = { falta: 'Falta', meia: 'Só entrada (meia)', oc: 'Falta registrada' };
+  const nFaltas = r.itens.filter(i => i.tipo !== 'meia').length;
+  const nMeias = r.itens.length - nFaltas;
+  const somaItens = r.itens.reduce((a, i) => a + i.val, 0);
+  document.getElementById('rp-titulo').textContent = `Passagens — ${r.nome}`;
+  document.getElementById('rp-corpo').innerHTML = `
+    <div class="rp-cab">
+      ${esc(r.cargo)}<br>
+      <b>Valor por dia:</b> ${fmtR(r.vd)}${r.seis ? ' (6% do salário ÷ dias úteis do mês)' : ''}<br>
+      <b>Período pago (adiantado):</b> ${dmy(r.pagoIni)} a ${dmy(r.pagoFim)} — ${r.diasUteisProx} dias úteis<br>
+      <b>Faltas descontadas de:</b> ${dmy(r.faltasIni)} a ${dmy(r.faltasFim)}
+    </div>
+    ${r.itens.length ? `
+    <table class="rp-tab">
+      <thead><tr><th>Dia</th><th>Motivo</th><th style="text-align:right">Desconto</th></tr></thead>
+      <tbody>${r.itens.map(i => `<tr><td>${dmy(i.d)} <small style="color:#888">${DOW_EXT[i.d.getDay()]}</small></td><td>${rot[i.tipo]}</td><td class="v" style="color:#d32f2f">-${fmtR(i.val)}</td></tr>`).join('')}</tbody>
+    </table>` : '<p class="rp-cab" style="color:#2e7d32"><b>Nenhum desconto no período.</b></p>'}
+    <div class="rp-res">
+      <div><span>Total (${r.diasUteisProx} dias × ${fmtR(r.vd)})</span><span>${fmtR(r.total)}</span></div>
+      <div><span>Descontos (${nFaltas} falta${nFaltas !== 1 ? 's' : ''}${nMeias ? `, ${nMeias} meia${nMeias !== 1 ? 's' : ''}` : ''})</span><span style="color:#d32f2f">${r.desc > 0 ? '-' + fmtR(r.desc) : '—'}</span></div>
+      ${somaItens > r.desc + 0.005 ? `<div style="font-size:0.75rem;color:#888"><span>Desconto limitado ao total da semana (excedente de ${fmtR(somaItens - r.desc)} não é cobrado)</span></div>` : ''}
+      <div class="liq"><span>A receber</span><span>${fmtR(r.total - r.desc)}</span></div>
+    </div>`;
+  document.getElementById('modal-rel-pass').style.display = 'flex';
+}
+function fecharRelPassagem() { document.getElementById('modal-rel-pass').style.display = 'none'; }
+function imprimirRelPassagem() {
+  const w = window.open('', '_blank');
+  if (!w) return;
+  w.document.write(`<html><head><meta charset="utf-8"><title>${esc(document.getElementById('rp-titulo').textContent)}</title>
+    <style>body{font-family:Arial,sans-serif;padding:20px;max-width:520px}h3{color:#1a3322}${[...document.querySelectorAll('style')].map(x => x.textContent).join('')}</style></head>
+    <body><h3>${esc(document.getElementById('rp-titulo').textContent)}</h3>${document.getElementById('rp-corpo').innerHTML}</body></html>`);
+  w.document.close();
+  w.focus();
+  w.print();
+}
+
 async function abrirMapaPassagens() {
   if (!passQIni) passQIni = quinzenaDe(new Date());
   document.getElementById('tela-pass').style.display = 'flex';
@@ -904,6 +973,7 @@ async function abrirMapaPassagens() {
   document.getElementById('pass-titulo').textContent = `Mapa de passagens — ${dm(inicio)} a ${dm(ultimo)}/${ultimo.getFullYear()}`;
   const corpo = document.getElementById('pass-corpo');
   corpo.innerHTML = 'Carregando...';
+  _relPass.clear();
   try {
     // Folga de uma semana pra cada lado, pra pegar o sábado de semana cortada pela virada
     const buscaIni = new Date(inicio); buscaIni.setDate(buscaIni.getDate() - 7);
@@ -980,6 +1050,11 @@ async function abrirMapaPassagens() {
       const total = diasUteisProx * vd;
       const desc = Math.min(total, Math.min(diasUteisProx, nFaltas) * vd + nMeias * vd / 2);
       somaTotal += total; somaDesc += desc;
+      _relPass.set(f.id, {
+        nome: f.nome || '', cargo: f.cargo || '', vd, seis: !!f.passagem6pct, total, desc, diasUteisProx,
+        pagoIni: new Date(fim), pagoFim: new Date(proxFim), faltasIni: new Date(inicio), faltasFim: new Date(ultimo),
+        itens: dias.filter(d => falta.has(isoDe(d))).map(d => ({ d: new Date(d), tipo: falta.get(isoDe(d)), val: falta.get(isoDe(d)) === 'meia' ? vd / 2 : vd }))
+      });
 
       const cels = dias.map(d => {
         const iso = isoDe(d);
@@ -993,7 +1068,7 @@ async function abrirMapaPassagens() {
         }
         return ehUtil(d) ? '<td><span class="mp-ok">✓</span></td>' : '<td></td>';
       }).join('');
-      return `<tr><td class="td-nome">${esc(f.nome || '')}<br><small style="font-weight:400;color:#888">${fmtR(vd)}/dia${f.passagem6pct ? ' (6%)' : ''}</small></td>`
+      return `<tr><td class="td-nome pass-clicavel" onclick="abrirRelPassagem('${f.id}')">${esc(f.nome || '')}<br><small style="font-weight:400;color:#888">${fmtR(vd)}/dia${f.passagem6pct ? ' (6%)' : ''}</small></td>`
         + `<td class="pv pv-tot">${fmtR(total)}</td><td class="pv pv-desc">${desc > 0 ? '-' + fmtR(desc) : '—'}</td><td class="pv pv-liq">${fmtR(total - desc)}</td>${cels}</tr>`;
     }).join('');
 
