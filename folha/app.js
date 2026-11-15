@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.70";
+const VERSAO = "5.71";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -378,16 +378,46 @@ function labelDiaria(d) {
   return 'Diária';
 }
 
+
+// Período coberto por uma folha paga: o campo periodoFim (AAAA-MM-DD,
+// gravado no fechamento desde 2026-11-15) ou, nas folhas antigas, o fim da
+// quinzena ANTERIOR à do pagamento. Achado real, 2026-11-15: fechando a
+// folha no próprio dia 15, o corte "pela data de hoje" tratava 01–15/11
+// como quinzena em andamento e deixava as diárias de fora (Welington e
+// Eduardo com R$ 0) — e o sincronismo, com corte pela data do pagamento,
+// relançaria esses dias depois do fechamento (pagamento em dobro).
+function fimPeriodoFolhaPaga(p) {
+  if (p.periodoFim && /^\d{4}-\d{2}-\d{2}$/.test(p.periodoFim)) {
+    const [a, m, d] = p.periodoFim.split('-').map(Number);
+    return new Date(a, m - 1, d);
+  }
+  const dt = p.pagaEm || p.criadoEm;
+  if (!dt || !dt.toDate) return null;
+  const x = dt.toDate();
+  return x.getDate() <= 15 ? new Date(x.getFullYear(), x.getMonth(), 0) : new Date(x.getFullYear(), x.getMonth(), 15);
+}
+// Primeiro dia que NÃO entra na folha aberta: o dia seguinte à quinzena que
+// vem logo depois do último período pago — nunca antes do início da
+// quinzena de hoje (folha atrasada continua pegando tudo que já passou).
+function inicioForaDaFolhaAberta(pagas) {
+  const h = new Date();
+  const porHoje = new Date(h.getFullYear(), h.getMonth(), h.getDate() <= 15 ? 1 : 16);
+  let ult = null;
+  (pagas || []).forEach(p => { const f = fimPeriodoFolhaPaga(p); if (f && (!ult || f > ult)) ult = f; });
+  if (!ult) return porHoje;
+  const ini = new Date(ult.getFullYear(), ult.getMonth(), ult.getDate() + 1);
+  const fimFolha = ini.getDate() === 1 ? new Date(ini.getFullYear(), ini.getMonth(), 15) : new Date(ini.getFullYear(), ini.getMonth() + 1, 0);
+  const porPago = new Date(fimFolha.getFullYear(), fimFolha.getMonth(), fimFolha.getDate() + 1);
+  return porPago > porHoje ? porPago : porHoje;
+}
+
 function sincronizarDiaristas() {
   entradas = entradas.filter(e => e.firestoreLocalId);
   // 'diarias' não tem período fixo: pode já ter dia(s) da quinzena ATUAL
   // (em andamento, ainda não decidida pra nenhum fechamento) sincronizados
   // — exclui esses da tela de edição da folha, mesmo filtro aplicado na
   // prévia de recibo (verRelatorio). Achado real, 2026-10-02.
-  const quinzenaAtualInicioSync = (() => {
-    const h = new Date();
-    return new Date(h.getFullYear(), h.getMonth(), h.getDate() <= 15 ? 1 : 16);
-  })();
+  const quinzenaAtualInicioSync = inicioForaDaFolhaAberta(_folhasPagasCache);
   _diariasCache.forEach(doc => {
     (doc.dias || []).forEach(d => {
       const dataDia = resolverDataDiaMes(d.localId, quinzenaAtualInicioSync);
@@ -419,6 +449,8 @@ function _fmtDiaMes(d) {
 
 function preencherDiasZerados(doc, quinzenaAtualInicio) {
   const fim = new Date(quinzenaAtualInicio); fim.setDate(fim.getDate() - 1);
+  const hoje0 = new Date(); hoje0.setHours(0, 0, 0, 0);
+  if (fim > hoje0) fim.setTime(hoje0.getTime()); // dia futuro não vira linha "Sem ponto"
   let ini = new Date(fim.getFullYear(), fim.getMonth(), fim.getDate() > 15 ? 16 : 1);
   const existentes = new Set();
   (doc.dias || []).forEach(d => {
@@ -690,13 +722,11 @@ async function sincronizarDiariasAjudantesPorPonto() {
     // depois são do ciclo novo. Corrigido pelo Claude a pedido do João,
     // 2026-10-01 (mesma lógica espelhada na Cloud Function agendada).
     const pagasSnap = await db.collection('folhas').where('status', '==', 'paga').get();
-    let ultimoPagamento = null;
+    // Corte = fim do último período pago (fimPeriodoFolhaPaga, 2026-11-15).
+    let ultimoPeriodoPago = null;
     pagasSnap.docs.forEach(doc => {
-      const p = doc.data();
-      const dt = p.pagaEm || p.criadoEm;
-      if (!dt) return;
-      const dtPagamento = dt.toDate();
-      if (!ultimoPagamento || dtPagamento > ultimoPagamento) ultimoPagamento = dtPagamento;
+      const f = fimPeriodoFolhaPaga(doc.data());
+      if (f && (!ultimoPeriodoPago || f > ultimoPeriodoPago)) ultimoPeriodoPago = f;
     });
     // Corte = último dia da quinzena ANTERIOR à do pagamento (pedido do João,
     // 2026-11-04): o fechamento só varre dias antes do início da quinzena em
@@ -704,11 +734,7 @@ async function sincronizarDiariasAjudantesPorPonto() {
     // próprio dia do pagamento — a folha paga em 16/10 fez o 16/10 (dia
     // trabalhado, ainda não sincronizado na hora) ser tratado como "já pago"
     // e nunca entrar em folha nenhuma (Eduardo e Welington).
-    const ultimoPagamentoSemHora = ultimoPagamento
-      ? (ultimoPagamento.getDate() <= 15
-          ? new Date(ultimoPagamento.getFullYear(), ultimoPagamento.getMonth(), 0)
-          : new Date(ultimoPagamento.getFullYear(), ultimoPagamento.getMonth(), 15))
-      : null;
+    const ultimoPagamentoSemHora = ultimoPeriodoPago;
     function jaPago(date) {
       return !!ultimoPagamentoSemHora && date <= ultimoPagamentoSemHora;
     }
@@ -1097,8 +1123,7 @@ function pedirHorasComValor(key) {
 }
 
 function inicioQuinzenaAtualFolha() {
-  const h = new Date();
-  return new Date(h.getFullYear(), h.getMonth(), h.getDate() <= 15 ? 1 : 16);
+  return inicioForaDaFolhaAberta(_folhasPagasCache);
 }
 
 // Dia da quinzena em andamento: fica gravado, mas só entra na próxima folha.
@@ -1237,6 +1262,12 @@ let _todosFunc = [];
 let _folhasPagasCache = [];
 db.collection('folhas').where('status', '==', 'paga').onSnapshot(snap => {
   _folhasPagasCache = snap.docs.map(d => d.data());
+  // o corte do período das diárias depende das folhas pagas
+  if (folhaCarregada && _diariasCarregado) {
+    sincronizarDiaristas();
+    renderizarFolha();
+    atualizarHeader();
+  }
 });
 
 function renderFuncionarios() {
@@ -2865,8 +2896,7 @@ async function verRelatorio() {
     // um corte estável enquanto a folha atrasada não for fechada. Achado
     // real, 2026-10-02 (mesmo filtro aplicado no fechamento real, em
     // caixa/relatorio.html).
-    const hojeRelatorio = new Date();
-    const quinzenaAtualInicio = new Date(hojeRelatorio.getFullYear(), hojeRelatorio.getMonth(), hojeRelatorio.getDate() <= 15 ? 1 : 16);
+    const quinzenaAtualInicio = inicioForaDaFolhaAberta(_folhasPagasCache);
     _diariasCache.forEach(doc => {
       const func = { id: doc.funcionarioId || '', nome: doc.funcionarioNome, cargo: doc.cargo || '' };
       const key  = doc.funcionarioId || doc.funcionarioNome;

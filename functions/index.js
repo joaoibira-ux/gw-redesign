@@ -4465,6 +4465,20 @@ function ehAjudanteDiaria(func) {
   return ehAjudante(func && func.cargo) && porDiariaEfetivo(func);
 }
 
+// Fim do período coberto por uma folha paga (ver fimPeriodoFolhaPaga em
+// folha/app.js): campo periodoFim gravado no fechamento desde 2026-11-15,
+// ou, nas antigas, o fim da quinzena anterior à do pagamento.
+function fimPeriodoFolhaPagaFn(p) {
+  if (p.periodoFim && /^\d{4}-\d{2}-\d{2}$/.test(p.periodoFim)) {
+    const [a, m, d] = p.periodoFim.split("-").map(Number);
+    return new Date(a, m - 1, d);
+  }
+  const dt = p.pagaEm || p.criadoEm;
+  if (!dt) return null;
+  const x = dt.toDate();
+  return x.getDate() <= 15 ? new Date(x.getFullYear(), x.getMonth(), 0) : new Date(x.getFullYear(), x.getMonth(), 15);
+}
+
 async function sincronizarDiariasAjudantesPorPonto(periodoForcado) {
   process.env.TZ = "America/Sao_Paulo";
   const hoje = new Date();
@@ -4485,13 +4499,10 @@ async function sincronizarDiariasAjudantesPorPonto(periodoForcado) {
   // do corte são do ciclo novo, sincroniza normalmente. Pedido do João,
   // 2026-10-01.
   const pagasSnap = await db.collection("folhas").where("status", "==", "paga").get();
-  let ultimoPagamento = null;
+  let ultimoPeriodoPago = null;
   pagasSnap.docs.forEach(doc => {
-    const p = doc.data();
-    const dt = p.pagaEm || p.criadoEm;
-    if (!dt) return;
-    const dtPagamento = dt.toDate();
-    if (!ultimoPagamento || dtPagamento > ultimoPagamento) ultimoPagamento = dtPagamento;
+    const f = fimPeriodoFolhaPagaFn(doc.data());
+    if (f && (!ultimoPeriodoPago || f > ultimoPeriodoPago)) ultimoPeriodoPago = f;
   });
   // Corte = último dia da quinzena ANTERIOR à do pagamento (pedido do João,
   // 2026-11-04): o fechamento só varre dias antes do início da quinzena em
@@ -4499,11 +4510,7 @@ async function sincronizarDiariasAjudantesPorPonto(periodoForcado) {
   // próprio dia do pagamento — a folha paga em 16/10 fez o 16/10 (dia
   // trabalhado, ainda não sincronizado na hora) ser tratado como "já pago"
   // e nunca entrar em folha nenhuma (Eduardo e Welington).
-  const ultimoPagamentoSemHora = ultimoPagamento
-    ? (ultimoPagamento.getDate() <= 15
-        ? new Date(ultimoPagamento.getFullYear(), ultimoPagamento.getMonth(), 0)
-        : new Date(ultimoPagamento.getFullYear(), ultimoPagamento.getMonth(), 15))
-    : null;
+  const ultimoPagamentoSemHora = ultimoPeriodoPago; // fim do último período pago (2026-11-15)
   function jaPago(date) {
     return !!ultimoPagamentoSemHora && date <= ultimoPagamentoSemHora;
   }
@@ -6572,15 +6579,12 @@ async function reavaliarSemanaDiarista(funcId, segundaISO, simular = false) {
     db.collection("ocorrencias").where("funcionarioId", "==", funcId).get(),
     carregarFeriados()
   ]);
-  let ultimoPag = null;
+  // Corte = fim do último período pago (ver fimPeriodoFolhaPagaFn).
+  let corte = null;
   pagasSnap.docs.forEach(d => {
-    const dt = d.data().pagaEm || d.data().criadoEm;
-    if (dt && (!ultimoPag || dt.toDate() > ultimoPag)) ultimoPag = dt.toDate();
+    const f = fimPeriodoFolhaPagaFn(d.data());
+    if (f && (!corte || f > corte)) corte = f;
   });
-  // Corte = fim da quinzena anterior à do pagamento (ver sincronizarDiariasAjudantesPorPonto).
-  const corte = ultimoPag
-    ? (ultimoPag.getDate() <= 15 ? new Date(ultimoPag.getFullYear(), ultimoPag.getMonth(), 0) : new Date(ultimoPag.getFullYear(), ultimoPag.getMonth(), 15))
-    : null;
   const jaPago = d => !!corte && d <= corte;
 
   const ponto = new Map(); // iso -> { e: Date (mais cedo), s: Date (mais tarde) }

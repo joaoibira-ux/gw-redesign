@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.60";
+  const VERSAO = "2.61";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -2593,9 +2593,47 @@
   // no dia seguinte, assim que "hoje" avançava e o dia virava "passado" —
   // mesmo a quinzena 16-30 anterior ainda não tendo sido fechada. Achado
   // real, 2026-10-02.
+
+  // Período coberto por uma folha paga: o campo periodoFim (AAAA-MM-DD,
+  // gravado no fechamento desde 2026-11-15) ou, nas folhas antigas, o fim da
+  // quinzena ANTERIOR à do pagamento. Achado real, 2026-11-15: fechando a
+  // folha no próprio dia 15, o corte "pela data de hoje" tratava 01–15/11
+  // como quinzena em andamento e deixava as diárias de fora (Welington e
+  // Eduardo com R$ 0) — e o sincronismo, com corte pela data do pagamento,
+  // relançaria esses dias depois do fechamento (pagamento em dobro).
+  function fimPeriodoFolhaPaga(p) {
+    if (p.periodoFim && /^\d{4}-\d{2}-\d{2}$/.test(p.periodoFim)) {
+      const [a, m, d] = p.periodoFim.split('-').map(Number);
+      return new Date(a, m - 1, d);
+    }
+    const dt = p.pagaEm || p.criadoEm;
+    if (!dt || !dt.toDate) return null;
+    const x = dt.toDate();
+    return x.getDate() <= 15 ? new Date(x.getFullYear(), x.getMonth(), 0) : new Date(x.getFullYear(), x.getMonth(), 15);
+  }
+  // Primeiro dia que NÃO entra na folha aberta: o dia seguinte à quinzena que
+  // vem logo depois do último período pago — nunca antes do início da
+  // quinzena de hoje (folha atrasada continua pegando tudo que já passou).
+  function inicioForaDaFolhaAberta(pagas) {
+    const h = new Date();
+    const porHoje = new Date(h.getFullYear(), h.getMonth(), h.getDate() <= 15 ? 1 : 16);
+    let ult = null;
+    (pagas || []).forEach(p => { const f = fimPeriodoFolhaPaga(p); if (f && (!ult || f > ult)) ult = f; });
+    if (!ult) return porHoje;
+    const ini = new Date(ult.getFullYear(), ult.getMonth(), ult.getDate() + 1);
+    const fimFolha = ini.getDate() === 1 ? new Date(ini.getFullYear(), ini.getMonth(), 15) : new Date(ini.getFullYear(), ini.getMonth() + 1, 0);
+    const porPago = new Date(fimFolha.getFullYear(), fimFolha.getMonth(), fimFolha.getDate() + 1);
+    return porPago > porHoje ? porPago : porHoje;
+  }
+  // Corte das diárias da folha aberta. Nome próprio: inicioQuinzenaAtual
+  // tem duas declarações neste arquivo e também serve às Refeições — essa
+  // continua sendo a quinzena de hoje.
   function inicioQuinzenaAtual() {
     const hoje = new Date();
     return new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() <= 15 ? 1 : 16);
+  }
+  function corteFolhaAberta() {
+    return inicioForaDaFolhaAberta(_folhasPagasSnap ? _folhasPagasSnap.docs.map(d => d.data()) : []);
   }
 
   // Dias de diária que já são de uma quinzena ANTERIOR à atual — os únicos
@@ -2603,7 +2641,7 @@
   // Usado tanto na prévia (pra não mostrar um total que o fechamento de
   // verdade não vai bater) quanto no fechamento real.
   function diasPassadoDeDiaria(dias) {
-    const corte = inicioQuinzenaAtual();
+    const corte = corteFolhaAberta();
     return (dias || []).filter(dia => {
       const data = resolverDataDiaMes(dia.localId, corte);
       return !(data && data >= corte);
@@ -2644,7 +2682,10 @@
       // (ex: 01/10) reaparecia sozinho no dia seguinte, assim que "hoje"
       // avançava e ele virava "passado" (achado real, 2026-10-01 e
       // 2026-10-02, mesma classe do buraco de 16-30/09).
-      const corteQuinzena = inicioQuinzenaAtual();
+      // Corte pelas folhas pagas (busca fresca, não o listener).
+      const pagasFresco = await db.collection('folhas').where('status', '==', 'paga').get();
+      const corteQuinzena = inicioForaDaFolhaAberta(pagasFresco.docs.map(d => d.data()));
+      const periodoFimFolha = new Date(corteQuinzena.getTime() - 86400000);
       const diariasPassadoPorDoc = new Map(); // docId -> dias (array)
       const diariasFuturoPorDoc  = new Map(); // docId -> dias (array)
       diariasSnap.docs.forEach(d => {
@@ -2956,7 +2997,10 @@
 
       batch.update(db.collection('folhas').doc(fdoc.id), {
         status: 'paga',
-        pagaEm: firebase.firestore.FieldValue.serverTimestamp()
+        pagaEm: firebase.firestore.FieldValue.serverTimestamp(),
+        // Último dia coberto por esta folha — corte do "já pago" na Folha,
+        // no Caixa e no sincronismo de diárias (2026-11-15).
+        periodoFim: isoData(periodoFimFolha)
       });
 
       // Destrava a edição da Folha automaticamente ao fechar de verdade —
