@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.61";
+  const VERSAO = "2.62";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1744,7 +1744,7 @@
     const { inicio: qDescIni, fim: qDescFim } = periodoFaltasPassagens(_refPassagens, _refPassagensDe);
     const diasUteisProxima = contarDiasUteis(proxIni, proxFim);
     const linhas = [];
-    let total = 0, totalDescontoFaltas = 0, totalDescontoIncompletos = 0, totalDias = 0, totalIncompletos = 0;
+    let total = 0, totalDescontoFaltas = 0, totalDescontoIncompletos = 0, totalDescontoAplicado = 0, totalDias = 0, totalIncompletos = 0;
     snap.docs.forEach(d => {
       const f = d.data();
       if (f.ativo === false) return;
@@ -1757,11 +1757,14 @@
       // Meia passagem por dia com entrada sem saída (pedido do João,
       // 2026-10-15) — desconto A MAIS, somado ao de falta normal.
       const descontoIncompletos = diasIncompletos * (valorDiario / 2);
-      const descontoTotal = descontoFaltas + descontoIncompletos;
+      // Desconto nunca passa do bruto — líquido mínimo R$ 0, igual ao
+      // fechamento (Marcos Cauann aparecia negativo, 2026-11-15).
+      const descontoTotal = Math.min(bruto, descontoFaltas + descontoIncompletos);
       const liquido = bruto - descontoTotal;
       total += bruto;
       totalDescontoFaltas += descontoFaltas;
       totalDescontoIncompletos += descontoIncompletos;
+      totalDescontoAplicado += descontoTotal;
       totalDias += faltasLiquidas;
       totalIncompletos += diasIncompletos;
       linhas.push(`
@@ -1775,7 +1778,7 @@
         </div>`);
     });
     if (!linhas.length) { el.innerHTML = ''; renderPrevisaoQuinzena(); return; }
-    const totalDesconto = totalDescontoFaltas + totalDescontoIncompletos;
+    const totalDesconto = totalDescontoAplicado;
     const totalLiq = total - totalDesconto;
     el.innerHTML = `
       <div class="previsao-card">
