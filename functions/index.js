@@ -117,6 +117,51 @@ Se não conseguir identificar a tabela, retorne {"descricaoBoletim":"","itens":[
 
 const TOOLS_GW = [
   {
+    name: "conferir_apontamento_producao",
+    description: "Confere (SEM gravar nada) o apontamento de produção na folha a partir de uma ficha 'Registro de Serviço Realizado': acha o funcionário, cada apartamento (local) e cada serviço no mapa, e diz pra cada item se pode ser apontado (pendente, valor) ou o motivo de não poder (já na folha, já pago, reservado pra outro, bloqueado no catálogo, funcionário faltou no dia pelo ponto, funcionário não é de produção, local/serviço não encontrado). Avisa também quando o ponto do dia só tem entrada (aí a saída é gravada automaticamente 4h depois ao apontar). Use SEMPRE antes de apontar_producao_folha e mostre o resultado ao usuário.",
+    input_schema: { type: "object", properties: {
+        registros: {
+          type: "array",
+          description: "Um item por bloco da ficha (funcionário + data + bloco). Repasse os dados extraídos da foto, corrigidos pelo usuário se ele pediu.",
+          items: {
+            type: "object",
+            properties: {
+              funcionarioNome: { type: "string", description: "Nome do funcionário como escrito na ficha (o sistema acha o cadastro por nome tolerante)." },
+              data:            { type: "string", description: "Data do serviço, DD/MM/AAAA." },
+              condominio:      { type: "string", description: "K1 (KEL1/KL1) ou K2 (KEL2/KL2)." },
+              bloco:           { type: "string", description: "Letra do bloco (ex: G, D)." },
+              apartamentos:    { type: "array", items: { type: "string" }, description: "Números dos apartamentos (ex: [\"06\"], [\"03\",\"103\"])." },
+              servicos:        { type: "array", items: { type: "string" }, description: "Categorias: tratamento, gesso, massa, textura_teto_sala, textura_teto_wc, textura_parede_wc, pintura_teto, demao1, demao2." }
+            },
+            required: ["funcionarioNome", "data", "condominio", "bloco", "apartamentos", "servicos"]
+          }
+        }
+      }, required: ["registros"] }
+  },
+  {
+    name: "apontar_producao_folha",
+    description: "Aponta na folha de produção (mapa: status 'Na folha', funcionário e data do registro) os itens de uma ficha 'Registro de Serviço Realizado' — mesmos dados já conferidos com conferir_apontamento_producao e confirmados pelo usuário. Só aponta os itens liberados; os com problema são pulados e listados no resultado. Grava a saída automática (entrada + 4h) quando o ponto do dia só tem entrada. ALTERA O BANCO DE DADOS: exige senha de autorização, peça ao usuário antes de chamar.",
+    input_schema: { type: "object", properties: {
+        registros: {
+          type: "array",
+          description: "Um item por bloco da ficha (funcionário + data + bloco). Repasse os dados extraídos da foto, corrigidos pelo usuário se ele pediu.",
+          items: {
+            type: "object",
+            properties: {
+              funcionarioNome: { type: "string", description: "Nome do funcionário como escrito na ficha (o sistema acha o cadastro por nome tolerante)." },
+              data:            { type: "string", description: "Data do serviço, DD/MM/AAAA." },
+              condominio:      { type: "string", description: "K1 (KEL1/KL1) ou K2 (KEL2/KL2)." },
+              bloco:           { type: "string", description: "Letra do bloco (ex: G, D)." },
+              apartamentos:    { type: "array", items: { type: "string" }, description: "Números dos apartamentos (ex: [\"06\"], [\"03\",\"103\"])." },
+              servicos:        { type: "array", items: { type: "string" }, description: "Categorias: tratamento, gesso, massa, textura_teto_sala, textura_teto_wc, textura_parede_wc, pintura_teto, demao1, demao2." }
+            },
+            required: ["funcionarioNome", "data", "condominio", "bloco", "apartamentos", "servicos"]
+          }
+        },
+        senha: { type: "string", description: "Senha de autorização para alterar o banco de dados. Deve ser pedida ao usuário antes de chamar esta ferramenta." }
+      }, required: ["registros", "senha"] }
+  },
+  {
     name: "listar_funcionarios",
     description: "Lista todos os funcionários cadastrados no sistema GW",
     input_schema: { type: "object", properties: {} }
@@ -2116,6 +2161,147 @@ async function gerarImagemOperacaoBBS(dados) {
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
+
+// ── Apontamento de produção a partir da ficha "Registro de Serviço
+// Realizado" mandada pelo WhatsApp (pedido do João, 2026-11-20). Mesmas
+// regras do clique no mapa da Folha: só serviço pendente, respeita reserva
+// do Gesso e bloqueio do catálogo, produção só pra pintor/raspador ou
+// "Remunerar por produção" (Tratamento qualquer um), e a conferência do
+// ponto do dia (sem entrada ou com falta = faltou; só entrada = saída
+// automática 4h depois).
+function categoriaServicoProducao(nome) {
+  const n = (nome || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (n.includes("tratamento")) return "tratamento";
+  if (/dem[a]?o\s*0?1|\bdm\s*0?1/.test(n)) return "demao1";
+  if (/dem[a]?o\s*0?2|\bdm\s*0?2/.test(n)) return "demao2";
+  if (n.includes("pasta")) return "gesso";
+  if (n.includes("emassamento")) return "massa";
+  if (/pint\w*\s+(do\s+)?teto/.test(n)) return "pintura_teto";
+  if (n.includes("texturado em teto") && n.includes("wc")) return "textura_teto_wc";
+  if (n.includes("texturado em teto")) return "textura_teto_sala";
+  if (n.includes("textura") && (n.includes("parede") || n.includes("predes") || n.includes("cozinha"))) return "textura_parede_wc";
+  return null;
+}
+
+function _tokensNome(s) {
+  return (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/[^a-z]+/).filter(t => t.length > 1);
+}
+
+async function processarApontamentoProducao(registros, aplicar) {
+  process.env.TZ = "America/Sao_Paulo";
+  const [funcSnap, locaisSnap, servSnap, cfgSnap] = await Promise.all([
+    db.collection("funcionarios").get(),
+    db.collection("locais").get(),
+    db.collection("servicos").get(),
+    db.collection("configuracoes").doc("geral").get()
+  ]);
+  if (aplicar && cfgSnap.exists && cfgSnap.data().folhaBloqueada === true) {
+    return { sucesso: false, erro: "folha_bloqueada", mensagem: "A Folha está travada pra revisão — nada foi apontado. Destrave a Folha e tente de novo." };
+  }
+  const funcs = funcSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(f => f.ativo !== false);
+  const catalogo = new Map(servSnap.docs.map(d => [d.id, d.data()]));
+  const localPorIdent = new Map(locaisSnap.docs.map(d => [String(d.data().identificacao || "").toUpperCase(), d]));
+
+  const itens = [];
+  const saidasACriar = new Map(); // funcId|iso -> { func, entrada }
+  const alteracoes = new Map();   // localDocId -> [{ idx, servico, func, dataRegistro }]
+
+  for (const reg of (registros || [])) {
+    const alvo = _tokensNome(reg.funcionarioNome);
+    const candidatos = funcs.filter(f => {
+      const t = _tokensNome(f.nome);
+      const [menor, maior] = alvo.length <= t.length ? [alvo, t] : [t, alvo];
+      return menor.length && menor.every(x => maior.includes(x));
+    });
+    const base = { funcionario: reg.funcionarioNome, data: reg.data };
+    if (candidatos.length !== 1) {
+      itens.push({ ...base, ok: false, motivo: candidatos.length ? `nome ambíguo: ${candidatos.map(f => f.nome).join(" / ")}` : "funcionário não encontrado no cadastro" });
+      continue;
+    }
+    const func = candidatos[0];
+    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(String(reg.data || "").trim());
+    if (!m) { itens.push({ ...base, funcionario: func.nome, ok: false, motivo: "data inválida (use DD/MM/AAAA)" }); continue; }
+    const ano = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+    const dia = new Date(ano, Number(m[2]) - 1, Number(m[1]));
+    const dataBR = `${String(dia.getDate()).padStart(2, "0")}/${String(dia.getMonth() + 1).padStart(2, "0")}/${dia.getFullYear()}`;
+    const iso = `${dia.getFullYear()}-${String(dia.getMonth() + 1).padStart(2, "0")}-${String(dia.getDate()).padStart(2, "0")}`;
+
+    // Ponto do dia
+    const [pts, ocs] = await Promise.all([
+      db.collection("pontos").where("funcionarioId", "==", func.id).get(),
+      db.collection("ocorrencias").where("funcionarioId", "==", func.id).get()
+    ]);
+    const doDia = pts.docs.map(d => d.data()).filter(p => p.timestamp && p.timestamp.toDate().toDateString() === dia.toDateString());
+    const entradas = doDia.filter(p => p.tipo === "entrada").map(p => p.timestamp.toDate()).sort((a, b) => a - b);
+    const temSaida = doDia.some(p => p.tipo === "saida");
+    const falta = ocs.docs.map(d => d.data()).some(o => o.dataISO === iso && (o.tipo === "falta" || o.tipo === "suspensao"));
+    let avisoPonto = "";
+    let faltou = false;
+    if (falta || !entradas.length) { faltou = true; avisoPonto = falta ? "falta/suspensão registrada no dia" : "sem entrada no ponto no dia (faltou)"; }
+    else if (!temSaida) {
+      const saida = new Date(entradas[0].getTime() + 4 * 3600000);
+      saidasACriar.set(`${func.id}|${iso}`, { func, saida });
+      avisoPonto = `só entrada no ponto — saída automática às ${saida.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} (entrada + 4h)`;
+    }
+
+    const cond = String(reg.condominio || "").toUpperCase().replace(/^KE?L/, "K");
+    const bloco = String(reg.bloco || "").toUpperCase().trim();
+    const producao = ["PINTOR", "RASPADOR"].includes(String(func.cargo || "").toUpperCase()) || func.porProducao === true;
+    for (const apRaw of (reg.apartamentos || [])) {
+      const ap = String(apRaw).replace(/\D/g, "");
+      const ident = `${cond}${bloco}${ap.length === 1 ? "0" + ap : ap}`;
+      const localDoc = localPorIdent.get(ident);
+      for (const cat of (reg.servicos || [])) {
+        const it = { funcionario: func.nome, data: dataBR, local: ident, servico: cat };
+        if (!localDoc) { itens.push({ ...it, ok: false, motivo: "apartamento não existe no mapa" }); continue; }
+        if (faltou) { itens.push({ ...it, ok: false, motivo: avisoPonto }); continue; }
+        const servs = localDoc.data().servicos || [];
+        const idx = servs.findIndex(sv => categoriaServicoProducao((catalogo.get(sv.id) || {}).nome || sv.nome) === cat);
+        if (idx < 0) { itens.push({ ...it, ok: false, motivo: "serviço não encontrado nesse apartamento" }); continue; }
+        const sv = servs[idx];
+        const cat_ = catalogo.get(sv.id) || {};
+        it.servico = cat_.nomeMapa || cat_.nome || sv.nome;
+        if (sv.status === "em_pagamento") { itens.push({ ...it, ok: false, motivo: `já está na folha${sv.funcionario ? " (" + sv.funcionario.nome + ")" : ""}` }); continue; }
+        if (sv.status === "concluido") { itens.push({ ...it, ok: false, motivo: "já foi pago" }); continue; }
+        if (sv.reservadoPara && sv.reservadoPara.id !== func.id) { itens.push({ ...it, ok: false, motivo: `reservado para ${sv.reservadoPara.nome}` }); continue; }
+        if (cat_.liberadoFolha === false) { itens.push({ ...it, ok: false, motivo: "serviço bloqueado pra apontamento no catálogo" }); continue; }
+        if (cat !== "tratamento" && !producao) { itens.push({ ...it, ok: false, motivo: "funcionário não é de produção (só Tratamento)" }); continue; }
+        const valor = (cat_.mdo || 0) + (cat === "tratamento" && String(func.cargo || "").toLowerCase().includes("pintor") ? 10 : 0);
+        itens.push({ ...it, ok: true, valor, ...(avisoPonto ? { aviso: avisoPonto } : {}) });
+        if (!alteracoes.has(localDoc.id)) alteracoes.set(localDoc.id, []);
+        alteracoes.get(localDoc.id).push({ idx, func, dataRegistro: dataBR });
+      }
+    }
+  }
+
+  const liberados = itens.filter(i => i.ok);
+  const resumo = { liberados: liberados.length, comProblema: itens.length - liberados.length, valorTotal: liberados.reduce((t, i) => t + i.valor, 0), itens };
+  if (!aplicar) return { sucesso: true, simulacao: true, ...resumo };
+  if (!liberados.length) return { sucesso: false, erro: "nada_liberado", mensagem: "Nenhum item pôde ser apontado.", ...resumo };
+
+  for (const [localId, alts] of alteracoes) {
+    const ref = db.collection("locais").doc(localId);
+    await db.runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      const servs = [...(snap.data().servicos || [])];
+      alts.forEach(({ idx, func, dataRegistro }) => {
+        if (!servs[idx] || servs[idx].status !== "pendente") return; // mudou no meio, não sobrescreve
+        servs[idx] = { ...servs[idx], status: "em_pagamento",
+          funcionario: { id: func.id, nome: func.nome, cargo: func.cargo || "" }, dataRegistro };
+      });
+      tx.update(ref, { servicos: servs });
+    });
+  }
+  for (const { func, saida } of saidasACriar.values()) {
+    await db.collection("pontos").add({
+      funcionarioId: func.id, funcionarioNome: func.nome || "", cargo: func.cargo || "",
+      tipo: "saida", timestamp: admin.firestore.Timestamp.fromDate(saida),
+      saidaAutomaticaProducao: true, localizacao: null
+    });
+  }
+  return { sucesso: true, mensagem: `${liberados.length} serviço(s) apontado(s) na folha.`, ...resumo };
+}
+
 async function executarFerramenta(nome, input, apiKeyValue) {
   if (nome === "listar_funcionarios") {
     const snap = await db.collection("funcionarios").orderBy("nome").get();
@@ -2808,6 +2994,17 @@ async function executarFerramenta(nome, input, apiKeyValue) {
       descricao: atual.descricao,
       valor: atual.valor
     };
+  }
+
+  if (nome === "conferir_apontamento_producao") {
+    return await processarApontamentoProducao(input.registros, false);
+  }
+
+  if (nome === "apontar_producao_folha") {
+    if (input.senha !== SENHA_ALTERACAO_BANCO) {
+      return { sucesso: false, erro: "senha_invalida", mensagem: "Senha incorreta. Peça a senha de autorização ao usuário para alterar o banco de dados." };
+    }
+    return await processarApontamentoProducao(input.registros, true);
   }
 
   if (nome === "registrar_boleto_contas_pagar") {
@@ -3773,12 +3970,53 @@ async function extrairDadosBoletoImagem(imageBase64, mimeType) {
 // → manda pro Claude (visão) extrair os campos. Sempre retorna uma mensagem
 // sintética pronta pra entrar no fluxo normal do assistente — mesmo padrão
 // de processarBoletoPdf, só que pra imagem em vez de PDF com texto.
+// Lê a ficha "Registro de Serviço Realizado" (papel da obra) — devolve
+// null se a foto não for essa ficha.
+async function extrairRegistroServicoImagem(imageBase64, mimeType) {
+  const prompt = `Esta foto pode ser uma ficha em papel "REGISTRO DE SERVIÇO REALIZADO" de uma obra (campos: Nome do funcionário, Data, Setor, BL, APT, Serviço realizado, Observação), com um ou mais blocos preenchidos à mão.
+Se NÃO for essa ficha, responda só: {"tipo":"outro"}
+Se for, responda só um JSON: {"tipo":"registro_servico","registros":[{"funcionarioNome":"...","data":"DD/MM/AAAA","condominio":"K1 ou K2","bloco":"letra","apartamentos":["06"],"servicos":["..."],"textoServico":"texto como escrito","observacao":"..."}]}
+Regras: um item por bloco preenchido. Setor KL1/KEL1 = "K1", KL2/KEL2 = "K2". Ano com 2 dígitos vira 20AA. Apartamentos: junte o campo APT e os números listados na Observação (ex: "Apt: 03, 103, 102 e 104" = ["03","103","102","104"]); ignore número riscado. servicos = categorias, só destas: tratamento, gesso (gesso em pasta / mão de gesso), massa (emassamento / mão de massa), textura_teto_sala, textura_teto_wc, textura_parede_wc, pintura_teto, demao1, demao2. Ex: "Aplicação de 2 mão de gesso e 1 mão de massa" = ["gesso","massa"]; "Emassamento" = ["massa"].`;
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": anthropicApiKey.value(), "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({
+      model: "claude-sonnet-5", max_tokens: 1500,
+      messages: [{ role: "user", content: [
+        { type: "image", source: { type: "base64", media_type: mimeType || "image/jpeg", data: imageBase64 } },
+        { type: "text", text: prompt }
+      ] }]
+    })
+  });
+  if (!resp.ok) throw new Error(`Claude retornou status ${resp.status} ao ler a ficha de serviço`);
+  const data = await resp.json();
+  const texto = (data.content && data.content.find(b => b.type === "text") || {}).text || "";
+  const match = texto.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  const r = JSON.parse(match[0]);
+  return r.tipo === "registro_servico" && Array.isArray(r.registros) && r.registros.length ? r.registros : null;
+}
+
 async function processarBoletoImagem(msg, imgMsg, apiKeyValue) {
   const buffer = await baixarMediaEvolution(msg, apiKeyValue);
   const mimeType = imgMsg.mimetype || "image/jpeg";
   const extensao = mimeType.split("/")[1] || "jpg";
   const nomeArquivo = `documento-${Date.now()}.${extensao}`;
   const boletoUrl = await uploadBoletoStorage(buffer, nomeArquivo, mimeType);
+
+  // Ficha de serviço realizado (2026-11-20) tem prioridade sobre boleto.
+  let registros = null;
+  try {
+    registros = await extrairRegistroServicoImagem(buffer.toString("base64"), mimeType);
+  } catch (e) {
+    logger.error("[processarBoletoImagem] falha ao ler ficha de serviço", { erro: e.message });
+  }
+  if (registros) {
+    return `[REGISTRO DE SERVIÇO RECEBIDO]
+Foto de ficha "Registro de Serviço Realizado" (salva em ${boletoUrl}). Leitura automática da letra à mão (pode ter erro):
+${JSON.stringify(registros, null, 1)}
+Chame conferir_apontamento_producao com esses registros, mostre ao usuário o que foi lido e o resultado (itens liberados com valor; itens com problema e o motivo), deixe ele corrigir, e só depois da confirmação e da senha chame apontar_producao_folha com os registros confirmados. Isto NÃO é boleto — não registre nada no Contas a Pagar.`;
+  }
 
   let dados;
   try {
@@ -3831,6 +4069,7 @@ Para editar ou excluir um lançamento do caixa, use consultar_caixa primeiro par
 Para editar, dar baixa ou excluir um lançamento do Contas a Pagar, use consultar_contas_pagar primeiro para encontrar o id correto — NUNCA invente um id (ex: "1", "2", "3" não são ids válidos, só o id exato que consultar_contas_pagar retornou) — e confirme com o usuário qual lançamento é (descrição e valor atuais) antes de aplicar. Pra "dar baixa"/"marcar como pago"/"quitar", use dar_baixa_conta_pagar. Pra mudar descrição, valor ou data, use editar_conta_pagar. Pra excluir de vez (remove o lançamento, não é reversível), use excluir_conta_pagar e deixe claro pro usuário que é definitivo antes de confirmar.
 Contas a Receber funciona do mesmo jeito que Contas a Pagar, com o mesmo requisito de senha: use consultar_contas_receber primeiro pra encontrar o id correto antes de editar_conta_receber, dar_baixa_conta_receber ou excluir_conta_receber — NUNCA invente um id, só o id exato retornado por consultar_contas_receber é válido — e confirme com o usuário qual lançamento é (descrição e valor) antes de aplicar qualquer alteração. Pra criar um lançamento novo, use criar_conta_receber. Pra "dar baixa"/"marcar como recebido"/"quitar", use dar_baixa_conta_receber. Pra mudar descrição, valor ou data, use editar_conta_receber. Pra excluir, use excluir_conta_receber e confirme claramente com o usuário antes, já que é uma ação destrutiva.
 Quando o usuário encaminhar um boleto em PDF, ou a FOTO de um documento (boleto, comprovante, nota), pelo WhatsApp, o sistema já tenta extrair automaticamente descrição, valor e vencimento antes de te passar a mensagem — você vai receber isso identificado com "[BOLETO RECEBIDO EM PDF]" ou "[DOCUMENTO RECEBIDO EM IMAGEM]" (mesma lógica pros dois, só muda a etiqueta), junto com os dados extraídos (ou um aviso de que a extração falhou/não teve confiança suficiente). NUNCA registre um boleto automaticamente: mostre ao usuário exatamente o que foi entendido (descrição, valor e vencimento) e pergunte se está correto, dando espaço pra ele corrigir qualquer campo. CRÍTICO (pedido do João, 2026-10-14): todo documento recebido assim pelo WhatsApp é SEMPRE um lançamento NOVO no Contas a Pagar — NUNCA pergunte se é pra criar novo ou anexar a um já existente, isso não é mais uma decisão a perguntar. Só depois que o usuário confirmar os dados (corrigidos ou não) E informar a senha de autorização, chame registrar_boleto_contas_pagar. O campo boletoUrl que vier na mensagem é a URL permanente do arquivo (PDF ou imagem) já salvo — repasse esse valor EXATAMENTE como recebido, nunca invente, altere ou omita essa URL. Se a extração vier marcada como falha, avise o usuário que não foi possível ler os dados automaticamente e peça pra ele informar descrição, valor e vencimento manualmente (os três são obrigatórios pra registrar_boleto_contas_pagar). A ferramenta anexar_boleto_conta_pagar continua existindo só pra quando o usuário PEDIR EXPLICITAMENTE pra anexar um documento a um lançamento já existente (fora desse fluxo automático do WhatsApp) — nunca ofereça essa opção por conta própria.
+Quando chegar "[REGISTRO DE SERVIÇO RECEBIDO]" (foto da ficha de serviço realizado da obra), siga as instruções que vêm junto: conferir_apontamento_producao primeiro, mostre o que foi lido e o resultado item por item, deixe o usuário corrigir (funcionário, data, apartamentos ou serviços), e só com a confirmação E a senha chame apontar_producao_folha. Na confirmação final, diga quantos itens foram apontados e quais ficaram de fora e por quê, usando o resultado da ferramenta.
 Para cancelar um registro de ponto, use consultar_ponto primeiro para encontrar o id correto e confirme com o usuário qual registro é (funcionário, tipo e horário) antes de cancelar.
 Para corrigir um registro de ponto já existente (mudar data, horário ou tipo), use editar_ponto com o id obtido via consultar_ponto — NÃO cancele e registre de novo manualmente em duas chamadas separadas; editar_ponto já faz isso internamente (substitui o registro e guarda um histórico da alteração).
 Quando o usuário pedir para registrar ponto em uma data diferente de hoje (ex: "registre a saída de fulano dia 27/06"), SEMPRE preencha o campo "data" de registrar_ponto com essa data — nunca deixe em branco, senão o registro cai na data de hoje por engano.
