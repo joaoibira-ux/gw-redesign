@@ -679,13 +679,14 @@
     // Substituído por um alerta (Cloud Function alertaSaidaEmAberto) que
     // avisa quem esqueceu, em vez de inventar um horário.
 
-    const VERSAO = '8.36';
+    const VERSAO = '8.37';
     document.getElementById('pin-version-display').textContent = 'v' + VERSAO;
     document.getElementById('home-version-display').textContent = 'v' + VERSAO;
     let digitado = '';
     let modo = 'parcial'; // 'completo' | 'parcial' | 'limitado' | 'cadastro'
 
-    const APPS_PARCIAL_ACESSO = ['Caixa', 'Relatório', 'A Receber', 'A Pagar', 'Desenvolvimento'];
+    // Funcionários liberado pra Anne (PIN parcial) — pedido do João, 2026-11-16.
+    const APPS_PARCIAL_ACESSO = ['Caixa', 'Relatório', 'A Receber', 'A Pagar', 'Desenvolvimento', 'Funcionários'];
     const APPS_LIMITADO = ['Rel. Ponto', 'Funcionários', 'Mapa', 'Compras'];
     const APPS_CADASTRO = ['Folha', 'Rel. Folha', 'Mapa', 'Funcionários', 'Ponto', 'Rel. Ponto', 'Almoxarifado', 'Compras', 'Diário de Obra'];
     // Dentro do modo "cadastro", o PIN 2912 (PIN_CADASTRO) não deve ver esses apps —
