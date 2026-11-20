@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.62";
+  const VERSAO = "2.63";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1842,7 +1842,7 @@
       const r = d.data();
       const nome = extrairNomeAdiantamento(r.descricao);
       if (!nome) return;
-      adiantLista.push({ nome, valor: r.saida || 0, cpf: r.funcionarioCpf || '', data: r.data || '', origem: 'Caixa' });
+      adiantLista.push({ nome, valor: r.saida || 0, cpf: r.funcionarioCpf || '', data: r.data || '', origem: 'Caixa', ref: d.ref });
     });
   }
 
@@ -1857,7 +1857,7 @@
       const nome = extrairNomeAdiantamento(r.descricao);
       if (!nome) return;
       const valor = r.valorOriginal !== undefined ? r.valorOriginal : r.valor;
-      adiantLista.push({ nome, valor: valor || 0, cpf: r.funcionarioCpf || '', data: r.data || '', origem: 'Contas a Pagar' });
+      adiantLista.push({ nome, valor: valor || 0, cpf: r.funcionarioCpf || '', data: r.data || '', origem: 'Contas a Pagar', ref: d.ref });
     });
   }
 
@@ -2166,7 +2166,8 @@
         const diaria = diariaPorFunc.get(normNome(g.funcionario.nome));
         if (diaria) bruto += diaria.total;
       }
-      const adiant = buscarAdiantamento(adiantLista, g.funcionario.nome, cpfPorId.get(g.funcionario.id));
+      // Mesma regra do fechamento: sem nada a receber, o adiantamento fica pra próxima.
+      const adiant = bruto > 0 ? buscarAdiantamento(adiantLista, g.funcionario.nome, cpfPorId.get(g.funcionario.id)) : 0;
       return { g, bruto, adiant };
     }).filter(({ g, bruto, adiant }) => g.isEncarregado || bruto > 0 || adiant > 0)
       .map(({ g, bruto, adiant }) => {
@@ -2430,7 +2431,7 @@
       totalBruto     += bruto;
       totalInss      += desc.inss;
       totalPassagens += desc.passagens;
-      totalAdiant    += buscarAdiantamento(adiantLista, g.funcionario?.nome, cpfPorId.get(g.funcionario?.id));
+      if (bruto > 0) totalAdiant += buscarAdiantamento(adiantLista, g.funcionario?.nome, cpfPorId.get(g.funcionario?.id));
     });
     return totalBruto - totalInss - totalPassagens - totalAdiant;
   }
@@ -2891,6 +2892,7 @@
       };
       const chaveDiaMes = localId => { const [d, m] = String(localId || '').replace(' ½', '').trim().split('/').map(Number); return (m || 0) * 100 + (d || 0); };
 
+      const adiantDescontados = new Set(); // paths dos docs de adiantamento abatidos nesta folha
       grupos.forEach(g => {
         const temProd = !g.isEncarregado && funcTemProducaoLocal(g.funcionario?.cargo, g.funcionario?.nome, g.funcionario?.id);
         const temDia  = !g.isEncarregado && funcTemDiariaLocal(g.funcionario?.cargo, g.funcionario?.nome, g.funcionario?.id);
@@ -2929,7 +2931,15 @@
           }
         }
         const descFechamento = descontosMapFechamento.get(g.funcionario?.id) ?? descontosMapFechamento.get(normNome(g.funcionario?.nome)) ?? { inss: 0, passagens: 0 };
-        const adiantPessoa = buscarAdiantamento(adiantLista, g.funcionario.nome, cpfPorId.get(g.funcionario.id));
+        // Adiantamento só é descontado (e marcado como descontado) de quem
+        // recebe algo nesta folha — achado real, 2026-11-20: o fechamento de
+        // 16/11 descontou do total os R$ 50 do Gustavo (produção tirada da
+        // folha, R$ 0 a receber) e marcou como "descontado" R$ 1.750 de
+        // adiantamentos de quem nem estava na folha. Esses agora ficam em
+        // aberto pra próxima.
+        const itensAdiant = bruto > 0 ? buscarAdiantamentoItens(adiantLista, g.funcionario.nome, cpfPorId.get(g.funcionario.id)) : [];
+        itensAdiant.forEach(a => { if (a.ref) adiantDescontados.add(a.ref.path); });
+        const adiantPessoa = itensAdiant.reduce((t, a) => t + a.valor, 0);
         totalBruto     += bruto;
         totalInssFechamento      += descFechamento.inss;
         totalPassagensFechamento += descFechamento.passagens;
@@ -3060,6 +3070,7 @@
       });
 
       adSnap.docs.forEach(doc => {
+        if (!adiantDescontados.has(doc.ref.path)) return; // não abatido nesta folha, continua em aberto
         const novaOrigem = doc.data().origem === 'JOAO->ADIANTAMENTO' ? 'JOAO->ANTECIPACAO' : 'ANE->ANTECIPACAO';
         batch.update(doc.ref, { origem: novaOrigem });
       });
@@ -3068,7 +3079,7 @@
       // nesse desconto, pra não serem contados de novo numa folha futura.
       cpAdSnap.docs.forEach(doc => {
         const r = doc.data();
-        if (r.status === 'baixado' && !r.descontadoDaFolha && extrairNomeAdiantamento(r.descricao)) {
+        if (r.status === 'baixado' && !r.descontadoDaFolha && extrairNomeAdiantamento(r.descricao) && adiantDescontados.has(doc.ref.path)) {
           batch.update(doc.ref, { descontadoDaFolha: true });
         }
       });
