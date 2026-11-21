@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.28";
+const VERSAO = "3.29";
 document.getElementById("versao-app").textContent = "v" + VERSAO;
 
 firebase.initializeApp(firebaseConfig);
@@ -219,6 +219,12 @@ function verServico(e, el) {
   html += `
     <div class="pop-linha"><span class="pop-label">Fiscal</span><span>${escHtml(fiscal) || "—"}</span></div>
     <button class="btn-fiscal" onclick="abrirEscolhaFiscal(event)">👷 ${fiscal ? "Trocar" : "Definir"} fiscal</button>`;
+  // Alterar o mapa: só o PIN 2248, com a senha 6535 (pedido do João,
+  // 2026-11-21 — é o caminho pra destravar uma ficha de serviço em conflito).
+  if ((status === "concluido" || status === "em_pagamento") && sessionStorage.getItem("gw_pin") === "2248") {
+    html += `
+    <button class="btn-fiscal" onclick="voltarParaPendente(event)">↩ Voltar para pendente</button>`;
+  }
   if (status === "pendente" && ehGesso(nome)) {
     html += `
     <div class="pop-linha"><span class="pop-label">Reservado</span><span>${escHtml(reservado) || "—"}</span></div>
@@ -350,6 +356,32 @@ async function salvarReserva(e) {
     if (s.nome !== _servicoPopup.nome) return s;
     const novo = { ...s };
     if (reserva) novo.reservadoPara = reserva; else delete novo.reservadoPara;
+    return novo;
+  });
+  try {
+    await db.collection("locais").doc(local.id).update({ servicos });
+    fecharInfo();
+  } catch (err) {
+    alert("Erro ao salvar: " + (err.message || err));
+  }
+}
+
+async function voltarParaPendente(e) {
+  e.stopPropagation();
+  if (!_servicoPopup || sessionStorage.getItem("gw_pin") !== "2248") return;
+  const senha = prompt("VOLTAR ESTE SERVIÇO PARA PENDENTE?\n\nDigite a senha:");
+  if (senha === null) return;
+  if (senha !== "6535") { alert("Acesso não autorizado."); return; }
+  const local = locaisData.find(l => l.id === _servicoPopup.localId);
+  if (!local) return;
+  const servicos = (local.servicos || []).map(s => {
+    if (s.nome !== _servicoPopup.nome) return s;
+    // Guarda como estava, pra não perder quem fez e quanto foi pago.
+    const anterior = { status: s.status, executor: s.executor || null, funcionario: s.funcionario || null,
+      valorPago: s.valorPago ?? null, dataPagamento: s.dataPagamento || null, dataRegistro: s.dataRegistro || null,
+      alteradoEm: new Date().toISOString() };
+    const novo = { ...s, status: "pendente", historico: [...(s.historico || []), anterior] };
+    ["executor", "funcionario", "valorPago", "dataPagamento", "dataRegistro"].forEach(k => delete novo[k]);
     return novo;
   });
   try {

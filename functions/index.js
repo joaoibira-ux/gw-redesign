@@ -131,7 +131,9 @@ const TOOLS_GW = [
               condominio:      { type: "string", description: "K1 (KEL1/KL1) ou K2 (KEL2/KL2)." },
               bloco:           { type: "string", description: "Letra do bloco (ex: G, D)." },
               apartamentos:    { type: "array", items: { type: "string" }, description: "Números dos apartamentos (ex: [\"06\"], [\"03\",\"103\"])." },
-              servicos:        { type: "array", items: { type: "string" }, description: "Categorias: tratamento, gesso, massa, textura_teto_sala, textura_teto_wc, textura_parede_wc, pintura_teto, demao1, demao2." }
+              servicos:        { type: "array", items: { type: "string" }, description: "Categorias: tratamento, gesso, massa, textura_teto_sala, textura_teto_wc, textura_parede_wc, pintura_teto, demao1, demao2." },
+              rasura:          { type: "boolean", description: "true se esse bloco da ficha tem rasura (riscado, sobrescrito, corretivo) — repassar como veio da leitura." },
+              rasuraDescricao: { type: "string", description: "Onde está a rasura." }
             },
             required: ["funcionarioNome", "data", "condominio", "bloco", "apartamentos", "servicos"]
           }
@@ -140,7 +142,7 @@ const TOOLS_GW = [
   },
   {
     name: "apontar_producao_folha",
-    description: "Aponta na folha de produção (mapa: status 'Na folha', funcionário e data do registro) os itens de uma ficha 'Registro de Serviço Realizado' — mesmos dados já conferidos com conferir_apontamento_producao e confirmados pelo usuário. Só aponta os itens liberados; os com problema são pulados e listados no resultado. Grava a saída automática (entrada + 4h) quando o ponto do dia só tem entrada. ALTERA O BANCO DE DADOS: exige senha de autorização, peça ao usuário antes de chamar.",
+    description: "Aponta na folha de produção (mapa: status 'Na folha', funcionário e data do registro) os itens de uma ficha 'Registro de Serviço Realizado' — mesmos dados já conferidos com conferir_apontamento_producao e confirmados pelo usuário. A ficha vale INTEIRA ou nada: com rasura ou qualquer item com problema, nada é apontado (o documento tem que ser corrigido ou o mapa alterado pelo responsável). Grava a saída automática (entrada + 4h) quando o ponto do dia só tem entrada. ALTERA O BANCO DE DADOS: exige senha de autorização, peça ao usuário antes de chamar.",
     input_schema: { type: "object", properties: {
         registros: {
           type: "array",
@@ -153,7 +155,9 @@ const TOOLS_GW = [
               condominio:      { type: "string", description: "K1 (KEL1/KL1) ou K2 (KEL2/KL2)." },
               bloco:           { type: "string", description: "Letra do bloco (ex: G, D)." },
               apartamentos:    { type: "array", items: { type: "string" }, description: "Números dos apartamentos (ex: [\"06\"], [\"03\",\"103\"])." },
-              servicos:        { type: "array", items: { type: "string" }, description: "Categorias: tratamento, gesso, massa, textura_teto_sala, textura_teto_wc, textura_parede_wc, pintura_teto, demao1, demao2." }
+              servicos:        { type: "array", items: { type: "string" }, description: "Categorias: tratamento, gesso, massa, textura_teto_sala, textura_teto_wc, textura_parede_wc, pintura_teto, demao1, demao2." },
+              rasura:          { type: "boolean", description: "true se esse bloco da ficha tem rasura — repassar como veio da leitura." },
+              rasuraDescricao: { type: "string", description: "Onde está a rasura." }
             },
             required: ["funcionarioNome", "data", "condominio", "bloco", "apartamentos", "servicos"]
           }
@@ -2276,8 +2280,20 @@ async function processarApontamentoProducao(registros, aplicar) {
 
   const liberados = itens.filter(i => i.ok);
   const resumo = { liberados: liberados.length, comProblema: itens.length - liberados.length, valorTotal: liberados.reduce((t, i) => t + i.valor, 0), itens };
+  // Regra do João (2026-11-21): a ficha vale inteira ou nada. Rasura
+  // inutiliza o documento; qualquer item em conflito com o mapa trava tudo
+  // — corrige a ficha (nova foto) ou o mapa é alterado pelo PIN 2248 com a
+  // senha 6535. Sem lançamento parcial.
+  const rasuras = (registros || []).filter(r => r.rasura).map(r => `${r.funcionarioNome} (${r.data}, bloco ${r.bloco})${r.rasuraDescricao ? ": " + r.rasuraDescricao : ""}`);
+  const problemas = itens.filter(i => !i.ok).map(i => `${i.funcionario} — ${i.local || "?"} ${i.servico || ""} (${i.data}): ${i.motivo}`);
+  if (rasuras.length || problemas.length) {
+    const alerta = "⚠️ FICHA NÃO LANÇADA — nada foi apontado na folha.\n\n"
+      + (rasuras.length ? `RASURA (inutiliza o documento):\n${rasuras.map(x => "• " + x).join("\n")}\n\n` : "")
+      + (problemas.length ? `CONFLITO COM O MAPA:\n${problemas.map(x => "• " + x).join("\n")}\n\n` : "")
+      + "Para lançar, uma das duas:\n1) Corrigir a ficha (refazer sem rasura) e mandar nova foto pra nova leitura; ou\n2) Pedir a alteração do mapa ao responsável pelo sistema.";
+    return { sucesso: false, bloqueado: true, erro: "ficha_com_pendencias", alerta, ...resumo };
+  }
   if (!aplicar) return { sucesso: true, simulacao: true, ...resumo };
-  if (!liberados.length) return { sucesso: false, erro: "nada_liberado", mensagem: "Nenhum item pôde ser apontado.", ...resumo };
 
   for (const [localId, alts] of alteracoes) {
     const ref = db.collection("locais").doc(localId);
@@ -3976,6 +3992,7 @@ async function extrairRegistroServicoImagem(imageBase64, mimeType) {
   const prompt = `Esta foto pode ser uma ficha em papel "REGISTRO DE SERVIÇO REALIZADO" de uma obra (campos: Nome do funcionário, Data, Setor, BL, APT, Serviço realizado, Observação), com um ou mais blocos preenchidos à mão.
 Se NÃO for essa ficha, responda só: {"tipo":"outro"}
 Se for, responda só um JSON: {"tipo":"registro_servico","registros":[{"funcionarioNome":"...","data":"DD/MM/AAAA","condominio":"K1 ou K2","bloco":"letra","apartamentos":["06"],"servicos":["..."],"textoServico":"texto como escrito","observacao":"..."}]}
+Rasura: se algum campo de um bloco estiver riscado, sobrescrito, com corretivo ou rabiscado (ex: número do APT riscado), marque nesse bloco "rasura": true e "rasuraDescricao": "onde"; senão "rasura": false.
 Regras: um item por bloco preenchido. Setor KL1/KEL1 = "K1", KL2/KEL2 = "K2". Ano com 2 dígitos vira 20AA. Apartamentos: junte o campo APT e os números listados na Observação (ex: "Apt: 03, 103, 102 e 104" = ["03","103","102","104"]); ignore número riscado. servicos = categorias, só destas: tratamento, gesso (gesso em pasta / mão de gesso), massa (emassamento / mão de massa), textura_teto_sala, textura_teto_wc, textura_parede_wc, pintura_teto, demao1, demao2. Ex: "Aplicação de 2 mão de gesso e 1 mão de massa" = ["gesso","massa"]; "Emassamento" = ["massa"].`;
   const resp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -4015,7 +4032,7 @@ async function processarBoletoImagem(msg, imgMsg, apiKeyValue) {
     return `[REGISTRO DE SERVIÇO RECEBIDO]
 Foto de ficha "Registro de Serviço Realizado" (salva em ${boletoUrl}). Leitura automática da letra à mão (pode ter erro):
 ${JSON.stringify(registros, null, 1)}
-Chame conferir_apontamento_producao com esses registros, mostre ao usuário o que foi lido e o resultado (itens liberados com valor; itens com problema e o motivo), deixe ele corrigir, e só depois da confirmação e da senha chame apontar_producao_folha com os registros confirmados. Isto NÃO é boleto — não registre nada no Contas a Pagar.`;
+Chame conferir_apontamento_producao com esses registros (repasse rasura/rasuraDescricao como vieram). Se o resultado vier com "bloqueado": true, mande ao usuário EXATAMENTE o texto do campo "alerta" (pode acrescentar o que foi lido) e NÃO peça senha nem chame apontar_producao_folha — a ficha só pode ser lançada depois de corrigida (nova foto) ou do mapa alterado. Se vier liberado, mostre o que foi lido e os itens com valor, peça confirmação e senha, e só então chame apontar_producao_folha. Isto NÃO é boleto — não registre nada no Contas a Pagar.`;
   }
 
   let dados;
@@ -4069,7 +4086,7 @@ Para editar ou excluir um lançamento do caixa, use consultar_caixa primeiro par
 Para editar, dar baixa ou excluir um lançamento do Contas a Pagar, use consultar_contas_pagar primeiro para encontrar o id correto — NUNCA invente um id (ex: "1", "2", "3" não são ids válidos, só o id exato que consultar_contas_pagar retornou) — e confirme com o usuário qual lançamento é (descrição e valor atuais) antes de aplicar. Pra "dar baixa"/"marcar como pago"/"quitar", use dar_baixa_conta_pagar. Pra mudar descrição, valor ou data, use editar_conta_pagar. Pra excluir de vez (remove o lançamento, não é reversível), use excluir_conta_pagar e deixe claro pro usuário que é definitivo antes de confirmar.
 Contas a Receber funciona do mesmo jeito que Contas a Pagar, com o mesmo requisito de senha: use consultar_contas_receber primeiro pra encontrar o id correto antes de editar_conta_receber, dar_baixa_conta_receber ou excluir_conta_receber — NUNCA invente um id, só o id exato retornado por consultar_contas_receber é válido — e confirme com o usuário qual lançamento é (descrição e valor) antes de aplicar qualquer alteração. Pra criar um lançamento novo, use criar_conta_receber. Pra "dar baixa"/"marcar como recebido"/"quitar", use dar_baixa_conta_receber. Pra mudar descrição, valor ou data, use editar_conta_receber. Pra excluir, use excluir_conta_receber e confirme claramente com o usuário antes, já que é uma ação destrutiva.
 Quando o usuário encaminhar um boleto em PDF, ou a FOTO de um documento (boleto, comprovante, nota), pelo WhatsApp, o sistema já tenta extrair automaticamente descrição, valor e vencimento antes de te passar a mensagem — você vai receber isso identificado com "[BOLETO RECEBIDO EM PDF]" ou "[DOCUMENTO RECEBIDO EM IMAGEM]" (mesma lógica pros dois, só muda a etiqueta), junto com os dados extraídos (ou um aviso de que a extração falhou/não teve confiança suficiente). NUNCA registre um boleto automaticamente: mostre ao usuário exatamente o que foi entendido (descrição, valor e vencimento) e pergunte se está correto, dando espaço pra ele corrigir qualquer campo. CRÍTICO (pedido do João, 2026-10-14): todo documento recebido assim pelo WhatsApp é SEMPRE um lançamento NOVO no Contas a Pagar — NUNCA pergunte se é pra criar novo ou anexar a um já existente, isso não é mais uma decisão a perguntar. Só depois que o usuário confirmar os dados (corrigidos ou não) E informar a senha de autorização, chame registrar_boleto_contas_pagar. O campo boletoUrl que vier na mensagem é a URL permanente do arquivo (PDF ou imagem) já salvo — repasse esse valor EXATAMENTE como recebido, nunca invente, altere ou omita essa URL. Se a extração vier marcada como falha, avise o usuário que não foi possível ler os dados automaticamente e peça pra ele informar descrição, valor e vencimento manualmente (os três são obrigatórios pra registrar_boleto_contas_pagar). A ferramenta anexar_boleto_conta_pagar continua existindo só pra quando o usuário PEDIR EXPLICITAMENTE pra anexar um documento a um lançamento já existente (fora desse fluxo automático do WhatsApp) — nunca ofereça essa opção por conta própria.
-Quando chegar "[REGISTRO DE SERVIÇO RECEBIDO]" (foto da ficha de serviço realizado da obra), siga as instruções que vêm junto: conferir_apontamento_producao primeiro, mostre o que foi lido e o resultado item por item, deixe o usuário corrigir (funcionário, data, apartamentos ou serviços), e só com a confirmação E a senha chame apontar_producao_folha. Na confirmação final, diga quantos itens foram apontados e quais ficaram de fora e por quê, usando o resultado da ferramenta.
+Quando chegar "[REGISTRO DE SERVIÇO RECEBIDO]" (foto da ficha de serviço realizado da obra), siga as instruções que vêm junto: conferir_apontamento_producao primeiro. A ficha vale inteira ou nada: se vier "bloqueado": true (rasura ou conflito com o mapa), mande o "alerta" e pare — não aceite correção por texto nem lançamento parcial; só uma nova foto da ficha corrigida, ou o mapa alterado pelo responsável, destrava. Se vier liberado, mostre o resultado item por item e só com a confirmação E a senha chame apontar_producao_folha. Na confirmação final, diga quantos itens foram apontados e quais ficaram de fora e por quê, usando o resultado da ferramenta.
 Para cancelar um registro de ponto, use consultar_ponto primeiro para encontrar o id correto e confirme com o usuário qual registro é (funcionário, tipo e horário) antes de cancelar.
 Para corrigir um registro de ponto já existente (mudar data, horário ou tipo), use editar_ponto com o id obtido via consultar_ponto — NÃO cancele e registre de novo manualmente em duas chamadas separadas; editar_ponto já faz isso internamente (substitui o registro e guarda um histórico da alteração).
 Quando o usuário pedir para registrar ponto em uma data diferente de hoje (ex: "registre a saída de fulano dia 27/06"), SEMPRE preencha o campo "data" de registrar_ponto com essa data — nunca deixe em branco, senão o registro cai na data de hoje por engano.
