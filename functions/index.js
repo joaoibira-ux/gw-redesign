@@ -27,6 +27,12 @@ const EVOLUTION_DESTINATARIOS_REFEICOES = ["5581992114764", "5581991725267"];
 // encaminhado ao agente vira lançamento no Contas a Pagar (pedido do João,
 // 2026-11-09, tela Desenvolvimento).
 const NUMERO_ANNE = "5581988310203";
+// Antônio Neto (encarregado) — pode mandar ao número do agente SÓ fotos da
+// ficha "Registro de Serviço Realizado"; ficha toda certa é apontada direto
+// na folha, sem senha (pedido do João, 2026-11-21). Não passa pelo
+// assistente de conversa. Próximo passo combinado: exigir assinaturas na
+// ficha (ex.: fiscal da obra).
+const NUMERO_FICHAS_ANTONIO = "5581999868043";
 // Ordem de envio ESCALONADO do alerta de ponto em aberto (pedido do João,
 // 2026-10-14): Welington primeiro, depois Antônio (encarregado), João por
 // último — cada um só recebe minutos depois do anterior, não tudo de uma vez
@@ -4014,6 +4020,49 @@ Regras: um item por bloco preenchido. Setor KL1/KEL1 = "K1", KL2/KEL2 = "K2". An
   return r.tipo === "registro_servico" && Array.isArray(r.registros) && r.registros.length ? r.registros : null;
 }
 
+// Fluxo fixo (sem o assistente de conversa) pra quem só pode mandar fichas
+// de serviço: lê a foto, confere e, se a ficha estiver toda certa, aponta
+// na folha sem senha. Responde pro remetente e manda cópia pro João.
+async function tratarFichaRemetenteRestrito(msg, apiKeyValue, numero, rotulo) {
+  const responder = t => enviarWhatsAppEvolution(t, apiKeyValue, [numero]);
+  const copiaJoao = t => enviarWhatsAppEvolution(t, apiKeyValue, [NUMERO_AGENTE_WHATSAPP]).catch(e =>
+    logger.error("[fichaRestrita] falha na cópia pro João", { erro: e.message }));
+  const imgMsg = msg.message && msg.message.imageMessage;
+  if (!imgMsg) {
+    await responder("Este número só recebe FOTOS da ficha \"Registro de Serviço Realizado\". Mande a foto da ficha preenchida.");
+    return;
+  }
+  const buffer = await baixarMediaEvolution(msg, apiKeyValue);
+  const mimeType = imgMsg.mimetype || "image/jpeg";
+  const nomeArquivo = `ficha-${Date.now()}.${mimeType.split("/")[1] || "jpg"}`;
+  const url = await uploadBoletoStorage(buffer, nomeArquivo, mimeType);
+  const registros = await extrairRegistroServicoImagem(buffer.toString("base64"), mimeType);
+  if (!registros) {
+    await responder("Não reconheci uma ficha \"Registro de Serviço Realizado\" nessa foto. Tire outra foto, com a ficha inteira e legível.");
+    return;
+  }
+  const lidos = registros.map(r => `• ${r.funcionarioNome} — ${r.data} — ${r.condominio}${r.bloco} apt ${(r.apartamentos || []).join(", ")} — ${(r.servicos || []).join(" + ")}`).join("\n");
+  const conf = await processarApontamentoProducao(registros, false);
+  if (!conf.sucesso) {
+    const texto = (conf.alerta || conf.mensagem || "Não foi possível conferir a ficha.") + `\n\nLido na ficha:\n${lidos}`;
+    await responder(texto);
+    await copiaJoao(`📋 Ficha enviada por ${rotulo} — NÃO lançada\n\n${texto}\n\nFoto: ${url}`);
+    return;
+  }
+  const r = await processarApontamentoProducao(registros, true);
+  if (!r.sucesso) {
+    const texto = (r.alerta || r.mensagem || "Falha ao apontar a ficha.") + `\n\nLido na ficha:\n${lidos}`;
+    await responder(texto);
+    await copiaJoao(`📋 Ficha enviada por ${rotulo} — NÃO lançada\n\n${texto}\n\nFoto: ${url}`);
+    return;
+  }
+  const fmt = v => "R$ " + Number(v || 0).toFixed(2).replace(".", ",");
+  const itens = r.itens.filter(i => i.ok).map(i => `• ${i.funcionario} — ${i.local} ${i.servico} (${i.data}) — ${fmt(i.valor)}${i.aviso ? "\n  ⚠️ " + i.aviso : ""}`).join("\n");
+  const texto = `✅ Ficha lançada na folha — ${r.liberados} serviço(s), total ${fmt(r.valorTotal)}:\n\n${itens}`;
+  await responder(texto);
+  await copiaJoao(`📋 Ficha enviada por ${rotulo}\n\n${texto}\n\nFoto: ${url}`);
+}
+
 async function processarBoletoImagem(msg, imgMsg, apiKeyValue) {
   const buffer = await baixarMediaEvolution(msg, apiKeyValue);
   const mimeType = imgMsg.mimetype || "image/jpeg";
@@ -4294,7 +4343,7 @@ async function passadaPollingWhatsApp(apiKeyValue) {
     .filter(m => {
       if (grupoJid && m.key.remoteJid === grupoJid) return mencionaAgente(m);
       const numero = normalizarNumeroBR((m.key.remoteJidAlt || m.key.remoteJid || "").split("@")[0]);
-      return numero === alvoNorm;
+      return numero === alvoNorm || numero === normalizarNumeroBR(NUMERO_FICHAS_ANTONIO);
     })
     .sort((a, b) => a.messageTimestamp - b.messageTimestamp);
 
@@ -4308,6 +4357,15 @@ async function passadaPollingWhatsApp(apiKeyValue) {
     novosIds.push(msg.key.id);
 
     const ehGrupo = !!(grupoJid && msg.key.remoteJid === grupoJid);
+    const numeroRemetente = normalizarNumeroBR((msg.key.remoteJidAlt || msg.key.remoteJid || "").split("@")[0]);
+    if (!ehGrupo && numeroRemetente === normalizarNumeroBR(NUMERO_FICHAS_ANTONIO)) {
+      try {
+        await tratarFichaRemetenteRestrito(msg, apiKeyValue, NUMERO_FICHAS_ANTONIO, "Antônio");
+      } catch (e) {
+        logger.error("[pollingAgenteWhatsApp] erro na ficha do Antônio", { erro: e.message, msgId: msg.key.id });
+      }
+      continue;
+    }
     // Conversa do grupo tem seu próprio histórico (não mistura com a DM
     // individual) e a resposta vai pro grupo, não pro número fixo.
     const destinoResposta = ehGrupo ? grupoJid : NUMERO_AGENTE_WHATSAPP;
