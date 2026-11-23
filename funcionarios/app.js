@@ -7,7 +7,7 @@ const firebaseConfig = {
   appId: "1:472820177992:web:2e1b98c9f6ac3a823d0c7d"
 };
 
-const VERSAO = "3.62";
+const VERSAO = "3.63";
 const CARGOS_POR_PRODUCAO = ["PINTOR", "RASPADOR"];
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -937,6 +937,8 @@ function lerCampos() {
                     ? parseMoeda(document.getElementById("f-passagens").dataset.manual || "")
                     : parseMoeda(v("f-passagens")),
     passagem6pct: document.getElementById("f-passagem-6pct").checked,
+    // Não abate faltas/meias da passagem (pedido do João, 2026-11-23).
+    passagemSemDescontoFaltas: document.getElementById("f-passagem-sem-desconto").checked,
     isentoPassagens: !document.getElementById("f-desconto-passagens").checked,
     tomaCafeObra: document.getElementById("f-toma-cafe-obra").checked,
     almocaObra:   document.getElementById("f-almoca-obra").checked,
@@ -1014,6 +1016,7 @@ function editarFuncionario(id) {
   document.getElementById("f-desconto-passagens").checked = !f.isentoPassagens;
   delete document.getElementById("f-passagens").dataset.manual;
   document.getElementById("f-passagem-6pct").checked = !!f.passagem6pct;
+  document.getElementById("f-passagem-sem-desconto").checked = !!f.passagemSemDescontoFaltas;
   atualizarPassagem6pct();
   // Campo ausente (cadastro antigo, de antes desse checkbox existir) conta
   // como marcado — só fica desmarcado se alguém desmarcar explicitamente.
@@ -1251,6 +1254,7 @@ function consultarFuncionario(id) {
           ? (() => { const h = new Date(), n = diasUteisDoMes(h.getFullYear(), h.getMonth()), b = basePassagem6pct(f);
                      return `6% do salário ÷ dias úteis do mês (este mês: ${fmtMoeda(b * 0.06)} ÷ ${n} = ${fmtMoeda(n ? b * 0.06 / n : 0)})`; })()
           : f.passagens > 0 ? fmtMoeda(f.passagens) : '')}
+      ${f.passagemSemDescontoFaltas ? c('Passagens', 'Sem desconto de faltas') : ''}
     </div>
     ${sec('Dados Pessoais')}
       ${c('Nacionalidade', f.nacionalidade)}${c('Estado Civil', f.estadocivil)}

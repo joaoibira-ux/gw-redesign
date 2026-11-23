@@ -690,7 +690,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
-  const VERSAO = "2.63";
+  const VERSAO = "2.64";
 
   // ── Loading overlay ──────────────────────────────────────
   const _rlMsgs = [
@@ -1750,8 +1750,10 @@
       if (f.ativo === false) return;
       const valorDiario = valorPassagemDia(f, proxIni);
       if (valorDiario <= 0) return;
-      const { faltasLiquidas } = combinarFaltasComCredito(_faltasMap, d.id, f.nome, f.creditoFaltas || 0);
-      const diasIncompletos = _incompletosMap.get(d.id) || _incompletosMap.get(normNome(f.nome)) || 0;
+      // passagemSemDescontoFaltas (cadastro): não abate falta nem meia (2026-11-23).
+      const semDesc = !!f.passagemSemDescontoFaltas;
+      const faltasLiquidas = semDesc ? 0 : combinarFaltasComCredito(_faltasMap, d.id, f.nome, f.creditoFaltas || 0).faltasLiquidas;
+      const diasIncompletos = semDesc ? 0 : (_incompletosMap.get(d.id) || _incompletosMap.get(normNome(f.nome)) || 0);
       const bruto = diasUteisProxima * valorDiario;
       const descontoFaltas = Math.min(diasUteisProxima, faltasLiquidas) * valorDiario;
       // Meia passagem por dia com entrada sem saída (pedido do João,
@@ -2448,9 +2450,10 @@
       if (f.ativo === false) return;
       const valorDiario = valorPassagemDia(f, proxIni);
       if (valorDiario <= 0) return;
-      const { faltasLiquidas } = combinarFaltasComCredito(_faltasMap, d.id, f.nome, f.creditoFaltas || 0);
+      const semDesc = !!f.passagemSemDescontoFaltas;
+      const faltasLiquidas = semDesc ? 0 : combinarFaltasComCredito(_faltasMap, d.id, f.nome, f.creditoFaltas || 0).faltasLiquidas;
       const dias = Math.max(0, diasUteisProxima - faltasLiquidas);
-      const meias = _incompletosMap.get(d.id) || _incompletosMap.get(normNome(f.nome)) || 0;
+      const meias = semDesc ? 0 : (_incompletosMap.get(d.id) || _incompletosMap.get(normNome(f.nome)) || 0);
       total += Math.max(0, dias * valorDiario - meias * valorDiario / 2);
     });
     return total;
@@ -3202,8 +3205,11 @@
         if (f.ativo === false) return;
         const valorDiario = valorPassagemDia(f, proxIni);
         if (valorDiario <= 0) return;
-        const { faltasLiquidas, creditoRestante } = combinarFaltasComCredito(faltasMap, d.id, f.nome, f.creditoFaltas || 0);
-        const diasIncompletos = incompletosMap.get(d.id) || incompletosMap.get(normNome(f.nome)) || 0;
+        const semDesc = !!f.passagemSemDescontoFaltas;
+        const comb = combinarFaltasComCredito(faltasMap, d.id, f.nome, f.creditoFaltas || 0);
+        const faltasLiquidas = semDesc ? 0 : comb.faltasLiquidas;
+        const creditoRestante = comb.creditoRestante;
+        const diasIncompletos = semDesc ? 0 : (incompletosMap.get(d.id) || incompletosMap.get(normNome(f.nome)) || 0);
         // "Falta de hoje" já entra em calcularFaltasQuinzenaAtual quando hoje
         // está dentro da quinzena descontada (2026-11-03) — não soma de novo.
         const dias = Math.max(0, diasUteisProxima - faltasLiquidas);
