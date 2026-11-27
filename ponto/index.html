@@ -395,6 +395,44 @@ async function tentarCpu() {
   catch (e) { console.warn('CPU backend:', e); return false; }
 }
 
+// Autoteste do motor: reconhece a foto de cadastro de um funcionário usando
+// a placa de vídeo (WebGL). Se o descritor bater com o salvo, a placa funciona
+// (modo rápido); se não, usa a CPU. Fica guardado no aparelho — o teste só
+// roda de novo se mudar o motor disponível. Substitui a checagem por float32,
+// que mandava pra CPU aparelhos cuja placa funciona (tablet Samsung, 2026-11-26).
+let motorTestado = false;            // true = o motor atual foi validado
+async function escolherMotor() {
+  const tf = faceapi.tf;
+  if (!tf || !tf.getBackend || tf.getBackend() !== 'webgl') return;
+  let salvo = null;
+  try { salvo = localStorage.getItem('gw_ponto_motor'); } catch (e) {}
+  if (salvo === 'webgl') { motorTestado = true; return; }
+  if (salvo === 'cpu')   { await tentarCpu(); motorTestado = true; return; }
+  const fotos = funcionariosCache.filter(x => x.fotoThumb && labeledDescriptors.some(l => l.label === x.id)).slice(0, 3);
+  if (!fotos.length) return;           // sem foto pra testar → decide pelo fallback de 8s
+  // Reconhece a foto e diz se bateu com o descritor salvo do funcionário.
+  const bate = async f => {
+    const img = await new Promise((res, rej) => {
+      const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = f.fotoThumb;
+    });
+    const det = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.3 }))
+      .withFaceLandmarks(true).withFaceDescriptor();
+    const ref = labeledDescriptors.find(l => l.label === f.id);
+    return !!(det && ref && ref.descriptors.some(d => faceapi.euclideanDistance(d, det.descriptor) < 0.6));
+  };
+  try {
+    for (const f of fotos) {
+      if (await bate(f)) { motorTestado = true; try { localStorage.setItem('gw_ponto_motor', 'webgl'); } catch (e) {} return; }
+    }
+    // WebGL não bateu em nenhuma. Confirma na CPU: se lá bate, a placa é que
+    // está errando → CPU de vez. Se nem na CPU bate, as fotos é que não servem
+    // de teste → volta pro WebGL e fica o fallback de 8s.
+    await tentarCpu();
+    if (await bate(fotos[0])) { motorTestado = true; try { localStorage.setItem('gw_ponto_motor', 'cpu'); } catch (e) {} return; }
+    usandoCpu = false; await faceapi.tf.setBackend('webgl'); await faceapi.tf.ready();
+  } catch (e) { console.warn('Autoteste motor:', e); }
+}
+
 // ── INIT ───────────────────────────────────────────────────────────────────
 function ehMobile() {
   return /iPad|iPhone|iPod|Android/.test(navigator.userAgent) && !window.MSStream;
@@ -439,14 +477,6 @@ window.addEventListener('load', async () => {
       faceapi.nets.faceRecognitionNet.loadFromUri(MODELS_URL),
     ]);
     modelsLoaded = true;
-    // Placa de vídeo sem float32 (tablets antigos): o WebGL roda mas devolve
-    // lixo e nunca acha rosto, sem dar erro. Nesses, usa a CPU desde o início.
-    try {
-      const tf = faceapi.tf;
-      if (tf && tf.getBackend && tf.getBackend() === 'webgl' && !tf.ENV.getBool('WEBGL_RENDER_FLOAT32_CAPABLE')) {
-        await tentarCpu();
-      }
-    } catch (e) { console.warn('Checagem WebGL:', e); }
   } catch (e) {
     console.warn('Models error:', e);
     erroModelos = 'Erro ao carregar reconhecimento facial: ' + (e && e.message || e);
@@ -454,6 +484,8 @@ window.addEventListener('load', async () => {
 
   setStatus('Carregando funcionários...');
   await carregarFuncionarios();
+
+  if (modelsLoaded) { setStatus('Testando este aparelho...'); await escolherMotor(); }
 
   setStatus('Iniciando câmera...');
   await iniciarCameraMain();
@@ -575,6 +607,7 @@ function iniciarDeteccao() {
   const oval   = document.getElementById('face-oval');
   // Threshold baixo só pra medir a melhor nota (diagnóstico); quem decide é LIMIAR.
   const opts   = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.1 });
+  const optsCpu = new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.1 }); // modo compatível: 4x menos conta
   const LIMIAR = 0.4;
   let semRostoDesde = Date.now();
 
@@ -586,7 +619,7 @@ function iniciarDeteccao() {
       let detections;
       const t0 = Date.now();
       try {
-        detections = await faceapi.detectAllFaces(video, opts);
+        detections = await faceapi.detectAllFaces(video, usandoCpu ? optsCpu : opts);
       } catch (e) {
         // Antes um erro aqui matava o loop em silêncio (tablet antigo).
         console.warn('Detecção:', e);
@@ -610,7 +643,7 @@ function iniciarDeteccao() {
       if (hasFace) semRostoDesde = Date.now();
       // WebGL quebrado em aparelho antigo pode não dar erro e só nunca achar
       // rosto: após 8s sem rosto com a câmera rodando, tenta a CPU uma vez.
-      else if (!usandoCpu && Date.now() - semRostoDesde > 8000 && await tentarCpu()) semRostoDesde = Date.now();
+      else if (!motorTestado && !usandoCpu && Date.now() - semRostoDesde > 8000 && await tentarCpu()) semRostoDesde = Date.now();
       // Diagnóstico (tablet): motor · resolução da câmera · melhor nota · tempo
       const diag = `${usandoCpu ? 'cpu' : (faceapi.tf && faceapi.tf.getBackend ? faceapi.tf.getBackend() : '?')} · ${video.videoWidth}x${video.videoHeight} · ${melhor.toFixed(2)} · ${Date.now() - t0}ms`;
 
@@ -642,7 +675,7 @@ async function reconhecerFace(video) {
   try {
     setCamHint('Reconhecendo...' + (usandoCpu ? ' (pode levar alguns segundos)' : ''));
     // Modo compatível (CPU): imagem menor, senão leva demais no tablet antigo.
-    const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: usandoCpu ? 320 : 512, scoreThreshold: 0.4 });
+    const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: usandoCpu ? 224 : 512, scoreThreshold: 0.4 });
     const det  = await faceapi.detectSingleFace(video, opts)
       .withFaceLandmarks(true)     // true = use tiny landmark model
       .withFaceDescriptor();
