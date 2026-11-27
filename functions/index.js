@@ -2193,6 +2193,20 @@ function categoriaServicoProducao(nome) {
   return null;
 }
 
+// Diferença de no máximo 1 letra (troca, sobra ou falta) — letra de mão
+// difícil: "Ivan" lido no lugar de "Iran" (pedido do João, 2026-11-27).
+function _quaseIgual(a, b) {
+  if (a === b) return true;
+  if (Math.min(a.length, b.length) < 4 || Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, dif = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++dif > 1) return false;
+    if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; }
+  }
+  return dif + (a.length - i) + (b.length - j) <= 1;
+}
+
 function _tokensNome(s) {
   return (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/[^a-z]+/).filter(t => t.length > 1);
 }
@@ -2218,11 +2232,15 @@ async function processarApontamentoProducao(registros, aplicar) {
 
   for (const reg of (registros || [])) {
     const alvo = _tokensNome(reg.funcionarioNome);
-    const candidatos = funcs.filter(f => {
+    const casa = igual => funcs.filter(f => {
       const t = _tokensNome(f.nome);
       const [menor, maior] = alvo.length <= t.length ? [alvo, t] : [t, alvo];
-      return menor.length && menor.every(x => maior.includes(x));
+      return menor.length && menor.every(x => maior.some(y => igual(x, y)));
     });
+    // Primeiro exato; se não achar ninguém, tolera 1 letra por palavra
+    // (só vale se der um único funcionário).
+    let candidatos = casa((x, y) => x === y);
+    if (!candidatos.length) candidatos = casa(_quaseIgual);
     const base = { funcionario: reg.funcionarioNome, data: reg.data };
     if (candidatos.length !== 1) {
       itens.push({ ...base, ok: false, motivo: candidatos.length ? `nome ambíguo: ${candidatos.map(f => f.nome).join(" / ")}` : "funcionário não encontrado no cadastro" });
@@ -3995,11 +4013,19 @@ async function extrairDadosBoletoImagem(imageBase64, mimeType) {
 // Lê a ficha "Registro de Serviço Realizado" (papel da obra) — devolve
 // null se a foto não for essa ficha.
 async function extrairRegistroServicoImagem(imageBase64, mimeType) {
+  // Lista dos funcionários ativos: com letra de mão difícil, a leitura escolhe
+  // o nome entre os cadastrados (ex.: "Ivan" x "Iran" — 2026-11-27).
+  let nomesCadastro = "";
+  try {
+    const fs = await db.collection("funcionarios").get();
+    nomesCadastro = fs.docs.map(d => d.data()).filter(f => f.ativo !== false && f.nome).map(f => f.nome).sort().join("; ");
+  } catch (e) { logger.warn("[extrairRegistroServico] sem lista de funcionários", { erro: e.message }); }
   const prompt = `Esta foto pode ser uma ficha em papel "REGISTRO DE SERVIÇO REALIZADO" de uma obra (campos: Nome do funcionário, Data, Setor, BL, APT, Serviço realizado, Observação), com um ou mais blocos preenchidos à mão.
 Se NÃO for essa ficha, responda só: {"tipo":"outro"}
 Se for, responda só um JSON: {"tipo":"registro_servico","registros":[{"funcionarioNome":"...","data":"DD/MM/AAAA","condominio":"K1 ou K2","bloco":"letra","apartamentos":["06"],"servicos":["..."],"textoServico":"texto como escrito","observacao":"..."}]}
 Rasura: se algum campo de um bloco estiver riscado, sobrescrito, com corretivo ou rabiscado (ex: número do APT riscado), marque nesse bloco "rasura": true e "rasuraDescricao": "onde"; senão "rasura": false.
-Regras: um item por bloco preenchido. Setor KL1/KEL1 = "K1", KL2/KEL2 = "K2". Ano com 2 dígitos vira 20AA. Apartamentos: junte o campo APT e os números listados na Observação (ex: "Apt: 03, 103, 102 e 104" = ["03","103","102","104"]); ignore número riscado. servicos = categorias, só destas: tratamento, gesso (gesso em pasta / mão de gesso), massa (emassamento / mão de massa), textura_teto_sala, textura_teto_wc, textura_parede_wc, pintura_teto, demao1, demao2. Ex: "Aplicação de 2 mão de gesso e 1 mão de massa" = ["gesso","massa"]; "Emassamento" = ["massa"].`;
+Regras: um item por bloco preenchido. Setor KL1/KEL1 = "K1", KL2/KEL2 = "K2". Ano com 2 dígitos vira 20AA. Apartamentos: junte o campo APT e os números listados na Observação (ex: "Apt: 03, 103, 102 e 104" = ["03","103","102","104"]); ignore número riscado. servicos = categorias, só destas: tratamento, gesso (gesso em pasta / mão de gesso), massa (emassamento / mão de massa), textura_teto_sala, textura_teto_wc, textura_parede_wc, pintura_teto, demao1, demao2. Ex: "Aplicação de 2 mão de gesso e 1 mão de massa" = ["gesso","massa"]; "Emassamento" = ["massa"].${nomesCadastro ? `
+Funcionários cadastrados (a letra é de mão e pode ser difícil): ${nomesCadastro}. Em funcionarioNome escreva o nome como está no cadastro quando a escrita for compatível com um deles (ex: "Ivan Augusto" escrito à mão quando o cadastro tem "Iran Augusto" → use o do cadastro). Se não for compatível com nenhum, escreva como está na ficha.` : ""}`;
   const resp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": anthropicApiKey.value(), "anthropic-version": "2023-06-01", "content-type": "application/json" },
