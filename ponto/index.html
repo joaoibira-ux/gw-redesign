@@ -481,6 +481,11 @@ window.addEventListener('load', async () => {
   await verificarLocalizacao();
   if (document.getElementById('s-loc-error').classList.contains('active')) return;
 
+  // Câmera abre em paralelo com o carregamento dos modelos e funcionários
+  // (antes só começava no fim — no tablet antigo somava vários segundos).
+  const cameraPronta = iniciarCameraMain();
+  cameraPronta.catch(() => {});        // erro tratado no await lá embaixo
+
   setStatus('Carregando reconhecimento facial...');
   try {
     await Promise.all([
@@ -500,7 +505,7 @@ window.addEventListener('load', async () => {
   if (modelsLoaded) { setStatus('Testando este aparelho...'); await escolherMotor(); }
 
   setStatus('Iniciando câmera...');
-  await iniciarCameraMain();
+  await cameraPronta;
 
   showScreen('s-camera');
   iniciarDeteccao();
@@ -605,7 +610,9 @@ function getFuncById(id) { return funcionariosCache.find(f => f.id === id) || nu
 async function iniciarCameraMain() {
   const video = document.getElementById('video');
   mainStream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+    // 640x480 basta (o detector reduz pra 320/512); 1280x720 deixava a câmera
+    // lenta pra abrir no tablet antigo (2026-11-27).
+    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
     audio: false
   });
   video.srcObject = mainStream;
