@@ -261,7 +261,7 @@
 <div id="s-loading" class="screen active">
   <img class="ld-logo" src="../Logo-gw.png" alt="GW" />
   <div class="ld-title">PONTO</div>
-  <div class="ld-sub">SISTEMA GREEN WALL</div>
+  <div class="ld-sub">SISTEMA GREEN WALL · <span class="ver-ponto"></span></div>
   <div class="spinner"></div>
   <div class="ld-status" id="ld-status">Iniciando...</div>
 </div>
@@ -289,7 +289,7 @@
   <div class="cam-top glass">
     <img class="cam-logo" id="cam-logo" src="../Logo-gw.png" alt="GW" draggable="false" />
     <div class="cam-title-block">
-      <div class="cam-title">PONTO</div>
+      <div class="cam-title">PONTO <span class="ver-ponto" style="font-size:.55em;opacity:.6;letter-spacing:0"></span></div>
       <div class="cam-status" id="cam-status">Aguardando rosto...</div>
     </div>
     <a class="btn-voltar" href="https://sistema.gwrevestimentos.com.br/">← Menu</a>
@@ -369,7 +369,10 @@ const FIREBASE_CONFIG = {
 };
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 const MATCH_THRESHOLD = 0.55;
-const VERSAO          = '2.20';
+// Mesmo número da tela do PIN (index.html raiz) — o app Ponto instalado abre
+// direto aqui e não mostrava versão nenhuma (2026-11-27). Atualizar junto.
+const VERSAO          = '8.56';
+document.querySelectorAll('.ver-ponto').forEach(el => { el.textContent = 'v' + VERSAO; });
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let db;
