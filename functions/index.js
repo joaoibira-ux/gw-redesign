@@ -2275,6 +2275,16 @@ async function processarApontamentoProducao(registros, aplicar) {
     const cond = String(reg.condominio || "").toUpperCase().replace(/^KE?L/, "K");
     const bloco = String(reg.bloco || "").toUpperCase().trim();
     const producao = ["PINTOR", "RASPADOR"].includes(String(func.cargo || "").toUpperCase()) || func.porProducao === true;
+    // Sem serviço ou sem apartamento lido = ficha não entendida; trava (antes
+    // passava como "lançada, 0 serviços" — Antônio, "Mona", 2026-11-27).
+    if (!(reg.servicos || []).length) {
+      itens.push({ ...base, funcionario: func.nome, data: dataBR, ok: false, motivo: `serviço não identificado na ficha${reg.textoServico ? ` (escrito: "${reg.textoServico}")` : ""}` });
+      continue;
+    }
+    if (!(reg.apartamentos || []).length) {
+      itens.push({ ...base, funcionario: func.nome, data: dataBR, ok: false, motivo: "apartamento não identificado na ficha" });
+      continue;
+    }
     for (const apRaw of (reg.apartamentos || [])) {
       const ap = String(apRaw).replace(/\D/g, "");
       const ident = `${cond}${bloco}${ap.length === 1 ? "0" + ap : ap}`;
@@ -2316,6 +2326,9 @@ async function processarApontamentoProducao(registros, aplicar) {
       + (problemas.length ? `CONFLITO COM O MAPA:\n${problemas.map(x => "• " + x).join("\n")}\n\n` : "")
       + "Para lançar, uma das duas:\n1) Corrigir a ficha (refazer sem rasura) e mandar nova foto pra nova leitura; ou\n2) Pedir a alteração do mapa ao responsável pelo sistema.";
     return { sucesso: false, bloqueado: true, erro: "ficha_com_pendencias", alerta, ...resumo };
+  }
+  if (!liberados.length) {
+    return { sucesso: false, bloqueado: true, erro: "nada_para_lancar", alerta: "⚠️ FICHA NÃO LANÇADA — não encontrei nenhum serviço pra apontar nessa ficha. Confira se o serviço e os apartamentos estão escritos de forma legível e mande nova foto.", ...resumo };
   }
   if (!aplicar) return { sucesso: true, simulacao: true, ...resumo };
 
