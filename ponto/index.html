@@ -404,10 +404,18 @@ let motorTestado = false;            // true = o motor atual foi validado
 async function escolherMotor() {
   const tf = faceapi.tf;
   if (!tf || !tf.getBackend || tf.getBackend() !== 'webgl') return;
+  // Variações do WebGL que costumam consertar placa antiga (Mali etc.):
+  // sem "packing" e/ou texturas de meia precisão. Testadas antes de ir pra CPU.
+  const VARIANTES = [null, { WEBGL_PACK: false }, { WEBGL_PACK: false, WEBGL_FORCE_F16_TEXTURES: true }];
+  const aplicar = v => { if (v) Object.keys(v).forEach(k => { try { tf.ENV.set(k, v[k]); } catch (e) {} }); };
+  const guardar = x => { try { localStorage.setItem('gw_ponto_motor2', x); } catch (e) {} };
   let salvo = null;
-  try { salvo = localStorage.getItem('gw_ponto_motor'); } catch (e) {}
-  if (salvo === 'webgl') { motorTestado = true; return; }
-  if (salvo === 'cpu')   { await tentarCpu(); motorTestado = true; return; }
+  try { salvo = localStorage.getItem('gw_ponto_motor2'); } catch (e) {}
+  if (salvo && salvo.indexOf('webgl') === 0) {
+    try { aplicar(JSON.parse(salvo.slice(5) || 'null')); } catch (e) {}
+    motorTestado = true; return;
+  }
+  if (salvo === 'cpu') { await tentarCpu(); motorTestado = true; return; }
   const fotos = funcionariosCache.filter(x => x.fotoThumb && labeledDescriptors.some(l => l.label === x.id)).slice(0, 3);
   if (!fotos.length) return;           // sem foto pra testar → decide pelo fallback de 8s
   // Reconhece a foto e diz se bateu com o descritor salvo do funcionário.
@@ -421,14 +429,18 @@ async function escolherMotor() {
     return !!(det && ref && ref.descriptors.some(d => faceapi.euclideanDistance(d, det.descriptor) < 0.6));
   };
   try {
-    for (const f of fotos) {
-      if (await bate(f)) { motorTestado = true; try { localStorage.setItem('gw_ponto_motor', 'webgl'); } catch (e) {} return; }
+    for (const v of VARIANTES) {
+      aplicar(v);
+      for (const f of (v ? fotos.slice(0, 1) : fotos)) {
+        if (await bate(f)) { motorTestado = true; guardar('webgl' + (v ? JSON.stringify(v) : '')); return; }
+      }
     }
+    aplicar({ WEBGL_PACK: true, WEBGL_FORCE_F16_TEXTURES: false });
     // WebGL não bateu em nenhuma. Confirma na CPU: se lá bate, a placa é que
     // está errando → CPU de vez. Se nem na CPU bate, as fotos é que não servem
     // de teste → volta pro WebGL e fica o fallback de 8s.
     await tentarCpu();
-    if (await bate(fotos[0])) { motorTestado = true; try { localStorage.setItem('gw_ponto_motor', 'cpu'); } catch (e) {} return; }
+    if (await bate(fotos[0])) { motorTestado = true; guardar('cpu'); return; }
     usandoCpu = false; await faceapi.tf.setBackend('webgl'); await faceapi.tf.ready();
   } catch (e) { console.warn('Autoteste motor:', e); }
 }
@@ -672,15 +684,17 @@ async function reconhecerFace(video) {
 
   recognizing = true;
   const inicio = Date.now();
+  let cronometro = null;
   try {
-    setCamHint('Reconhecendo...' + (usandoCpu ? ' (pode levar alguns segundos)' : ''));
+    setCamHint('Reconhecendo...');
+    cronometro = setInterval(() => setCamHint('Reconhecendo... ' + Math.round((Date.now() - inicio) / 1000) + 's'), 1000);
     // Modo compatível (CPU): imagem menor, senão leva demais no tablet antigo.
-    const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: usandoCpu ? 224 : 512, scoreThreshold: 0.4 });
+    const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: usandoCpu ? 320 : 512, scoreThreshold: 0.4 });
     const det  = await faceapi.detectSingleFace(video, opts)
       .withFaceLandmarks(true)     // true = use tiny landmark model
       .withFaceDescriptor();
 
-    if (!det) { setCamHint('Rosto não ficou nítido — fique parado, de frente'); return; }
+    if (!det) { setCamHint('Rosto não ficou nítido (' + Math.round((Date.now() - inicio) / 1000) + 's) — fique parado, de frente'); return; }
 
     const matcher = new faceapi.FaceMatcher(labeledDescriptors, MATCH_THRESHOLD);
     const match   = matcher.findBestMatch(det.descriptor);
@@ -722,6 +736,8 @@ async function reconhecerFace(video) {
     setCamStatus('Erro');
     setCamHint('Erro no reconhecimento (' + Math.round((Date.now() - inicio) / 1000) + 's): ' + (e && e.message || e));
   } finally {
+    clearInterval(cronometro);
+    lastRecognizeAt = Date.now(); // conta a pausa a partir do FIM (na CPU leva segundos), senão o aviso some na hora
     recognizing = false;
   }
 }
