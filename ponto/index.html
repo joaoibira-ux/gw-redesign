@@ -577,7 +577,9 @@ function iniciarDeteccao() {
 
   async function tick() {
     if (erroModelos) { setCamStatus('Erro'); setCamHint(erroModelos); }
-    if (!paused && modelsLoaded && !video.paused && video.readyState >= 2) {
+    // Enquanto reconhece, não detecta em paralelo — no tablet antigo (CPU) os
+    // dois juntos travam o aparelho e o reconhecimento nunca termina.
+    if (!paused && !recognizing && modelsLoaded && !video.paused && video.readyState >= 2) {
       let detections;
       try {
         detections = await faceapi.detectAllFaces(video, opts);
@@ -594,8 +596,8 @@ function iniciarDeteccao() {
 
       if (hasFace) {
         setCamStatus('Rosto detectado');
-        setCamHint('Aguarde o reconhecimento...');
         const now = Date.now();
+        if (now - lastRecognizeAt > 2200) setCamHint('Aguarde o reconhecimento...'); // não apaga o aviso da última tentativa
         if (!recognizing && now - lastRecognizeAt > 2200) {
           lastRecognizeAt = now;
           reconhecerFace(video);
@@ -614,13 +616,16 @@ async function reconhecerFace(video) {
   if (labeledDescriptors.length === 0) { return; }
 
   recognizing = true;
+  const inicio = Date.now();
   try {
-    const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.5 });
+    setCamHint('Reconhecendo...' + (usandoCpu ? ' (pode levar alguns segundos)' : ''));
+    // Modo compatível (CPU): imagem menor, senão leva demais no tablet antigo.
+    const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: usandoCpu ? 320 : 512, scoreThreshold: 0.4 });
     const det  = await faceapi.detectSingleFace(video, opts)
       .withFaceLandmarks(true)     // true = use tiny landmark model
       .withFaceDescriptor();
 
-    if (!det) return;
+    if (!det) { setCamHint('Rosto não ficou nítido — fique parado, de frente'); return; }
 
     const matcher = new faceapi.FaceMatcher(labeledDescriptors, MATCH_THRESHOLD);
     const match   = matcher.findBestMatch(det.descriptor);
@@ -655,6 +660,12 @@ async function reconhecerFace(video) {
     }
 
     mostrarConfirmacao(func, tipo, docId, !!avisoSaidaAberta);
+  } catch (e) {
+    // Antes o erro sumia em silêncio e a tela ficava parada.
+    console.warn('Reconhecimento:', e);
+    paused = false;
+    setCamStatus('Erro');
+    setCamHint('Erro no reconhecimento (' + Math.round((Date.now() - inicio) / 1000) + 's): ' + (e && e.message || e));
   } finally {
     recognizing = false;
   }
