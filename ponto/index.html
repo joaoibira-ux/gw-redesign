@@ -654,7 +654,9 @@ function iniciarDeteccao() {
       if (top && top.score >= 0.2 && video.videoWidth) {
         const frac = top.box.width / video.videoWidth;
         if (frac < 0.22) guia = '⬆ Chegue mais perto';
-        else if (frac > 0.65) guia = '⬇ Afaste-se um pouco';
+        // Só quando colado na câmera: com 0.65 quem enchia a moldura do tablet
+        // levava "afaste-se" e nunca reconhecia (2026-11-27). Rosto grande não atrapalha.
+        else if (frac > 0.9) guia = '⬇ Afaste-se um pouco';
       }
       const hasFace = melhor >= LIMIAR;
       oval.classList.toggle('detected', hasFace);
