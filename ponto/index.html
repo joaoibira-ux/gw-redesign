@@ -408,9 +408,9 @@ async function escolherMotor() {
   // sem "packing" e/ou texturas de meia precisão. Testadas antes de ir pra CPU.
   const VARIANTES = [null, { WEBGL_PACK: false }, { WEBGL_PACK: false, WEBGL_FORCE_F16_TEXTURES: true }];
   const aplicar = v => { if (v) Object.keys(v).forEach(k => { try { tf.ENV.set(k, v[k]); } catch (e) {} }); };
-  const guardar = x => { try { localStorage.setItem('gw_ponto_motor2', x); } catch (e) {} };
+  const guardar = x => { try { localStorage.setItem('gw_ponto_motor3', x); } catch (e) {} };
   let salvo = null;
-  try { salvo = localStorage.getItem('gw_ponto_motor2'); } catch (e) {}
+  try { salvo = localStorage.getItem('gw_ponto_motor3'); } catch (e) {}
   if (salvo && salvo.indexOf('webgl') === 0) {
     try { aplicar(JSON.parse(salvo.slice(5) || 'null')); } catch (e) {}
     motorTestado = true; return;
@@ -610,9 +610,8 @@ function getFuncById(id) { return funcionariosCache.find(f => f.id === id) || nu
 async function iniciarCameraMain() {
   const video = document.getElementById('video');
   mainStream = await navigator.mediaDevices.getUserMedia({
-    // 640x480 basta (o detector reduz pra 320/512); 1280x720 deixava a câmera
-    // lenta pra abrir no tablet antigo (2026-11-27).
-    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+    // Testado 640x480 (v8.53): no tablet Samsung a imagem ficou escura. Mantém 1280x720.
+    video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
     audio: false
   });
   video.srcObject = mainStream;
@@ -660,9 +659,9 @@ function iniciarDeteccao() {
       const hasFace = melhor >= LIMIAR;
       oval.classList.toggle('detected', hasFace);
       if (hasFace) semRostoDesde = Date.now();
-      // WebGL quebrado em aparelho antigo pode não dar erro e só nunca achar
-      // rosto: após 8s sem rosto com a câmera rodando, tenta a CPU uma vez.
-      else if (!motorTestado && !usandoCpu && Date.now() - semRostoDesde > 8000 && await tentarCpu()) semRostoDesde = Date.now();
+      // (Removido em v8.54 o fallback "8s sem rosto → CPU": com imagem escura
+      // ou ninguém na frente, jogava o tablet no modo compatível à toa. A
+      // escolha do motor fica só com o autoteste da abertura.)
       // Diagnóstico (tablet): motor · resolução da câmera · melhor nota · tempo
       const diag = `${usandoCpu ? 'cpu' : (faceapi.tf && faceapi.tf.getBackend ? faceapi.tf.getBackend() : '?')} · ${video.videoWidth}x${video.videoHeight} · ${melhor.toFixed(2)} · ${Date.now() - t0}ms`;
 
