@@ -371,7 +371,7 @@ const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.
 const MATCH_THRESHOLD = 0.55;
 // Mesmo número da tela do PIN (index.html raiz) — o app Ponto instalado abre
 // direto aqui e não mostrava versão nenhuma (2026-11-27). Atualizar junto.
-const VERSAO          = '8.56';
+const VERSAO          = '8.57';
 document.querySelectorAll('.ver-ponto').forEach(el => { el.textContent = 'v' + VERSAO; });
 
 // ── STATE ──────────────────────────────────────────────────────────────────
@@ -654,12 +654,14 @@ function iniciarDeteccao() {
       // Usa até rosto com nota baixa (>= 0.2) — é quando mais precisa ajudar.
       const top = detections.reduce((a, d) => (!a || d.score > a.score) ? d : a, null);
       let guia = '';
-      if (top && top.score >= 0.2 && video.videoWidth) {
-        const frac = top.box.width / video.videoWidth;
+      if (top && top.score >= 0.2 && top.relativeBox) {
+        // relativeBox = fração da própria imagem analisada (0–1). Antes dividia
+        // box (escala da imagem do detector) por videoWidth — no tablet Samsung
+        // as escalas diferem e o cálculo dava errado.
+        const frac = top.relativeBox.width;
         if (frac < 0.22) guia = '⬆ Chegue mais perto';
-        // Só quando colado na câmera: com 0.65 quem enchia a moldura do tablet
-        // levava "afaste-se" e nunca reconhecia (2026-11-27). Rosto grande não atrapalha.
-        else if (frac > 0.9) guia = '⬇ Afaste-se um pouco';
+        // "Afaste-se" removido (2026-11-27): no tablet Samsung aparecia mesmo
+        // com o rosto na moldura e travava o reconhecimento. Rosto grande não atrapalha.
       }
       const hasFace = melhor >= LIMIAR;
       oval.classList.toggle('detected', hasFace);
