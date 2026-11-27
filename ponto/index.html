@@ -573,7 +573,10 @@ async function iniciarCameraMain() {
 function iniciarDeteccao() {
   const video  = document.getElementById('video');
   const oval   = document.getElementById('face-oval');
-  const opts   = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
+  // Threshold baixo só pra medir a melhor nota (diagnóstico); quem decide é LIMIAR.
+  const opts   = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.1 });
+  const LIMIAR = 0.4;
+  let semRostoDesde = Date.now();
 
   async function tick() {
     if (erroModelos) { setCamStatus('Erro'); setCamHint(erroModelos); }
@@ -581,6 +584,7 @@ function iniciarDeteccao() {
     // dois juntos travam o aparelho e o reconhecimento nunca termina.
     if (!paused && !recognizing && modelsLoaded && !video.paused && video.readyState >= 2) {
       let detections;
+      const t0 = Date.now();
       try {
         detections = await faceapi.detectAllFaces(video, opts);
       } catch (e) {
@@ -591,8 +595,15 @@ function iniciarDeteccao() {
         detectionLoop = setTimeout(() => requestAnimationFrame(tick), 1000);
         return;
       }
-      const hasFace = detections.length > 0;
+      const melhor = detections.reduce((m, d) => Math.max(m, d.score || 0), 0);
+      const hasFace = melhor >= LIMIAR;
       oval.classList.toggle('detected', hasFace);
+      if (hasFace) semRostoDesde = Date.now();
+      // WebGL quebrado em aparelho antigo pode não dar erro e só nunca achar
+      // rosto: após 8s sem rosto com a câmera rodando, tenta a CPU uma vez.
+      else if (!usandoCpu && Date.now() - semRostoDesde > 8000 && await tentarCpu()) semRostoDesde = Date.now();
+      // Diagnóstico (tablet): motor · resolução da câmera · melhor nota · tempo
+      const diag = `${usandoCpu ? 'cpu' : (faceapi.tf && faceapi.tf.getBackend ? faceapi.tf.getBackend() : '?')} · ${video.videoWidth}x${video.videoHeight} · ${melhor.toFixed(2)} · ${Date.now() - t0}ms`;
 
       if (hasFace) {
         setCamStatus('Rosto detectado');
@@ -604,7 +615,7 @@ function iniciarDeteccao() {
         }
       } else {
         setCamStatus('Aguardando rosto...' + (usandoCpu ? ' (modo compatível)' : ''));
-        setCamHint('Posicione seu rosto no centro');
+        setCamHint(Date.now() - semRostoDesde > 4000 ? 'Posicione seu rosto no centro  [' + diag + ']' : 'Posicione seu rosto no centro');
       }
     }
     detectionLoop = requestAnimationFrame(tick);
