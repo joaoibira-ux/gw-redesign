@@ -596,6 +596,15 @@ function iniciarDeteccao() {
         return;
       }
       const melhor = detections.reduce((m, d) => Math.max(m, d.score || 0), 0);
+      // Guia de distância: largura do rosto em relação à imagem da câmera.
+      // Usa até rosto com nota baixa (>= 0.2) — é quando mais precisa ajudar.
+      const top = detections.reduce((a, d) => (!a || d.score > a.score) ? d : a, null);
+      let guia = '';
+      if (top && top.score >= 0.2 && video.videoWidth) {
+        const frac = top.box.width / video.videoWidth;
+        if (frac < 0.22) guia = '⬆ Chegue mais perto';
+        else if (frac > 0.65) guia = '⬇ Afaste-se um pouco';
+      }
       const hasFace = melhor >= LIMIAR;
       oval.classList.toggle('detected', hasFace);
       if (hasFace) semRostoDesde = Date.now();
@@ -608,14 +617,16 @@ function iniciarDeteccao() {
       if (hasFace) {
         setCamStatus('Rosto detectado');
         const now = Date.now();
-        if (now - lastRecognizeAt > 2200) setCamHint('Aguarde o reconhecimento...'); // não apaga o aviso da última tentativa
-        if (!recognizing && now - lastRecognizeAt > 2200) {
+        if (guia) setCamHint(guia);
+        else if (now - lastRecognizeAt > 2200) setCamHint('Aguarde o reconhecimento...'); // não apaga o aviso da última tentativa
+        if (!guia && !recognizing && now - lastRecognizeAt > 2200) { // fora da distância certa nem tenta (poupa o tablet)
           lastRecognizeAt = now;
           reconhecerFace(video);
         }
       } else {
         setCamStatus('Aguardando rosto...' + (usandoCpu ? ' (modo compatível)' : ''));
-        setCamHint(Date.now() - semRostoDesde > 4000 ? 'Posicione seu rosto no centro  [' + diag + ']' : 'Posicione seu rosto no centro');
+        const base = guia || 'Posicione seu rosto no centro';
+        setCamHint(Date.now() - semRostoDesde > 4000 ? base + '  [' + diag + ']' : base);
       }
     }
     detectionLoop = requestAnimationFrame(tick);
