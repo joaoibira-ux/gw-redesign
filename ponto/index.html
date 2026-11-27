@@ -449,6 +449,9 @@ async function verificarLocalizacao() {
   }
   if (!snap.exists) return;            // sem config → sem bloqueio
   pontoConfig = snap.data();
+  // Liberação temporária (testes): config/ponto.liberadoAte = timestamp em ms.
+  // Enquanto não passar, não bloqueia por localização; depois volta sozinho.
+  if (pontoConfig.liberadoAte && Date.now() < Number(pontoConfig.liberadoAte)) return;
 
   let pos;
   try {
