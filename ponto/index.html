@@ -31,7 +31,7 @@
     }
 
     /* ── SCREENS ── */
-    .screen { position: fixed; top: 0; right: 0; bottom: 0; left: 0; display: none; flex-direction: column; align-items: center; justify-content: center; }
+    .screen { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; }
     .screen.active { display: flex; animation: fadeIn .3s ease; }
     @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
 
@@ -85,10 +85,10 @@
 
     /* ── CAMERA SCREEN ── */
     #s-camera { padding: 0; background: #000; }
-    #s-camera.active { display: block; position: fixed; top: 0; right: 0; bottom: 0; left: 0; }
+    #s-camera.active { display: block; position: fixed; inset: 0; }
 
     #video {
-      position: absolute; top: 0; right: 0; bottom: 0; left: 0; width: 100%; height: 100%;
+      position: absolute; inset: 0; width: 100%; height: 100%;
       object-fit: cover; transform: scaleX(-1);
     }
 
@@ -130,22 +130,18 @@
     .face-oval {
       position: absolute; top: 50%; left: 50%;
       transform: translate(-50%, -55%);
-      width: 62vw; max-width: 240px; height: 80vw; max-height: 310px;
+      width: min(62vw, 240px); height: min(80vw, 310px);
       border-radius: 50%;
       border: 2.5px dashed rgba(105,240,174,.4);
       box-shadow: 0 0 0 2000px rgba(0,0,0,.38);
       z-index: 5; pointer-events: none;
       transition: border-color .3s, border-style .3s;
     }
-    /* Tablet: moldura proporcional à tela (sem min(), que navegador antigo não entende) */
-    @media (min-width: 600px) {
-      .face-oval { width: 62vw; max-width: 620px; height: 80vw; max-height: 800px; }
-    }
     .face-oval.detected { border-color: #69f0ae; border-style: solid; }
 
     /* ── CONFIRMATION PANEL (overlaid on camera) ── */
     #panel-confirm {
-      position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 20;
+      position: absolute; inset: 0; z-index: 20;
       display: none; flex-direction: column; align-items: center; justify-content: center;
       padding: 20px;
       background: rgba(0,0,0,.72);
@@ -261,7 +257,7 @@
 <div id="s-loading" class="screen active">
   <img class="ld-logo" src="../Logo-gw.png" alt="GW" />
   <div class="ld-title">PONTO</div>
-  <div class="ld-sub">SISTEMA GREEN WALL · <span class="ver-ponto"></span></div>
+  <div class="ld-sub">SISTEMA GREEN WALL</div>
   <div class="spinner"></div>
   <div class="ld-status" id="ld-status">Iniciando...</div>
 </div>
@@ -289,7 +285,7 @@
   <div class="cam-top glass">
     <img class="cam-logo" id="cam-logo" src="../Logo-gw.png" alt="GW" draggable="false" />
     <div class="cam-title-block">
-      <div class="cam-title">PONTO <span class="ver-ponto" style="font-size:.55em;opacity:.6;letter-spacing:0"></span></div>
+      <div class="cam-title">PONTO</div>
       <div class="cam-status" id="cam-status">Aguardando rosto...</div>
     </div>
     <a class="btn-voltar" href="https://sistema.gwrevestimentos.com.br/">← Menu</a>
@@ -369,10 +365,7 @@ const FIREBASE_CONFIG = {
 };
 const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 const MATCH_THRESHOLD = 0.55;
-// Mesmo número da tela do PIN (index.html raiz) — o app Ponto instalado abre
-// direto aqui e não mostrava versão nenhuma (2026-11-27). Atualizar junto.
-const VERSAO          = '8.58';
-document.querySelectorAll('.ver-ponto').forEach(el => { el.textContent = 'v' + VERSAO; });
+const VERSAO          = '2.20';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let db;
@@ -386,67 +379,6 @@ let funcionariosCache  = [];        // { id, nome, cargo, faceDescriptor?, fotoT
 let pontoConfig        = null;      // { latitude, longitude, raio }
 let pendingPonto       = null;      // { funcionarioId, funcionarioNome, tipo, ... }
 let lastRecognizeAt    = 0;
-let erroModelos        = null;      // mostrado na tela (aparelhos antigos)
-let usandoCpu          = false;     // WebGL falhou → processa na CPU
-
-// Aparelho antigo sem WebGL funcional: troca o motor do TensorFlow pra CPU
-// (mais lento, mas funciona). Devolve true se trocou.
-async function tentarCpu() {
-  if (usandoCpu || !faceapi.tf || !faceapi.tf.setBackend) return false;
-  usandoCpu = true;
-  try { await faceapi.tf.setBackend('cpu'); await faceapi.tf.ready(); return true; }
-  catch (e) { console.warn('CPU backend:', e); return false; }
-}
-
-// Autoteste do motor: reconhece a foto de cadastro de um funcionário usando
-// a placa de vídeo (WebGL). Se o descritor bater com o salvo, a placa funciona
-// (modo rápido); se não, usa a CPU. Fica guardado no aparelho — o teste só
-// roda de novo se mudar o motor disponível. Substitui a checagem por float32,
-// que mandava pra CPU aparelhos cuja placa funciona (tablet Samsung, 2026-11-26).
-let motorTestado = false;            // true = o motor atual foi validado
-async function escolherMotor() {
-  const tf = faceapi.tf;
-  if (!tf || !tf.getBackend || tf.getBackend() !== 'webgl') return;
-  // Variações do WebGL que costumam consertar placa antiga (Mali etc.):
-  // sem "packing" e/ou texturas de meia precisão. Testadas antes de ir pra CPU.
-  const VARIANTES = [null, { WEBGL_PACK: false }, { WEBGL_PACK: false, WEBGL_FORCE_F16_TEXTURES: true }];
-  const aplicar = v => { if (v) Object.keys(v).forEach(k => { try { tf.ENV.set(k, v[k]); } catch (e) {} }); };
-  const guardar = x => { try { localStorage.setItem('gw_ponto_motor3', x); } catch (e) {} };
-  let salvo = null;
-  try { salvo = localStorage.getItem('gw_ponto_motor3'); } catch (e) {}
-  if (salvo && salvo.indexOf('webgl') === 0) {
-    try { aplicar(JSON.parse(salvo.slice(5) || 'null')); } catch (e) {}
-    motorTestado = true; return;
-  }
-  if (salvo === 'cpu') { await tentarCpu(); motorTestado = true; return; }
-  const fotos = funcionariosCache.filter(x => x.fotoThumb && labeledDescriptors.some(l => l.label === x.id)).slice(0, 3);
-  if (!fotos.length) return;           // sem foto pra testar → decide pelo fallback de 8s
-  // Reconhece a foto e diz se bateu com o descritor salvo do funcionário.
-  const bate = async f => {
-    const img = await new Promise((res, rej) => {
-      const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = f.fotoThumb;
-    });
-    const det = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: usandoCpu ? 160 : 320, scoreThreshold: 0.3 }))
-      .withFaceLandmarks(true).withFaceDescriptor();
-    const ref = labeledDescriptors.find(l => l.label === f.id);
-    return !!(det && ref && ref.descriptors.some(d => faceapi.euclideanDistance(d, det.descriptor) < 0.6));
-  };
-  try {
-    for (const v of VARIANTES) {
-      aplicar(v);
-      for (const f of (v ? fotos.slice(0, 1) : fotos)) {
-        if (await bate(f)) { motorTestado = true; guardar('webgl' + (v ? JSON.stringify(v) : '')); return; }
-      }
-    }
-    aplicar({ WEBGL_PACK: true, WEBGL_FORCE_F16_TEXTURES: false });
-    // WebGL não bateu em nenhuma. Confirma na CPU: se lá bate, a placa é que
-    // está errando → CPU de vez. Se nem na CPU bate, as fotos é que não servem
-    // de teste → volta pro WebGL e fica o fallback de 8s.
-    await tentarCpu();
-    if (await bate(fotos[0])) { motorTestado = true; guardar('cpu'); return; }
-    usandoCpu = false; await faceapi.tf.setBackend('webgl'); await faceapi.tf.ready();
-  } catch (e) { console.warn('Autoteste motor:', e); }
-}
 
 // ── INIT ───────────────────────────────────────────────────────────────────
 function ehMobile() {
@@ -484,11 +416,6 @@ window.addEventListener('load', async () => {
   await verificarLocalizacao();
   if (document.getElementById('s-loc-error').classList.contains('active')) return;
 
-  // Câmera abre em paralelo com o carregamento dos modelos e funcionários
-  // (antes só começava no fim — no tablet antigo somava vários segundos).
-  const cameraPronta = iniciarCameraMain();
-  cameraPronta.catch(() => {});        // erro tratado no await lá embaixo
-
   setStatus('Carregando reconhecimento facial...');
   try {
     await Promise.all([
@@ -499,16 +426,13 @@ window.addEventListener('load', async () => {
     modelsLoaded = true;
   } catch (e) {
     console.warn('Models error:', e);
-    erroModelos = 'Erro ao carregar reconhecimento facial: ' + (e && e.message || e);
   }
 
   setStatus('Carregando funcionários...');
   await carregarFuncionarios();
 
-  if (modelsLoaded) { setStatus('Testando este aparelho...'); await escolherMotor(); }
-
   setStatus('Iniciando câmera...');
-  await cameraPronta;
+  await iniciarCameraMain();
 
   showScreen('s-camera');
   iniciarDeteccao();
@@ -525,9 +449,6 @@ async function verificarLocalizacao() {
   }
   if (!snap.exists) return;            // sem config → sem bloqueio
   pontoConfig = snap.data();
-  // Liberação temporária (testes): config/ponto.liberadoAte = timestamp em ms.
-  // Enquanto não passar, não bloqueia por localização; depois volta sozinho.
-  if (pontoConfig.liberadoAte && Date.now() < Number(pontoConfig.liberadoAte)) return;
 
   let pos;
   try {
@@ -613,7 +534,6 @@ function getFuncById(id) { return funcionariosCache.find(f => f.id === id) || nu
 async function iniciarCameraMain() {
   const video = document.getElementById('video');
   mainStream = await navigator.mediaDevices.getUserMedia({
-    // Testado 640x480 (v8.53): no tablet Samsung a imagem ficou escura. Mantém 1280x720.
     video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
     audio: false
   });
@@ -626,65 +546,25 @@ async function iniciarCameraMain() {
 function iniciarDeteccao() {
   const video  = document.getElementById('video');
   const oval   = document.getElementById('face-oval');
-  // Threshold baixo só pra medir a melhor nota (diagnóstico); quem decide é LIMIAR.
-  const opts   = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.1 });
-  const optsCpu = new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.1 }); // modo compatível: 4x menos conta
-  const LIMIAR = 0.4;
-  let semRostoDesde = Date.now();
+  const opts   = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
 
   async function tick() {
-    if (erroModelos) { setCamStatus('Erro'); setCamHint(erroModelos); }
-    // Enquanto reconhece, não detecta em paralelo — no tablet antigo (CPU) os
-    // dois juntos travam o aparelho e o reconhecimento nunca termina.
-    if (!paused && !recognizing && modelsLoaded && !video.paused && video.readyState >= 2) {
-      let detections;
-      const t0 = Date.now();
-      try {
-        detections = await faceapi.detectAllFaces(video, usandoCpu ? optsCpu : opts);
-      } catch (e) {
-        // Antes um erro aqui matava o loop em silêncio (tablet antigo).
-        console.warn('Detecção:', e);
-        if (await tentarCpu()) { setCamHint('Ajustando para este aparelho...'); }
-        else { setCamStatus('Erro'); setCamHint('Erro na detecção: ' + (e && e.message || e)); }
-        detectionLoop = setTimeout(() => requestAnimationFrame(tick), 1000);
-        return;
-      }
-      const melhor = detections.reduce((m, d) => Math.max(m, d.score || 0), 0);
-      // Guia de distância: largura do rosto em relação à imagem da câmera.
-      // Usa até rosto com nota baixa (>= 0.2) — é quando mais precisa ajudar.
-      const top = detections.reduce((a, d) => (!a || d.score > a.score) ? d : a, null);
-      let guia = '';
-      if (top && top.score >= 0.2 && top.relativeBox) {
-        // relativeBox = fração da própria imagem analisada (0–1). Antes dividia
-        // box (escala da imagem do detector) por videoWidth — no tablet Samsung
-        // as escalas diferem e o cálculo dava errado.
-        const frac = top.relativeBox.width;
-        if (frac < 0.22) guia = '⬆ Chegue mais perto';
-        // "Afaste-se" removido (2026-11-27): no tablet Samsung aparecia mesmo
-        // com o rosto na moldura e travava o reconhecimento. Rosto grande não atrapalha.
-      }
-      const hasFace = melhor >= LIMIAR;
+    if (!paused && modelsLoaded && !video.paused && video.readyState >= 2) {
+      const detections = await faceapi.detectAllFaces(video, opts);
+      const hasFace = detections.length > 0;
       oval.classList.toggle('detected', hasFace);
-      if (hasFace) semRostoDesde = Date.now();
-      // (Removido em v8.54 o fallback "8s sem rosto → CPU": com imagem escura
-      // ou ninguém na frente, jogava o tablet no modo compatível à toa. A
-      // escolha do motor fica só com o autoteste da abertura.)
-      // Diagnóstico (tablet): motor · resolução da câmera · melhor nota · tempo
-      const diag = `${usandoCpu ? 'cpu' : (faceapi.tf && faceapi.tf.getBackend ? faceapi.tf.getBackend() : '?')} · ${video.videoWidth}x${video.videoHeight} · ${melhor.toFixed(2)} · ${Date.now() - t0}ms`;
 
       if (hasFace) {
         setCamStatus('Rosto detectado');
+        setCamHint('Aguarde o reconhecimento...');
         const now = Date.now();
-        if (guia) setCamHint(guia);
-        else if (now - lastRecognizeAt > 2200) setCamHint('Aguarde o reconhecimento...'); // não apaga o aviso da última tentativa
-        if (!guia && !recognizing && now - lastRecognizeAt > 2200) { // fora da distância certa nem tenta (poupa o tablet)
+        if (!recognizing && now - lastRecognizeAt > 2200) {
           lastRecognizeAt = now;
-          reconhecerFace(video, top);
+          reconhecerFace(video);
         }
       } else {
-        setCamStatus('Aguardando rosto...' + (usandoCpu ? ' (modo compatível)' : ''));
-        const base = guia || 'Posicione seu rosto no centro';
-        setCamHint(Date.now() - semRostoDesde > 4000 ? base + '  [' + diag + ']' : base);
+        setCamStatus('Aguardando rosto...');
+        setCamHint('Posicione seu rosto no centro');
       }
     }
     detectionLoop = requestAnimationFrame(tick);
@@ -692,43 +572,17 @@ function iniciarDeteccao() {
   detectionLoop = requestAnimationFrame(tick);
 }
 
-// Descritor a partir de um rosto JÁ detectado no loop (mesma cadeia interna
-// do face-api: recorta → landmarks → alinha → descritor), sem detectar de novo.
-// No tablet antigo a 2ª detecção (outro tamanho de imagem) levava ~50s
-// compilando shaders na placa de vídeo (2026-11-27).
-async function descritorDoRosto(video, deteccao) {
-  const base = faceapi.extendWithFaceDetection({}, deteccao);
-  const [rosto] = await faceapi.extractFaces(video, [deteccao]);
-  const lm = await faceapi.nets.faceLandmark68TinyNet.detectLandmarks(rosto);
-  const comLm = faceapi.extendWithFaceLandmarks(base, lm);
-  const [alinhado] = await faceapi.extractFaces(video, [comLm.landmarks.align(null, { useDlibAlignment: true })]);
-  const descriptor = await faceapi.nets.faceRecognitionNet.computeFaceDescriptor(alinhado);
-  return { descriptor };
-}
-
-async function reconhecerFace(video, deteccao) {
+async function reconhecerFace(video) {
   if (labeledDescriptors.length === 0) { return; }
 
   recognizing = true;
-  const inicio = Date.now();
-  let cronometro = null;
   try {
-    setCamHint('Reconhecendo...');
-    cronometro = setInterval(() => setCamHint('Reconhecendo... ' + Math.round((Date.now() - inicio) / 1000) + 's'), 1000);
-    let det = null;
-    if (deteccao) {
-      try { det = await descritorDoRosto(video, deteccao); }
-      catch (e) { console.warn('Descritor direto:', e); }
-    }
-    if (!det) {
-      // Reserva: caminho antigo (detecta de novo), mesmo tamanho do loop.
-      const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: usandoCpu ? 160 : 320, scoreThreshold: 0.4 });
-      det = await faceapi.detectSingleFace(video, opts)
-        .withFaceLandmarks(true)     // true = use tiny landmark model
-        .withFaceDescriptor();
-    }
+    const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.5 });
+    const det  = await faceapi.detectSingleFace(video, opts)
+      .withFaceLandmarks(true)     // true = use tiny landmark model
+      .withFaceDescriptor();
 
-    if (!det) { setCamHint('Rosto não ficou nítido (' + Math.round((Date.now() - inicio) / 1000) + 's) — fique parado, de frente'); return; }
+    if (!det) return;
 
     const matcher = new faceapi.FaceMatcher(labeledDescriptors, MATCH_THRESHOLD);
     const match   = matcher.findBestMatch(det.descriptor);
@@ -763,15 +617,7 @@ async function reconhecerFace(video, deteccao) {
     }
 
     mostrarConfirmacao(func, tipo, docId, !!avisoSaidaAberta);
-  } catch (e) {
-    // Antes o erro sumia em silêncio e a tela ficava parada.
-    console.warn('Reconhecimento:', e);
-    paused = false;
-    setCamStatus('Erro');
-    setCamHint('Erro no reconhecimento (' + Math.round((Date.now() - inicio) / 1000) + 's): ' + (e && e.message || e));
   } finally {
-    clearInterval(cronometro);
-    lastRecognizeAt = Date.now(); // conta a pausa a partir do FIM (na CPU leva segundos), senão o aviso some na hora
     recognizing = false;
   }
 }
@@ -1088,7 +934,7 @@ function salvarComprovanteManual() {
 }
 
 function pararCamera() {
-  if (detectionLoop) { cancelAnimationFrame(detectionLoop); clearTimeout(detectionLoop); }
+  if (detectionLoop) cancelAnimationFrame(detectionLoop);
   detectionLoop = null;
   if (mainStream) {
     mainStream.getTracks().forEach(t => t.stop());
