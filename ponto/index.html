@@ -371,7 +371,7 @@ const MODELS_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.
 const MATCH_THRESHOLD = 0.55;
 // Mesmo número da tela do PIN (index.html raiz) — o app Ponto instalado abre
 // direto aqui e não mostrava versão nenhuma (2026-11-27). Atualizar junto.
-const VERSAO          = '8.57';
+const VERSAO          = '8.58';
 document.querySelectorAll('.ver-ponto').forEach(el => { el.textContent = 'v' + VERSAO; });
 
 // ── STATE ──────────────────────────────────────────────────────────────────
@@ -426,7 +426,7 @@ async function escolherMotor() {
     const img = await new Promise((res, rej) => {
       const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = f.fotoThumb;
     });
-    const det = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.3 }))
+    const det = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: usandoCpu ? 160 : 320, scoreThreshold: 0.3 }))
       .withFaceLandmarks(true).withFaceDescriptor();
     const ref = labeledDescriptors.find(l => l.label === f.id);
     return !!(det && ref && ref.descriptors.some(d => faceapi.euclideanDistance(d, det.descriptor) < 0.6));
@@ -679,7 +679,7 @@ function iniciarDeteccao() {
         else if (now - lastRecognizeAt > 2200) setCamHint('Aguarde o reconhecimento...'); // não apaga o aviso da última tentativa
         if (!guia && !recognizing && now - lastRecognizeAt > 2200) { // fora da distância certa nem tenta (poupa o tablet)
           lastRecognizeAt = now;
-          reconhecerFace(video);
+          reconhecerFace(video, top);
         }
       } else {
         setCamStatus('Aguardando rosto...' + (usandoCpu ? ' (modo compatível)' : ''));
@@ -692,7 +692,21 @@ function iniciarDeteccao() {
   detectionLoop = requestAnimationFrame(tick);
 }
 
-async function reconhecerFace(video) {
+// Descritor a partir de um rosto JÁ detectado no loop (mesma cadeia interna
+// do face-api: recorta → landmarks → alinha → descritor), sem detectar de novo.
+// No tablet antigo a 2ª detecção (outro tamanho de imagem) levava ~50s
+// compilando shaders na placa de vídeo (2026-11-27).
+async function descritorDoRosto(video, deteccao) {
+  const base = faceapi.extendWithFaceDetection({}, deteccao);
+  const [rosto] = await faceapi.extractFaces(video, [deteccao]);
+  const lm = await faceapi.nets.faceLandmark68TinyNet.detectLandmarks(rosto);
+  const comLm = faceapi.extendWithFaceLandmarks(base, lm);
+  const [alinhado] = await faceapi.extractFaces(video, [comLm.landmarks.align(null, { useDlibAlignment: true })]);
+  const descriptor = await faceapi.nets.faceRecognitionNet.computeFaceDescriptor(alinhado);
+  return { descriptor };
+}
+
+async function reconhecerFace(video, deteccao) {
   if (labeledDescriptors.length === 0) { return; }
 
   recognizing = true;
@@ -701,11 +715,18 @@ async function reconhecerFace(video) {
   try {
     setCamHint('Reconhecendo...');
     cronometro = setInterval(() => setCamHint('Reconhecendo... ' + Math.round((Date.now() - inicio) / 1000) + 's'), 1000);
-    // Modo compatível (CPU): imagem menor, senão leva demais no tablet antigo.
-    const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: usandoCpu ? 320 : 512, scoreThreshold: 0.4 });
-    const det  = await faceapi.detectSingleFace(video, opts)
-      .withFaceLandmarks(true)     // true = use tiny landmark model
-      .withFaceDescriptor();
+    let det = null;
+    if (deteccao) {
+      try { det = await descritorDoRosto(video, deteccao); }
+      catch (e) { console.warn('Descritor direto:', e); }
+    }
+    if (!det) {
+      // Reserva: caminho antigo (detecta de novo), mesmo tamanho do loop.
+      const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: usandoCpu ? 160 : 320, scoreThreshold: 0.4 });
+      det = await faceapi.detectSingleFace(video, opts)
+        .withFaceLandmarks(true)     // true = use tiny landmark model
+        .withFaceDescriptor();
+    }
 
     if (!det) { setCamHint('Rosto não ficou nítido (' + Math.round((Date.now() - inicio) / 1000) + 's) — fique parado, de frente'); return; }
 
