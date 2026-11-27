@@ -379,6 +379,17 @@ let funcionariosCache  = [];        // { id, nome, cargo, faceDescriptor?, fotoT
 let pontoConfig        = null;      // { latitude, longitude, raio }
 let pendingPonto       = null;      // { funcionarioId, funcionarioNome, tipo, ... }
 let lastRecognizeAt    = 0;
+let erroModelos        = null;      // mostrado na tela (aparelhos antigos)
+let usandoCpu          = false;     // WebGL falhou → processa na CPU
+
+// Aparelho antigo sem WebGL funcional: troca o motor do TensorFlow pra CPU
+// (mais lento, mas funciona). Devolve true se trocou.
+async function tentarCpu() {
+  if (usandoCpu || !faceapi.tf || !faceapi.tf.setBackend) return false;
+  usandoCpu = true;
+  try { await faceapi.tf.setBackend('cpu'); await faceapi.tf.ready(); return true; }
+  catch (e) { console.warn('CPU backend:', e); return false; }
+}
 
 // ── INIT ───────────────────────────────────────────────────────────────────
 function ehMobile() {
@@ -426,6 +437,7 @@ window.addEventListener('load', async () => {
     modelsLoaded = true;
   } catch (e) {
     console.warn('Models error:', e);
+    erroModelos = 'Erro ao carregar reconhecimento facial: ' + (e && e.message || e);
   }
 
   setStatus('Carregando funcionários...');
@@ -552,8 +564,19 @@ function iniciarDeteccao() {
   const opts   = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
 
   async function tick() {
+    if (erroModelos) { setCamStatus('Erro'); setCamHint(erroModelos); }
     if (!paused && modelsLoaded && !video.paused && video.readyState >= 2) {
-      const detections = await faceapi.detectAllFaces(video, opts);
+      let detections;
+      try {
+        detections = await faceapi.detectAllFaces(video, opts);
+      } catch (e) {
+        // Antes um erro aqui matava o loop em silêncio (tablet antigo).
+        console.warn('Detecção:', e);
+        if (await tentarCpu()) { setCamHint('Ajustando para este aparelho...'); }
+        else { setCamStatus('Erro'); setCamHint('Erro na detecção: ' + (e && e.message || e)); }
+        detectionLoop = setTimeout(() => requestAnimationFrame(tick), 1000);
+        return;
+      }
       const hasFace = detections.length > 0;
       oval.classList.toggle('detected', hasFace);
 
@@ -937,7 +960,7 @@ function salvarComprovanteManual() {
 }
 
 function pararCamera() {
-  if (detectionLoop) cancelAnimationFrame(detectionLoop);
+  if (detectionLoop) { cancelAnimationFrame(detectionLoop); clearTimeout(detectionLoop); }
   detectionLoop = null;
   if (mainStream) {
     mainStream.getTracks().forEach(t => t.stop());
