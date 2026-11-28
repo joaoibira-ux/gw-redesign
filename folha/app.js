@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const VERSAO = "5.71";
+const VERSAO = "5.72";
 const VALOR_HORA_PINTOR = 10.94;
 
 // Limites de ajudante/pintor por diária no mesmo dia (Configurações) — o
@@ -1795,8 +1795,10 @@ async function alterarDataRegistro(idx) {
 
 function pinLiberaMapaFolha() {
   if (sessionStorage.getItem('gw_auth') === 'completo') return true;
+  // Só o PIN 2248 lança/remove/altera manualmente no mapa da folha; o resto
+  // entra pela ficha no WhatsApp (pedido do João, 2026-11-28 — o 1176 saiu).
   const pin = sessionStorage.getItem('gw_pin') || '';
-  return pin === '2248' || pin === '1176';
+  return pin === '2248';
 }
 
 function onServicoClick(el) {
