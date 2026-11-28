@@ -124,7 +124,7 @@ Se não conseguir identificar a tabela, retorne {"descricaoBoletim":"","itens":[
 const TOOLS_GW = [
   {
     name: "conferir_apontamento_producao",
-    description: "Confere (SEM gravar nada) o apontamento de produção na folha a partir de uma ficha 'Registro de Serviço Realizado': acha o funcionário, cada apartamento (local) e cada serviço no mapa, e diz pra cada item se pode ser apontado (pendente, valor) ou o motivo de não poder (já na folha, já pago, reservado pra outro, bloqueado no catálogo, funcionário faltou no dia pelo ponto, funcionário não é de produção, local/serviço não encontrado). Avisa também quando o ponto do dia só tem entrada (aí a saída é gravada automaticamente 4h depois ao apontar). Use SEMPRE antes de apontar_producao_folha e mostre o resultado ao usuário.",
+    description: "Confere (SEM gravar nada) o apontamento de produção na folha a partir de uma ficha 'Registro de Serviço Realizado': acha o funcionário, cada apartamento (local) e cada serviço no mapa, e diz pra cada item se pode ser apontado (pendente, valor) ou o motivo de não poder (já na folha, já pago, reservado pra outro, bloqueado no catálogo, funcionário não é de produção, local/serviço não encontrado). Avisa também quando o ponto do dia só tem entrada (aí a saída é gravada automaticamente 4h depois ao apontar). Use SEMPRE antes de apontar_producao_folha e mostre o resultado ao usuário.",
     input_schema: { type: "object", properties: {
         registros: {
           type: "array",
@@ -2177,7 +2177,7 @@ async function gerarImagemOperacaoBBS(dados) {
 // regras do clique no mapa da Folha: só serviço pendente, respeita reserva
 // do Gesso e bloqueio do catálogo, produção só pra pintor/raspador ou
 // "Remunerar por produção" (Tratamento qualquer um), e a conferência do
-// ponto do dia (sem entrada ou com falta = faltou; só entrada = saída
+// ponto do dia (desde 2026-11-28 falta/sem entrada NÃO bloqueia; só entrada = saída
 // automática 4h depois).
 function categoriaServicoProducao(nome) {
   const n = (nome || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -2264,9 +2264,10 @@ async function processarApontamentoProducao(registros, aplicar) {
     const temSaida = doDia.some(p => p.tipo === "saida");
     const falta = ocs.docs.map(d => d.data()).some(o => o.dataISO === iso && (o.tipo === "falta" || o.tipo === "suspensao"));
     let avisoPonto = "";
-    let faltou = false;
-    if (falta || !entradas.length) { faltou = true; avisoPonto = falta ? "falta/suspensão registrada no dia" : "sem entrada no ponto no dia (faltou)"; }
-    else if (!temSaida) {
+    // Estar ou não na obra no dia NÃO impede o registro: a ficha pode trazer
+    // serviço concluído em dias anteriores (pedido do João, 2026-11-28).
+    // O ponto só serve pra completar a saída de quem bateu só a entrada.
+    if (!falta && entradas.length && !temSaida) {
       const saida = new Date(entradas[0].getTime() + 4 * 3600000);
       saidasACriar.set(`${func.id}|${iso}`, { func, saida });
       avisoPonto = `só entrada no ponto — saída automática às ${saida.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} (entrada + 4h)`;
@@ -2297,7 +2298,6 @@ async function processarApontamentoProducao(registros, aplicar) {
       for (const cat of (reg.servicos || [])) {
         const it = { funcionario: func.nome, data: dataBR, local: ident, servico: cat };
         if (!localDoc) { itens.push({ ...it, ok: false, motivo: "apartamento não existe no mapa" }); continue; }
-        if (faltou) { itens.push({ ...it, ok: false, motivo: avisoPonto }); continue; }
         const servs = localDoc.data().servicos || [];
         const idx = servs.findIndex(sv => categoriaServicoProducao((catalogo.get(sv.id) || {}).nome || sv.nome) === cat);
         if (idx < 0) { itens.push({ ...it, ok: false, motivo: "serviço não encontrado nesse apartamento" }); continue; }
