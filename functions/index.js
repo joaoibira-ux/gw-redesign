@@ -4042,9 +4042,10 @@ async function extrairRegistroServicoImagem(imageBase64, mimeType) {
   } catch (e) { logger.warn("[extrairRegistroServico] sem lista de funcionários", { erro: e.message }); }
   const prompt = `Esta foto pode ser uma ficha em papel "REGISTRO DE SERVIÇO REALIZADO" de uma obra (campos: Nome do funcionário, Data, Setor, BL, APT, Serviço realizado, Observação), com um ou mais blocos preenchidos à mão.
 Se NÃO for essa ficha, responda só: {"tipo":"outro"}
-Se for, responda só um JSON: {"tipo":"registro_servico","registros":[{"funcionarioNome":"...","data":"DD/MM/AAAA","condominio":"K1 ou K2","bloco":"letra","apartamentos":["06"],"servicos":["..."],"textoServico":"texto como escrito","observacao":"..."}]}
+Se for, responda só um JSON: {"tipo":"registro_servico","modelo":"linhas" ou "antigo","registros":[{"funcionarioNome":"...","data":"DD/MM/AAAA","condominio":"K1 ou K2","bloco":"letra","apartamentos":["06"],"servicos":["..."],"textoServico":"texto como escrito","observacao":"..."}]}
 Rasura: se algum campo de um bloco estiver riscado, sobrescrito, com corretivo ou rabiscado (ex: número do APT riscado), marque nesse bloco "rasura": true e "rasuraDescricao": "onde"; senão "rasura": false.
-Modelo por linhas (pode não ter Setor/BL/APT preenchidos): cada linha do SERVIÇO REALIZADO é "Serviço; Apt <código>", com o código no formato KL1D101 / KEL1D101 / K1D101 = condomínio K1, bloco D, apartamento 101 (KL2/KEL2/K2 = K2; a letra depois do número do condomínio é o bloco; o resto é o apartamento). Nesse modelo gere UM registro POR LINHA, com o funcionário e a data do cabeçalho, apartamentos com só esse apartamento e servicos com só o serviço dessa linha — mesmo que a linha se repita (não junte nem descarte linhas repetidas). "Textura parede WC/cozinha" = textura_parede_wc; "Textura teto" / "Textura sala" / "Textura quartos" = textura_teto_sala; "Textura WC" / "Textura teto WC" = textura_teto_wc; "Massa" = massa (emassamento) — na letra do encarregado "Massa" costuma parecer "Mona", "Mosa" ou "Mana": leia como Massa; "Dm1", "Demão 1" ou "Dm1/Massa" = demao1; "Dm2", "Demão 2" ou "Dm2/Lixa" = demao2. Se a linha disser só "Textura", sem dizer onde (teto, sala, WC, parede), NÃO adivinhe: servicos vazio e textoServico com o que está escrito.
+"modelo": "linhas" quando a ficha NÃO tem os campos SETOR, BL e APT (só Nome, Data, as linhas de SERVIÇO REALIZADO e Assinatura) e cada linha traz o serviço e o código do apartamento (ex: "Massa Apt KL1E009"); "antigo" quando a ficha tem os campos SETOR / BL / APT ou OBSERVAÇÃO.
+Modelo por linhas: cada linha do SERVIÇO REALIZADO é "Serviço; Apt <código>", com o código no formato KL1D101 / KEL1D101 / K1D101 = condomínio K1, bloco D, apartamento 101 (KL2/KEL2/K2 = K2; a letra depois do número do condomínio é o bloco; o resto é o apartamento). Nesse modelo gere UM registro POR LINHA, com o funcionário e a data do cabeçalho, apartamentos com só esse apartamento e servicos com só o serviço dessa linha — mesmo que a linha se repita (não junte nem descarte linhas repetidas). "Textura parede WC/cozinha" = textura_parede_wc; "Textura teto" / "Textura sala" / "Textura quartos" = textura_teto_sala; "Textura WC" / "Textura teto WC" = textura_teto_wc; "Massa" = massa (emassamento) — na letra do encarregado "Massa" costuma parecer "Mona", "Mosa" ou "Mana": leia como Massa; "Dm1", "Demão 1" ou "Dm1/Massa" = demao1; "Dm2", "Demão 2" ou "Dm2/Lixa" = demao2. Se a linha disser só "Textura", sem dizer onde (teto, sala, WC, parede), NÃO adivinhe: servicos vazio e textoServico com o que está escrito.
 Regras: um item por bloco preenchido. Setor KL1/KEL1/K1 (com ou sem espaço, maiúscula ou minúscula) = "K1"; KL2/KEL2/K2 = "K2". Ano com 2 dígitos vira 20AA. Apartamentos: junte o campo APT e os números listados na Observação (ex: "Apt: 03, 103, 102 e 104" = ["03","103","102","104"]); ignore número riscado. servicos = categorias, só destas: tratamento, gesso (gesso em pasta / mão de gesso), massa (emassamento / mão de massa), textura_teto_sala, textura_teto_wc, textura_parede_wc, pintura_teto, demao1, demao2. Ex: "Aplicação de 2 mão de gesso e 1 mão de massa" = ["gesso","massa"]; "Emassamento" = ["massa"].${nomesCadastro ? `
 Funcionários cadastrados (a letra é de mão e pode ser difícil): ${nomesCadastro}. Em funcionarioNome escreva o nome como está no cadastro quando a escrita for compatível com um deles (ex: "Ivan Augusto" escrito à mão quando o cadastro tem "Iran Augusto" → use o do cadastro). Se não for compatível com nenhum, escreva como está na ficha.` : ""}`;
   const resp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -4064,8 +4065,13 @@ Funcionários cadastrados (a letra é de mão e pode ser difícil): ${nomesCadas
   const match = texto.match(/\{[\s\S]*\}/);
   if (!match) return null;
   const r = JSON.parse(match[0]);
-  return r.tipo === "registro_servico" && Array.isArray(r.registros) && r.registros.length ? r.registros : null;
+  if (r.tipo !== "registro_servico") return null;
+  // Só vale o modelo novo, por linhas (pedido do João, 2026-11-28).
+  if (r.modelo !== "linhas") return { modeloAntigo: true };
+  return Array.isArray(r.registros) && r.registros.length ? r.registros : null;
 }
+
+const AVISO_MODELO_ANTIGO = "⚠️ FICHA NÃO LANÇADA — esse modelo de ficha não é mais aceito.\n\nUse a ficha nova \"REGISTRO DE SERVIÇO REALIZADO\" (Nome, Data e uma linha por serviço), escrevendo em cada linha o serviço e o apartamento, assim:\n- Massa Apt KL1E009\n- Textura WC Apt KL1D101\n\nPreencha no modelo novo e mande nova foto.";
 
 // Fluxo fixo (sem o assistente de conversa) pra quem só pode mandar fichas
 // de serviço: lê a foto, confere e, se a ficha estiver toda certa, aponta
@@ -4084,6 +4090,13 @@ async function tratarFichaRemetenteRestrito(msg, apiKeyValue, numero, rotulo) {
   const nomeArquivo = `ficha-${Date.now()}.${mimeType.split("/")[1] || "jpg"}`;
   const url = await uploadBoletoStorage(buffer, nomeArquivo, mimeType);
   const registros = await extrairRegistroServicoImagem(buffer.toString("base64"), mimeType);
+  if (registros && registros.modeloAntigo) {
+    await responder(AVISO_MODELO_ANTIGO);
+    await copiaJoao(`📋 Ficha enviada por ${rotulo} — NÃO lançada (modelo antigo)
+
+Foto: ${url}`);
+    return;
+  }
   if (!registros) {
     await responder("Não reconheci uma ficha \"Registro de Serviço Realizado\" nessa foto. Tire outra foto, com a ficha inteira e legível.");
     return;
@@ -4123,6 +4136,11 @@ async function processarBoletoImagem(msg, imgMsg, apiKeyValue) {
     registros = await extrairRegistroServicoImagem(buffer.toString("base64"), mimeType);
   } catch (e) {
     logger.error("[processarBoletoImagem] falha ao ler ficha de serviço", { erro: e.message });
+  }
+  if (registros && registros.modeloAntigo) {
+    return `[REGISTRO DE SERVIÇO RECEBIDO — MODELO ANTIGO]
+Foto de ficha de serviço no modelo antigo (salva em ${boletoUrl}). Esse modelo não é mais aceito: NÃO chame conferir_apontamento_producao nem apontar_producao_folha. Responda ao usuário exatamente:
+${AVISO_MODELO_ANTIGO}`;
   }
   if (registros) {
     return `[REGISTRO DE SERVIÇO RECEBIDO]
