@@ -2287,8 +2287,11 @@ async function processarApontamentoProducao(registros, aplicar) {
     }
     for (const apRaw of (reg.apartamentos || [])) {
       const ap = String(apRaw).replace(/\D/g, "");
-      const ident = `${cond}${bloco}${ap.length === 1 ? "0" + ap : ap}`;
-      const localDoc = localPorIdent.get(ident);
+      // Térreo no mapa tem 2 dígitos (K1E09, K1E10); na ficha vem "009"/"010"
+      // — tira os zeros a mais e completa até 2 (2026-11-28).
+      const apNum = String(parseInt(ap || "0", 10));
+      const ident = `${cond}${bloco}${apNum.length === 1 ? "0" + apNum : apNum}`;
+      const localDoc = localPorIdent.get(ident) || localPorIdent.get(`${cond}${bloco}${ap}`);
       for (const cat of (reg.servicos || [])) {
         const it = { funcionario: func.nome, data: dataBR, local: ident, servico: cat };
         if (!localDoc) { itens.push({ ...it, ok: false, motivo: "apartamento não existe no mapa" }); continue; }
